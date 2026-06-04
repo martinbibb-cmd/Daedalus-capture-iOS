@@ -1,6 +1,6 @@
 name: DaedalusScan
 options:
-  bundleIdPrefix: com.daedalus
+  bundleIdPrefix: com.martinbibb.daedalus
 settings:
   base:
     SWIFT_VERSION: 5.10
@@ -8,17 +8,31 @@ packages:
   DaedalusContracts:
     path: ./DaedalusContracts
 targets:
-  DaedalusScan:
-    type: application
+  DaedalusScanCore:
+    type: framework
     platform: iOS
     deploymentTarget: "17.0"
     sources:
       - path: DaedalusScan
+        excludes:
+          - App
     dependencies:
       - package: DaedalusContracts
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.daedalus.scan
+        GENERATE_INFOPLIST_FILE: YES
+        SUPPORTS_MACCATALYST: NO
+  DaedalusScanApp:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: DaedalusScan/App
+    dependencies:
+      - target: DaedalusScanCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.martinbibb.daedalus.scan
         PRODUCT_NAME: Daedalus Scan
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Daedalus Scan
@@ -30,9 +44,10 @@ targets:
         SUPPORTS_MACCATALYST: NO
         TARGETED_DEVICE_FAMILY: 1
 schemes:
-  DaedalusScan:
+  DaedalusScanApp:
     build:
       targets:
-        DaedalusScan: all
+        DaedalusScanCore: all
+        DaedalusScanApp: all
     run:
       config: Debug

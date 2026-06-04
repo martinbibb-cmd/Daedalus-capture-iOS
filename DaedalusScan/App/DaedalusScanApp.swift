@@ -1,4 +1,5 @@
 import SwiftUI
+import DaedalusScanCore
 
 @main
 struct DaedalusScanApp: App {

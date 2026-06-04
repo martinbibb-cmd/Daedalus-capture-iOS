@@ -8,12 +8,23 @@ Daedalus Scan captures structured survey data, photos and voice notes for site v
 
 ## Architecture
 
-- SwiftUI application target
+- `DaedalusScanApp` application target
+- `DaedalusScanCore` framework target for capture flows and persistence
 - iOS only
 - XcodeGen is the source of truth
 - MVVM presentation flow
-- `DaedalusContracts` local package for canonical shared models
+- `DaedalusContracts` local package placeholder (temporary until switched to canonical `Daedalus-contracts` repository dependency)
 - JSON persistence for local-first storage
+
+## Capture-only boundaries
+
+Daedalus Scan remains strictly capture-only:
+- captures visit metadata, structured survey answers, photos and voice notes
+- does not include recommendations
+- does not include quotations
+- does not include pricing
+- does not include heat-loss analysis
+- does not include sales logic
 
 ## Features in this scaffold
 
@@ -27,13 +38,35 @@ Daedalus Scan captures structured survey data, photos and voice notes for site v
 
 ## Getting started
 
+1. Run the fresh-clone bootstrap:
+   ```bash
+   ./bootstrap.sh
+   ```
+2. Open the generated `DaedalusScan.xcodeproj` in Xcode.
+3. Select the `DaedalusScanApp` scheme, choose a physical iPhone target and run.
+
+## Fresh-clone bootstrap details
+
+`bootstrap.sh` runs these commands:
+
+```bash
+xcodegen generate
+cd DaedalusContracts && swift test
+```
+
+If you prefer to run manually:
+
 1. Install XcodeGen on macOS (`brew install xcodegen`).
 2. Generate the project from the checked-in spec:
    ```bash
    xcodegen generate
    ```
-3. Open the generated `DaedalusScan.xcodeproj` in Xcode.
-4. Select a physical iPhone target and run.
+3. Validate the local contracts package:
+   ```bash
+   cd DaedalusContracts
+   swift test
+   ```
+4. Open the generated `DaedalusScan.xcodeproj` in Xcode, select `DaedalusScanApp`, choose a physical iPhone and run.
 
 Generated Xcode project artefacts are intentionally excluded from source control.
 
