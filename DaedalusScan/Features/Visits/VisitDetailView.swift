@@ -6,6 +6,7 @@ struct VisitDetailView: View {
     let visitID: UUID
 
     @State private var isPresentingRoomAlert = false
+    @State private var isPresentingSummary = false
     @State private var roomName = ""
     @State private var addingComponentKind: SystemComponentKind?
 
@@ -59,6 +60,16 @@ struct VisitDetailView: View {
                 }
             }
             .navigationTitle(visit.reference)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Summary") {
+                        isPresentingSummary = true
+                    }
+                }
+            }
+            .navigationDestination(isPresented: $isPresentingSummary) {
+                VisitSummaryView(visit: visit)
+            }
             .alert("Add Room", isPresented: $isPresentingRoomAlert) {
                 TextField("Room name", text: $roomName)
                 Button("Cancel", role: .cancel) {}
