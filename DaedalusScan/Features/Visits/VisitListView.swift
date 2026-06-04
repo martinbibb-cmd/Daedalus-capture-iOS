@@ -92,6 +92,32 @@ struct VisitListView: View {
         .onOpenURL { url in
             viewModel.importPackage(from: url)
         }
+        .confirmationDialog(
+            "Import conflict",
+            isPresented: Binding(
+                get: { viewModel.pendingImportConflict != nil },
+                set: { if !$0 { viewModel.cancelPendingImport() } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Replace existing visit") {
+                viewModel.replaceExistingVisitForPendingImport()
+            }
+            Button("Keep both") {
+                viewModel.keepBothForPendingImport()
+            }
+            Button("Cancel", role: .cancel) {
+                viewModel.cancelPendingImport()
+            }
+        } message: {
+            if let conflict = viewModel.pendingImportConflict {
+                if conflict.conflictCount == 1 {
+                    Text("Imported visit \"\(conflict.sampleReference)\" already exists locally.")
+                } else {
+                    Text("\(conflict.conflictCount) imported visits already exist locally.")
+                }
+            }
+        }
         .alert(
             "Daedalus Scan",
             isPresented: Binding(

@@ -4,9 +4,16 @@ import Foundation
 
 @MainActor
 final class VisitListViewModel: ObservableObject {
+    struct PendingImportConflict {
+        let sourceURL: URL
+        let conflictCount: Int
+        let sampleReference: String
+    }
+
     @Published private(set) var visits: [Visit] = []
     @Published var errorMessage: String?
     @Published var statusMessage: String?
+    @Published private(set) var pendingImportConflict: PendingImportConflict?
 
     private let repository: VisitRepository
 
@@ -285,11 +292,32 @@ final class VisitListViewModel: ObservableObject {
 
     func importPackage(from url: URL) {
         do {
-            visits = try repository.importPackage(from: url).sorted { $0.createdAt > $1.createdAt }
-            statusMessage = "Import succeeded"
+            let conflicts = try repository.detectImportConflicts(from: url)
+            guard conflicts.isEmpty else {
+                pendingImportConflict = PendingImportConflict(
+                    sourceURL: url,
+                    conflictCount: conflicts.count,
+                    sampleReference: conflicts[0].reference
+                )
+                return
+            }
+
+            completeImport(from: url, conflictResolution: nil)
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func replaceExistingVisitForPendingImport() {
+        resolvePendingImport(with: .replaceExistingVisit)
+    }
+
+    func keepBothForPendingImport() {
+        resolvePendingImport(with: .keepBoth)
+    }
+
+    func cancelPendingImport() {
+        pendingImportConflict = nil
     }
 
     private func appendEvidence(_ evidence: Evidence, to roomID: UUID, in visitID: UUID) {
@@ -380,5 +408,22 @@ final class VisitListViewModel: ObservableObject {
     private func normalizedOptionalString(_ value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func resolvePendingImport(with resolution: VisitImportConflictResolution) {
+        guard let conflict = pendingImportConflict else { return }
+        pendingImportConflict = nil
+        completeImport(from: conflict.sourceURL, conflictResolution: resolution)
+    }
+
+    private func completeImport(from url: URL, conflictResolution: VisitImportConflictResolution?) {
+        do {
+            visits = try repository
+                .importPackage(from: url, conflictResolution: conflictResolution)
+                .sorted { $0.createdAt > $1.createdAt }
+            statusMessage = "Import succeeded"
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
