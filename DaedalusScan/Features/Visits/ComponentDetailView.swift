@@ -130,7 +130,7 @@ struct ComponentDetailView: View {
                 }
                 .sheet(isPresented: $isPresentingCamera) {
                     CameraCaptureView { imageData in
-                        viewModel.attachPhoto(data: imageData, to: componentID, in: visitID)
+                        viewModel.attachPhoto(data: imageData, toComponent: componentID, in: visitID)
                     }
                 }
                 .sheet(isPresented: $isPresentingTextNote) {

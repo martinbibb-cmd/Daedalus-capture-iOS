@@ -184,7 +184,7 @@ final class VisitListViewModel: ObservableObject {
         }
     }
 
-    func attachPhoto(data: Data, to componentID: UUID, in visitID: UUID) {
+    func attachPhoto(data: Data, toComponent componentID: UUID, in visitID: UUID) {
         do {
             let url = try repository.makeEvidenceFileURL(fileExtension: "jpg", visitID: visitID, componentID: componentID)
             try data.write(to: url, options: .atomic)

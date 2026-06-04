@@ -259,17 +259,6 @@ final class VisitRepository {
         }
     }
 
-    private extension VisitImportConflictResolution {
-        var contractStrategy: VisitImportConflictStrategy {
-            switch self {
-            case .replaceExistingVisit:
-                return .replaceExistingVisit
-            case .keepBoth:
-                return .keepBoth
-            }
-        }
-    }
-
     func makeEvidenceFileURL(fileExtension: String, visitID: UUID, roomID: UUID) throws -> URL {
         try makeEvidenceFileURL(fileExtension: fileExtension, visitID: visitID, contextID: roomID)
     }
@@ -309,5 +298,16 @@ final class VisitRepository {
             try fileManager.createDirectory(at: storageDirectory, withIntermediateDirectories: true)
         }
         return storageDirectory
+    }
+}
+
+private extension VisitImportConflictResolution {
+    var contractStrategy: VisitImportConflictStrategy {
+        switch self {
+        case .replaceExistingVisit:
+            return .replaceExistingVisit
+        case .keepBoth:
+            return .keepBoth
+        }
     }
 }
