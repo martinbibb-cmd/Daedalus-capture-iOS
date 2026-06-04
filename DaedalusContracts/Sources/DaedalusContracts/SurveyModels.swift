@@ -180,6 +180,114 @@ public enum SectionStatus: String, Codable, CaseIterable, Hashable, Sendable {
     }
 }
 
+public enum ComponentAttributeFieldKind: Hashable, Sendable {
+    case text
+    case multiline
+    case singleChoice([String])
+}
+
+public struct ComponentAttributeField: Hashable, Identifiable, Sendable {
+    public let key: String
+    public let label: String
+    public let kind: ComponentAttributeFieldKind
+
+    public var id: String { key }
+
+    public init(key: String, label: String, kind: ComponentAttributeFieldKind) {
+        self.key = key
+        self.label = label
+        self.kind = kind
+    }
+}
+
+public enum ComponentObservedValue: String, Codable, CaseIterable, Sendable {
+    case unknown = "Unknown"
+    case observed = "Observed"
+    case notObserved = "Not Observed"
+}
+
+public enum ComponentAccessibilityValue: String, Codable, CaseIterable, Sendable {
+    case unknown = "Unknown"
+    case accessible = "Accessible"
+    case restricted = "Restricted"
+    case notAccessible = "Not Accessible"
+}
+
+public extension SystemComponentKind {
+    var attributeFields: [ComponentAttributeField] {
+        switch self {
+        case .boiler:
+            return [
+                ComponentAttributeField(key: "fuelType", label: "Fuel type", kind: .text),
+                ComponentAttributeField(key: "boilerType", label: "Boiler type", kind: .text),
+                ComponentAttributeField(key: "approximateAge", label: "Approximate age", kind: .text),
+                ComponentAttributeField(key: "location", label: "Location", kind: .text),
+                ComponentAttributeField(key: "fluePositionNotes", label: "Flue position notes", kind: .multiline),
+                ComponentAttributeField(key: "visibleConditionNotes", label: "Visible condition notes", kind: .multiline)
+            ]
+        case .flue:
+            return [
+                ComponentAttributeField(key: "terminalLocation", label: "Terminal location", kind: .text),
+                ComponentAttributeField(key: "approximateRoute", label: "Approximate route", kind: .multiline),
+                ComponentAttributeField(key: "visibleClearanceConcernsNote", label: "Visible clearance concerns note", kind: .multiline),
+                ComponentAttributeField(key: "plumeNotes", label: "Plume notes", kind: .multiline)
+            ]
+        case .controls:
+            return [
+                ComponentAttributeField(key: "programmerPresent", label: "Programmer present", kind: .singleChoice(ComponentObservedValue.allCases.map(\.rawValue))),
+                ComponentAttributeField(key: "roomThermostatPresent", label: "Room thermostat present", kind: .singleChoice(ComponentObservedValue.allCases.map(\.rawValue))),
+                ComponentAttributeField(key: "smartControlPresent", label: "Smart control present", kind: .singleChoice(ComponentObservedValue.allCases.map(\.rawValue))),
+                ComponentAttributeField(key: "zoneValvesObserved", label: "Zone valves observed", kind: .singleChoice(ComponentObservedValue.allCases.map(\.rawValue)))
+            ]
+        case .cylinder:
+            return [
+                ComponentAttributeField(key: "cylinderType", label: "Cylinder type", kind: .text),
+                ComponentAttributeField(key: "location", label: "Location", kind: .text),
+                ComponentAttributeField(key: "approximateCapacityVisible", label: "Approximate capacity if visible", kind: .text),
+                ComponentAttributeField(
+                    key: "observedConfiguration",
+                    label: "Vented / unvented / thermal store observed",
+                    kind: .singleChoice(["Unknown", "Vented", "Unvented", "Thermal Store"])
+                )
+            ]
+        case .feedAndExpansion:
+            return [
+                ComponentAttributeField(key: "location", label: "Location", kind: .text),
+                ComponentAttributeField(key: "tankConditionNotes", label: "Tank condition notes", kind: .multiline),
+                ComponentAttributeField(key: "accessibility", label: "Accessibility", kind: .singleChoice(ComponentAccessibilityValue.allCases.map(\.rawValue)))
+            ]
+        case .gasMeter:
+            return [
+                ComponentAttributeField(key: "location", label: "Location", kind: .text),
+                ComponentAttributeField(key: "visibleECV", label: "Visible ECV", kind: .singleChoice(ComponentObservedValue.allCases.map(\.rawValue))),
+                ComponentAttributeField(key: "bondingObserved", label: "Bonding observed", kind: .singleChoice(ComponentObservedValue.allCases.map(\.rawValue)))
+            ]
+        case .radiator:
+            return [
+                ComponentAttributeField(key: "roomOrLocation", label: "Room / location", kind: .text),
+                ComponentAttributeField(key: "typeSizeNotes", label: "Type / size notes", kind: .multiline),
+                ComponentAttributeField(key: "valvesObserved", label: "Valves observed", kind: .multiline)
+            ]
+        case .pump:
+            return [
+                ComponentAttributeField(key: "location", label: "Location", kind: .text),
+                ComponentAttributeField(key: "visibleModel", label: "Visible model", kind: .text),
+                ComponentAttributeField(key: "directionValveNotes", label: "Direction / valve notes", kind: .multiline)
+            ]
+        case .pipework:
+            return [
+                ComponentAttributeField(key: "visibleMaterial", label: "Visible material", kind: .text),
+                ComponentAttributeField(key: "routeNotes", label: "Route notes", kind: .multiline),
+                ComponentAttributeField(key: "conditionNotes", label: "Condition notes", kind: .multiline)
+            ]
+        case .other:
+            return [
+                ComponentAttributeField(key: "freeCaptureNotes", label: "Free capture notes", kind: .multiline)
+            ]
+        }
+    }
+}
+
 public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public var kind: SystemComponentKind
@@ -187,6 +295,7 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
     public var manufacturer: String
     public var model: String
     public var notes: String
+    public var componentAttributes: [String: String]
     public var evidence: [Evidence]
 
     public init(
@@ -196,6 +305,7 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         manufacturer: String = "",
         model: String = "",
         notes: String = "",
+        componentAttributes: [String: String] = [:],
         evidence: [Evidence] = []
     ) {
         self.id = id
@@ -204,7 +314,43 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         self.manufacturer = manufacturer
         self.model = model
         self.notes = notes
+        self.componentAttributes = componentAttributes
         self.evidence = evidence
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case kind
+        case name
+        case manufacturer
+        case model
+        case notes
+        case componentAttributes
+        case evidence
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        kind = try container.decode(SystemComponentKind.self, forKey: .kind)
+        name = try container.decode(String.self, forKey: .name)
+        manufacturer = try container.decode(String.self, forKey: .manufacturer)
+        model = try container.decode(String.self, forKey: .model)
+        notes = try container.decode(String.self, forKey: .notes)
+        componentAttributes = try container.decodeIfPresent([String: String].self, forKey: .componentAttributes) ?? [:]
+        evidence = try container.decodeIfPresent([Evidence].self, forKey: .evidence) ?? []
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(name, forKey: .name)
+        try container.encode(manufacturer, forKey: .manufacturer)
+        try container.encode(model, forKey: .model)
+        try container.encode(notes, forKey: .notes)
+        try container.encode(componentAttributes, forKey: .componentAttributes)
+        try container.encode(evidence, forKey: .evidence)
     }
 }
 

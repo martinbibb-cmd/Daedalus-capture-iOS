@@ -172,6 +172,26 @@ final class VisitListViewModel: ObservableObject {
         persistChanges()
     }
 
+    func updateComponentAttribute(
+        _ value: String,
+        for key: String,
+        componentID: UUID,
+        visitID: UUID
+    ) {
+        guard let visitIndex = indexOfVisit(visitID),
+              let componentIndex = indexOfComponent(componentID, in: visitIndex) else {
+            return
+        }
+
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            visits[visitIndex].components[componentIndex].componentAttributes.removeValue(forKey: key)
+        } else {
+            visits[visitIndex].components[componentIndex].componentAttributes[key] = trimmed
+        }
+        persistChanges()
+    }
+
     func deleteVisit(id: UUID) {
         if let visit = visits.first(where: { $0.id == id }) {
             repository.deleteEvidenceFiles(for: visit)

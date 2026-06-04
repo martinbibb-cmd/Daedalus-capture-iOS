@@ -31,6 +31,18 @@ struct ComponentDetailView: View {
                         }
                     }
 
+                    Section("Captured details") {
+                        ForEach(component.kind.attributeFields) { field in
+                            ComponentAttributeFieldRow(
+                                field: field,
+                                value: component.componentAttributes[field.key] ?? "",
+                                onChange: { newValue in
+                                    viewModel.updateComponentAttribute(newValue, for: field.key, componentID: componentID, visitID: visitID)
+                                }
+                            )
+                        }
+                    }
+
                     Section("Evidence") {
                         if component.evidence.isEmpty {
                             Text("No evidence captured yet.")
@@ -117,6 +129,48 @@ struct ComponentDetailView: View {
             }
         } else if let url = viewModel.prepareVoiceNoteURL(for: componentID, in: visitID) {
             recorder.startRecording(to: url)
+        }
+    }
+}
+
+private struct ComponentAttributeFieldRow: View {
+    let field: ComponentAttributeField
+    let value: String
+    let onChange: (String) -> Void
+
+    var body: some View {
+        switch field.kind {
+        case .text:
+            TextField(
+                field.label,
+                text: Binding(
+                    get: { value },
+                    set: onChange
+                )
+            )
+        case .multiline:
+            TextField(
+                field.label,
+                text: Binding(
+                    get: { value },
+                    set: onChange
+                ),
+                axis: .vertical
+            )
+            .lineLimit(3...6)
+        case let .singleChoice(options):
+            Picker(
+                field.label,
+                selection: Binding(
+                    get: { value.isEmpty ? (options.first ?? "") : value },
+                    set: onChange
+                )
+            ) {
+                ForEach(options, id: \.self) { option in
+                    Text(option).tag(option)
+                }
+            }
+            .pickerStyle(.menu)
         }
     }
 }
