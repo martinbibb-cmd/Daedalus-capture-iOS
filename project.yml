@@ -9,7 +9,7 @@ packages:
     path: ./DaedalusContracts
 targets:
   DaedalusScanCore:
-    type: framework
+    type: library.static
     platform: iOS
     deploymentTarget: "17.0"
     sources:
