@@ -13,6 +13,27 @@ final class SurveyModelsTests: XCTestCase {
         XCTAssertFalse(SurveyResponse().isAnswered(for: numericQuestion))
     }
 
+    func testCanonicalOrderCoversAllSystemComponentKinds() {
+        let canonical = Set(SystemComponentKind.canonicalOrder)
+        let all = Set(SystemComponentKind.allCases)
+        XCTAssertEqual(canonical, all, "canonicalOrder must include every SystemComponentKind case")
+        XCTAssertEqual(SystemComponentKind.canonicalOrder.count, all.count, "canonicalOrder must not have duplicates")
+    }
+
+    func testFlueRoundTrips() throws {
+        let component = SystemComponent(kind: .flue, name: "Balanced flue")
+        let visit = Visit(reference: "VIS-FLUE", twinKind: .system, components: [component])
+        let package = VisitPackage(visits: [visit])
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(package)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(VisitPackage.self, from: data)
+        XCTAssertEqual(decoded.visits[0].components[0].kind, .flue)
+        XCTAssertEqual(decoded.visits[0].components[0].name, "Balanced flue")
+    }
+
     func testVisitPackageRoundTripPreservesRoomsComponentsSurveyAndEvidence() throws {
         let textBytes = Data("Good insulation observed.".utf8)
         let componentTextBytes = Data("Existing appliance photographed and noted.".utf8)

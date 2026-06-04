@@ -1,3 +1,4 @@
+import DaedalusContracts
 import SwiftUI
 
 struct VisitDetailView: View {
@@ -6,7 +7,7 @@ struct VisitDetailView: View {
 
     @State private var isPresentingRoomAlert = false
     @State private var roomName = ""
-    @State private var isPresentingAddComponent = false
+    @State private var addingComponentKind: SystemComponentKind?
 
     var body: some View {
         if let visit = viewModel.visit(id: visitID) {
@@ -19,49 +20,31 @@ struct VisitDetailView: View {
                     }
                 }
 
+                ForEach(SystemComponentKind.canonicalOrder, id: \.id) { kind in
+                    let captured = visit.components.filter { $0.kind == kind }
+                    Section(kind.title) {
+                        ForEach(captured) { component in
+                            NavigationLink {
+                                ComponentDetailView(viewModel: viewModel, visitID: visitID, componentID: component.id)
+                            } label: {
+                                componentRowLabel(for: component)
+                            }
+                        }
+                        Button("Add \(kind.title)") {
+                            addingComponentKind = kind
+                        }
+                    }
+                }
+
                 Section("Rooms") {
                     ForEach(visit.rooms) { room in
                         NavigationLink(room.name) {
                             RoomDetailView(viewModel: viewModel, visitID: visitID, roomID: room.id)
                         }
                     }
-
                     Button("Add Room") {
                         roomName = ""
                         isPresentingRoomAlert = true
-                    }
-                }
-
-                Section("Components") {
-                    if visit.components.isEmpty {
-                        Text("No components captured yet.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(visit.components) { component in
-                            NavigationLink {
-                                ComponentDetailView(viewModel: viewModel, visitID: visitID, componentID: component.id)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text(component.kind.title)
-                                        .font(.headline)
-                                    if !component.name.isEmpty {
-                                        Text(component.name)
-                                            .font(.subheadline)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    if !component.notes.isEmpty {
-                                        Text(component.notes)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(2)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Button("Add Component") {
-                        isPresentingAddComponent = true
                     }
                 }
             }
@@ -75,8 +58,8 @@ struct VisitDetailView: View {
             } message: {
                 Text("Create a room to continue structured capture.")
             }
-            .sheet(isPresented: $isPresentingAddComponent) {
-                AddComponentView { kind, name, manufacturer, model, notes in
+            .sheet(item: $addingComponentKind) { kind in
+                AddComponentView(defaultKind: kind) { kind, name, manufacturer, model, notes in
                     viewModel.addComponent(
                         to: visitID,
                         kind: kind,
@@ -90,6 +73,28 @@ struct VisitDetailView: View {
         } else {
             Text("Visit not found")
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func componentRowLabel(for component: SystemComponent) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if !component.name.isEmpty {
+                Text(component.name)
+            } else if !component.manufacturer.isEmpty || !component.model.isEmpty {
+                Text([component.manufacturer, component.model]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " "))
+            } else {
+                Text(component.kind.title)
+                    .foregroundStyle(.secondary)
+            }
+            if !component.notes.isEmpty {
+                Text(component.notes)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
         }
     }
 }
