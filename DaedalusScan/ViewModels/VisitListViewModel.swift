@@ -30,7 +30,16 @@ final class VisitListViewModel: ObservableObject {
         }
     }
 
-    func createVisit(reference: String, twinKind: TwinKind) {
+    func createVisit(
+        reference: String,
+        twinKind: TwinKind,
+        customerName: String = "",
+        addressLine: String = "",
+        postcode: String = "",
+        engineerName: String? = nil,
+        appointmentDate: Date? = nil,
+        notes: String = ""
+    ) {
         let trimmedReference = reference.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedReference.isEmpty else {
             errorMessage = "Visit reference is required."
@@ -38,7 +47,18 @@ final class VisitListViewModel: ObservableObject {
         }
 
         visits.insert(
-            Visit(reference: trimmedReference, twinKind: twinKind, rooms: [Room(name: "Room 1")], components: []),
+            Visit(
+                reference: trimmedReference,
+                twinKind: twinKind,
+                customerName: customerName.trimmingCharacters(in: .whitespacesAndNewlines),
+                addressLine: addressLine.trimmingCharacters(in: .whitespacesAndNewlines),
+                postcode: postcode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
+                engineerName: normalizedOptionalString(engineerName ?? ""),
+                appointmentDate: appointmentDate,
+                notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
+                rooms: [Room(name: "Room 1")],
+                components: []
+            ),
             at: 0
         )
         persistChanges()

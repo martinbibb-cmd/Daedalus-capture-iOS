@@ -2,6 +2,67 @@ import XCTest
 @testable import DaedalusContracts
 
 final class SurveyModelsTests: XCTestCase {
+    func testVisitIdentityFieldsRoundTrip() throws {
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let visit = Visit(
+            reference: "VIS-ID-001",
+            twinKind: .home,
+            customerName: "Acme Estates",
+            addressLine: "12 High Street",
+            postcode: "SW1A 1AA",
+            engineerName: "J. Smith",
+            appointmentDate: date,
+            notes: "Access via side gate."
+        )
+        let package = VisitPackage(visits: [visit])
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(package)
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(VisitPackage.self, from: data)
+
+        let v = decoded.visits[0]
+        XCTAssertEqual(v.customerName, "Acme Estates")
+        XCTAssertEqual(v.addressLine, "12 High Street")
+        XCTAssertEqual(v.postcode, "SW1A 1AA")
+        XCTAssertEqual(v.engineerName, "J. Smith")
+        XCTAssertEqual(v.appointmentDate, date)
+        XCTAssertEqual(v.notes, "Access via side gate.")
+    }
+
+    func testVisitIdentityFieldsDefaultToEmptyOnLegacyDecode() throws {
+        let json = "[{\"id\":\"00000000-0000-0000-0000-000000000099\",\"reference\":\"VIS-LEGACY-ID\",\"createdAt\":\"2024-01-01T00:00:00Z\",\"twinKind\":\"home\",\"rooms\":[],\"components\":[]}]"
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let visits = try decoder.decode([Visit].self, from: Data(json.utf8))
+        let v = visits[0]
+        XCTAssertEqual(v.customerName, "")
+        XCTAssertEqual(v.addressLine, "")
+        XCTAssertEqual(v.postcode, "")
+        XCTAssertNil(v.engineerName)
+        XCTAssertNil(v.appointmentDate)
+        XCTAssertEqual(v.notes, "")
+    }
+
+    func testVisitIdentityFieldsOptionalEngineerAndDateNilByDefault() throws {
+        let visit = Visit(reference: "VIS-OPT", twinKind: .system)
+        let package = VisitPackage(visits: [visit])
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(package)
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(VisitPackage.self, from: data)
+
+        XCTAssertNil(decoded.visits[0].engineerName)
+        XCTAssertNil(decoded.visits[0].appointmentDate)
+    }
+
     func testSurveyResponseAnsweredForEachQuestionKind() {
         let booleanQuestion = SurveyQuestion(key: "bool", label: "Bool", kind: .boolean)
         let choiceQuestion = SurveyQuestion(key: "choice", label: "Choice", kind: .singleChoice, allowedValues: ["A"])

@@ -414,6 +414,12 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
     public var reference: String
     public var createdAt: Date
     public var twinKind: TwinKind
+    public var customerName: String
+    public var addressLine: String
+    public var postcode: String
+    public var engineerName: String?
+    public var appointmentDate: Date?
+    public var notes: String
     public var rooms: [Room]
     public var components: [SystemComponent]
     public var sectionStatuses: [SystemComponentKind: SectionStatus]
@@ -423,6 +429,12 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         reference: String,
         createdAt: Date = Date(),
         twinKind: TwinKind,
+        customerName: String = "",
+        addressLine: String = "",
+        postcode: String = "",
+        engineerName: String? = nil,
+        appointmentDate: Date? = nil,
+        notes: String = "",
         rooms: [Room] = [],
         components: [SystemComponent] = [],
         sectionStatuses: [SystemComponentKind: SectionStatus] = [:]
@@ -431,6 +443,12 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         self.reference = reference
         self.createdAt = createdAt
         self.twinKind = twinKind
+        self.customerName = customerName
+        self.addressLine = addressLine
+        self.postcode = postcode
+        self.engineerName = engineerName
+        self.appointmentDate = appointmentDate
+        self.notes = notes
         self.rooms = rooms
         self.components = components
         self.sectionStatuses = sectionStatuses
@@ -441,6 +459,12 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         case reference
         case createdAt
         case twinKind
+        case customerName
+        case addressLine
+        case postcode
+        case engineerName
+        case appointmentDate
+        case notes
         case rooms
         case components
         case sectionStatuses
@@ -452,9 +476,32 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         reference = try container.decode(String.self, forKey: .reference)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         twinKind = try container.decode(TwinKind.self, forKey: .twinKind)
+        customerName = try container.decodeIfPresent(String.self, forKey: .customerName) ?? ""
+        addressLine = try container.decodeIfPresent(String.self, forKey: .addressLine) ?? ""
+        postcode = try container.decodeIfPresent(String.self, forKey: .postcode) ?? ""
+        engineerName = try container.decodeIfPresent(String.self, forKey: .engineerName)
+        appointmentDate = try container.decodeIfPresent(Date.self, forKey: .appointmentDate)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
         rooms = try container.decode([Room].self, forKey: .rooms)
         components = try container.decodeIfPresent([SystemComponent].self, forKey: .components) ?? []
         sectionStatuses = try container.decodeIfPresent([SystemComponentKind: SectionStatus].self, forKey: .sectionStatuses) ?? [:]
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(reference, forKey: .reference)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(twinKind, forKey: .twinKind)
+        try container.encode(customerName, forKey: .customerName)
+        try container.encode(addressLine, forKey: .addressLine)
+        try container.encode(postcode, forKey: .postcode)
+        try container.encodeIfPresent(engineerName, forKey: .engineerName)
+        try container.encodeIfPresent(appointmentDate, forKey: .appointmentDate)
+        try container.encode(notes, forKey: .notes)
+        try container.encode(rooms, forKey: .rooms)
+        try container.encode(components, forKey: .components)
+        try container.encode(sectionStatuses, forKey: .sectionStatuses)
     }
 }
 

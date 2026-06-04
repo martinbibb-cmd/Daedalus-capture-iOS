@@ -8,6 +8,18 @@ struct VisitListView: View {
     @State private var isPresentingImport = false
     @State private var isPresentingShareSheet = false
     @State private var shareURL: URL?
+    @State private var searchText = ""
+
+    private var filteredVisits: [Visit] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return viewModel.visits }
+        return viewModel.visits.filter { visit in
+            visit.reference.lowercased().contains(query) ||
+            visit.customerName.lowercased().contains(query) ||
+            visit.postcode.lowercased().contains(query) ||
+            visit.addressLine.lowercased().contains(query)
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -18,28 +30,22 @@ struct VisitListView: View {
                         systemImage: "tray",
                         description: Text("Create a visit to start capturing survey data and evidence.")
                     )
+                } else if filteredVisits.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
                 } else {
-                    ForEach(viewModel.visits) { visit in
+                    ForEach(filteredVisits) { visit in
                         NavigationLink(value: visit.id) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(visit.reference)
-                                    .font(.headline)
-                                Text(visit.twinKind.title)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                Text("\(visit.rooms.count) room\(visit.rooms.count == 1 ? "" : "s")")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+                            visitRow(for: visit)
                         }
                     }
                     .onDelete { indexSet in
                         for index in indexSet {
-                            viewModel.deleteVisit(id: viewModel.visits[index].id)
+                            viewModel.deleteVisit(id: filteredVisits[index].id)
                         }
                     }
                 }
             }
+            .searchable(text: $searchText, prompt: "Search reference, customer, postcode")
             .navigationTitle("Visits")
             .navigationDestination(for: UUID.self) { visitID in
                 VisitDetailView(viewModel: viewModel, visitID: visitID)
@@ -70,8 +76,17 @@ struct VisitListView: View {
             }
         }
         .sheet(isPresented: $isPresentingCreateVisit) {
-            CreateVisitView { reference, twinKind in
-                viewModel.createVisit(reference: reference, twinKind: twinKind)
+            CreateVisitView { reference, twinKind, customerName, addressLine, postcode, engineerName, appointmentDate, notes in
+                viewModel.createVisit(
+                    reference: reference,
+                    twinKind: twinKind,
+                    customerName: customerName,
+                    addressLine: addressLine,
+                    postcode: postcode,
+                    engineerName: engineerName,
+                    appointmentDate: appointmentDate,
+                    notes: notes
+                )
             }
         }
         .sheet(isPresented: $isPresentingShareSheet) {
@@ -140,6 +155,56 @@ struct VisitListView: View {
         } message: {
             Text(viewModel.errorMessage ?? "")
         }
+    }
+
+    @ViewBuilder
+    private func visitRow(for visit: Visit) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(visit.reference)
+                    .font(.headline)
+                Spacer()
+                Text(visit.createdAt.formatted(date: .abbreviated, time: .omitted))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if !visit.customerName.isEmpty || !visit.postcode.isEmpty {
+                let customerSummary = [visit.customerName, visit.postcode]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " · ")
+                Text(customerSummary)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            if !visit.addressLine.isEmpty {
+                Text(visit.addressLine)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            HStack(spacing: 12) {
+                Label(visit.twinKind.title, systemImage: "building.2")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                let reviewCount = reviewNeedsCount(for: visit)
+                if reviewCount > 0 {
+                    Label("\(reviewCount) needs review", systemImage: "eye")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func reviewNeedsCount(for visit: Visit) -> Int {
+        let roomCount = visit.rooms.filter { $0.reviewStatus == .needsReview }.count
+        let componentCount = visit.components.filter { $0.reviewStatus == .needsReview }.count
+        return roomCount + componentCount
     }
 }
 

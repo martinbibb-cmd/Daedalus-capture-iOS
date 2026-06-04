@@ -19,6 +19,26 @@ struct VisitDetailView: View {
                     LabeledContent("Created") {
                         Text(visit.createdAt.formatted(date: .abbreviated, time: .shortened))
                     }
+                    if !visit.customerName.isEmpty {
+                        LabeledContent("Customer", value: visit.customerName)
+                    }
+                    if !visit.addressLine.isEmpty {
+                        LabeledContent("Address", value: visit.addressLine)
+                    }
+                    if !visit.postcode.isEmpty {
+                        LabeledContent("Postcode", value: visit.postcode)
+                    }
+                    if let engineer = visit.engineerName {
+                        LabeledContent("Engineer", value: engineer)
+                    }
+                    if let date = visit.appointmentDate {
+                        LabeledContent("Appointment") {
+                            Text(date.formatted(date: .abbreviated, time: .omitted))
+                        }
+                    }
+                    if !visit.notes.isEmpty {
+                        LabeledContent("Notes", value: visit.notes)
+                    }
                 }
 
                 ForEach(SystemComponentKind.canonicalOrder, id: \.id) { kind in
