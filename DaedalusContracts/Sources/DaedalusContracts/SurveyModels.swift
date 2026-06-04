@@ -459,14 +459,88 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
 }
 
 public struct VisitPackage: Codable, Hashable, Sendable {
+    public var metadata: VisitPackageMetadata?
     public var schemaVersion: Int
     public var exportedAt: Date
     public var visits: [Visit]
 
-    public init(schemaVersion: Int = 1, exportedAt: Date = Date(), visits: [Visit]) {
-        self.schemaVersion = schemaVersion
-        self.exportedAt = exportedAt
+    public init(
+        metadata: VisitPackageMetadata? = nil,
+        schemaVersion: Int = VisitPackageMetadata.currentSchemaVersion,
+        exportedAt: Date = Date(),
+        visits: [Visit]
+    ) {
+        let resolvedMetadata = metadata ?? VisitPackageMetadata(
+            schemaVersion: schemaVersion,
+            createdAt: exportedAt
+        )
+        self.metadata = resolvedMetadata
+        self.schemaVersion = resolvedMetadata.schemaVersion
+        self.exportedAt = resolvedMetadata.createdAt
         self.visits = visits
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case metadata
+        case schemaVersion
+        case exportedAt
+        case visits
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        visits = try container.decode([Visit].self, forKey: .visits)
+
+        if let metadata = try container.decodeIfPresent(VisitPackageMetadata.self, forKey: .metadata) {
+            self.metadata = metadata
+            schemaVersion = metadata.schemaVersion
+            exportedAt = metadata.createdAt
+            return
+        }
+
+        self.metadata = nil
+        schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? VisitPackageMetadata.currentSchemaVersion
+        exportedAt = try container.decodeIfPresent(Date.self, forKey: .exportedAt) ?? Date(timeIntervalSince1970: 0)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        let metadataToEncode = metadata ?? VisitPackageMetadata(
+            schemaVersion: schemaVersion,
+            createdAt: exportedAt
+        )
+        try container.encode(metadataToEncode, forKey: .metadata)
+        try container.encode(metadataToEncode.schemaVersion, forKey: .schemaVersion)
+        try container.encode(metadataToEncode.createdAt, forKey: .exportedAt)
+        try container.encode(visits, forKey: .visits)
+    }
+}
+
+public struct VisitPackageMetadata: Codable, Hashable, Sendable {
+    public static let currentSchemaVersion = 1
+    public static let canonicalSource = "Daedalus Scan"
+
+    public var packageID: UUID
+    public var schemaVersion: Int
+    public var createdAt: Date
+    public var exportedByApp: String
+    public var appVersion: String?
+    public var source: String
+
+    public init(
+        packageID: UUID = UUID(),
+        schemaVersion: Int = currentSchemaVersion,
+        createdAt: Date = Date(),
+        exportedByApp: String = canonicalSource,
+        appVersion: String? = nil,
+        source: String = canonicalSource
+    ) {
+        self.packageID = packageID
+        self.schemaVersion = schemaVersion
+        self.createdAt = createdAt
+        self.exportedByApp = exportedByApp
+        self.appVersion = appVersion
+        self.source = source
     }
 }
 

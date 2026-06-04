@@ -14,7 +14,7 @@ struct VisitExportDocument: FileDocument {
     let data: Data
 
     static let empty = VisitExportDocument(
-        data: Data(#"{"exportedAt":"1970-01-01T00:00:00Z","schemaVersion":1,"visits":[]}"#.utf8)
+        data: Data(#"{"exportedAt":"1970-01-01T00:00:00Z","metadata":{"appVersion":null,"createdAt":"1970-01-01T00:00:00Z","exportedByApp":"Daedalus Scan","packageID":"00000000-0000-0000-0000-000000000000","schemaVersion":1,"source":"Daedalus Scan"},"schemaVersion":1,"visits":[]}"#.utf8)
     )
 
     private init(data: Data) {

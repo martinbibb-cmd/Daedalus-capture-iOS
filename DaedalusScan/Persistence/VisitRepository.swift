@@ -1,8 +1,24 @@
 import DaedalusContracts
 import Foundation
 
+enum VisitPackageImportError: LocalizedError {
+    case invalidPackage
+    case unsupportedSchemaVersion(Int)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidPackage:
+            return "The selected package is invalid."
+        case let .unsupportedSchemaVersion(version):
+            return "This package was created with an unsupported schema version (\(version))."
+        }
+    }
+}
+
 @MainActor
 final class VisitRepository {
+    private static let supportedSchemaVersion = VisitPackageMetadata.currentSchemaVersion
+
     private let fileManager: FileManager
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
@@ -62,7 +78,16 @@ final class VisitRepository {
             }
             return v
         }
-        return VisitPackage(visits: embeddedVisits)
+        let exportDate = Date()
+        let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let metadata = VisitPackageMetadata(
+            schemaVersion: Self.supportedSchemaVersion,
+            createdAt: exportDate,
+            exportedByApp: VisitPackageMetadata.canonicalSource,
+            appVersion: appVersion,
+            source: VisitPackageMetadata.canonicalSource
+        )
+        return VisitPackage(metadata: metadata, exportedAt: exportDate, visits: embeddedVisits)
     }
 
     func importPackage(from url: URL) throws -> [Visit] {
@@ -75,6 +100,7 @@ final class VisitRepository {
 
         let data = try Data(contentsOf: url)
         let package = try decoder.decode(VisitPackage.self, from: data)
+        try validate(package: package)
 
         let evidenceDir = try? evidenceDirectoryURL()
         let restoredVisits = package.visits.map { visit -> Visit in
@@ -114,6 +140,22 @@ final class VisitRepository {
 
         try save(visits: restoredVisits)
         return restoredVisits
+    }
+
+    private func validate(package: VisitPackage) throws {
+        if let metadata = package.metadata {
+            guard !metadata.exportedByApp.isEmpty, !metadata.source.isEmpty else {
+                throw VisitPackageImportError.invalidPackage
+            }
+        }
+
+        let schemaVersion = package.metadata?.schemaVersion ?? package.schemaVersion
+        guard schemaVersion > 0 else {
+            throw VisitPackageImportError.invalidPackage
+        }
+        guard schemaVersion <= Self.supportedSchemaVersion else {
+            throw VisitPackageImportError.unsupportedSchemaVersion(schemaVersion)
+        }
     }
 
     func deleteEvidenceFiles(for visit: Visit) {

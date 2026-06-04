@@ -133,6 +133,53 @@ final class SurveyModelsTests: XCTestCase {
         XCTAssertEqual(decoded.visits[0].components[0].evidence[1].reviewNotes, "Comment references wrong appliance.")
     }
 
+    func testVisitPackageDefaultsIncludeMetadata() throws {
+        let visit = Visit(reference: "VIS-META", twinKind: .home)
+        let package = VisitPackage(visits: [visit])
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(package)
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(VisitPackage.self, from: data)
+
+        XCTAssertNotNil(decoded.metadata)
+        XCTAssertEqual(decoded.metadata?.schemaVersion, 1)
+        XCTAssertEqual(decoded.metadata?.source, "Daedalus Scan")
+        XCTAssertEqual(decoded.metadata?.exportedByApp, "Daedalus Scan")
+        XCTAssertEqual(decoded.schemaVersion, 1)
+        XCTAssertEqual(decoded.exportedAt, decoded.metadata?.createdAt)
+    }
+
+    func testVisitPackageDecodesLegacyPayloadWithoutMetadata() throws {
+        let json = """
+        {
+          "schemaVersion": 1,
+          "exportedAt": "2024-01-01T00:00:00Z",
+          "visits": [
+            {
+              "id": "00000000-0000-0000-0000-000000000001",
+              "reference": "VIS-LEGACY-PACKAGE",
+              "createdAt": "2024-01-01T00:00:00Z",
+              "twinKind": "home",
+              "rooms": [],
+              "components": []
+            }
+          ]
+        }
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let package = try decoder.decode(VisitPackage.self, from: Data(json.utf8))
+
+        XCTAssertNil(package.metadata)
+        XCTAssertEqual(package.schemaVersion, 1)
+        XCTAssertEqual(package.visits.count, 1)
+        XCTAssertEqual(package.visits[0].reference, "VIS-LEGACY-PACKAGE")
+    }
+
     func testSectionStatusRoundTripThroughVisitPackage() throws {
         var visit = Visit(reference: "VIS-STATUS", twinKind: .system)
         visit.sectionStatuses = [
