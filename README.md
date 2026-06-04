@@ -31,6 +31,7 @@ Daedalus Scan remains strictly capture-only:
 - Visit list
 - Create visit workflow
 - Room list workflow
+- System component capture workflow
 - Structured survey questions per room
 - Photo capture attachment
 - Voice note attachment

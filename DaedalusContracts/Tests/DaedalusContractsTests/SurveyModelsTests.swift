@@ -13,8 +13,9 @@ final class SurveyModelsTests: XCTestCase {
         XCTAssertFalse(SurveyResponse().isAnswered(for: numericQuestion))
     }
 
-    func testVisitPackageRoundTripPreservesRoomsSurveyAndEvidence() throws {
+    func testVisitPackageRoundTripPreservesRoomsComponentsSurveyAndEvidence() throws {
         let textBytes = Data("Good insulation observed.".utf8)
+        let componentTextBytes = Data("Existing appliance photographed and noted.".utf8)
         let room = Room(
             name: "Kitchen",
             survey: [
@@ -27,7 +28,18 @@ final class SurveyModelsTests: XCTestCase {
                 Evidence(kind: .textNote, localFileName: "kitchen-note.txt", embeddedData: textBytes)
             ]
         )
-        let visit = Visit(reference: "VIS-001", twinKind: .home, rooms: [room])
+        let component = SystemComponent(
+            kind: .boiler,
+            name: "Main boiler",
+            manufacturer: "Acme",
+            model: "X100",
+            notes: "Observed in utility area.",
+            evidence: [
+                Evidence(kind: .photo, localFileName: "boiler-photo.jpg", embeddedData: Data([0xFF, 0xD8])),
+                Evidence(kind: .textNote, localFileName: "boiler-note.txt", embeddedData: componentTextBytes)
+            ]
+        )
+        let visit = Visit(reference: "VIS-001", twinKind: .home, rooms: [room], components: [component])
         let package = VisitPackage(visits: [visit])
 
         let encoder = JSONEncoder()
@@ -45,5 +57,9 @@ final class SurveyModelsTests: XCTestCase {
         XCTAssertEqual(decodedEvidence[0].embeddedData, Data([0xFF, 0xD8]))
         XCTAssertEqual(decodedEvidence[2].embeddedData, textBytes)
         XCTAssertEqual(decoded.visits[0].rooms[0].survey["ventilation.extract.count"]?.numericValue, 2)
+        XCTAssertEqual(decoded.visits[0].components.count, 1)
+        XCTAssertEqual(decoded.visits[0].components[0].kind, .boiler)
+        XCTAssertEqual(decoded.visits[0].components[0].notes, "Observed in utility area.")
+        XCTAssertEqual(decoded.visits[0].components[0].evidence[1].embeddedData, componentTextBytes)
     }
 }

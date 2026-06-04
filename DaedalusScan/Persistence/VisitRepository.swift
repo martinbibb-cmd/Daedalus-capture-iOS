@@ -50,6 +50,16 @@ final class VisitRepository {
                 }
                 return r
             }
+            v.components = visit.components.map { component -> SystemComponent in
+                var c = component
+                c.evidence = component.evidence.map { evidence -> Evidence in
+                    guard let dir = evidenceDir, !evidence.localFileName.isEmpty else { return evidence }
+                    var e = evidence
+                    e.embeddedData = try? Data(contentsOf: dir.appendingPathComponent(evidence.localFileName))
+                    return e
+                }
+                return c
+            }
             return v
         }
         return VisitPackage(visits: embeddedVisits)
@@ -84,6 +94,21 @@ final class VisitRepository {
                 }
                 return r
             }
+            v.components = visit.components.map { component -> SystemComponent in
+                var c = component
+                c.evidence = component.evidence.map { evidence -> Evidence in
+                    var e = evidence
+                    if let dir = evidenceDir,
+                       let bytes = evidence.embeddedData,
+                       !evidence.localFileName.isEmpty {
+                        let fileURL = dir.appendingPathComponent(evidence.localFileName)
+                        try? bytes.write(to: fileURL, options: .atomic)
+                    }
+                    e.embeddedData = nil
+                    return e
+                }
+                return c
+            }
             return v
         }
 
@@ -98,11 +123,24 @@ final class VisitRepository {
                 try? fileManager.removeItem(at: dir.appendingPathComponent(evidence.localFileName))
             }
         }
+        for component in visit.components {
+            for evidence in component.evidence where !evidence.localFileName.isEmpty {
+                try? fileManager.removeItem(at: dir.appendingPathComponent(evidence.localFileName))
+            }
+        }
     }
 
     func makeEvidenceFileURL(fileExtension: String, visitID: UUID, roomID: UUID) throws -> URL {
+        try makeEvidenceFileURL(fileExtension: fileExtension, visitID: visitID, contextID: roomID)
+    }
+
+    func makeEvidenceFileURL(fileExtension: String, visitID: UUID, componentID: UUID) throws -> URL {
+        try makeEvidenceFileURL(fileExtension: fileExtension, visitID: visitID, contextID: componentID)
+    }
+
+    private func makeEvidenceFileURL(fileExtension: String, visitID: UUID, contextID: UUID) throws -> URL {
         let directory = try evidenceDirectoryURL()
-        let fileName = [visitID.uuidString, roomID.uuidString, UUID().uuidString]
+        let fileName = [visitID.uuidString, contextID.uuidString, UUID().uuidString]
             .joined(separator: "-") + ".\(fileExtension)"
         return directory.appendingPathComponent(fileName)
     }

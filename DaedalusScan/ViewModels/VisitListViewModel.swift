@@ -30,7 +30,7 @@ final class VisitListViewModel: ObservableObject {
         }
 
         visits.insert(
-            Visit(reference: trimmedReference, twinKind: twinKind, rooms: [Room(name: "Room 1")]),
+            Visit(reference: trimmedReference, twinKind: twinKind, rooms: [Room(name: "Room 1")], components: []),
             at: 0
         )
         persistChanges()
@@ -55,6 +55,10 @@ final class VisitListViewModel: ObservableObject {
         visit(id: visitID)?.rooms.first { $0.id == roomID }
     }
 
+    func component(visitID: UUID, componentID: UUID) -> SystemComponent? {
+        visit(id: visitID)?.components.first { $0.id == componentID }
+    }
+
     func response(for questionKey: String, visitID: UUID, roomID: UUID) -> SurveyResponse {
         room(visitID: visitID, roomID: roomID)?.survey[questionKey] ?? SurveyResponse()
     }
@@ -68,11 +72,45 @@ final class VisitListViewModel: ObservableObject {
         persistChanges()
     }
 
+    func addComponent(
+        to visitID: UUID,
+        kind: SystemComponentKind,
+        name: String,
+        manufacturer: String,
+        model: String,
+        notes: String
+    ) {
+        guard let visitIndex = indexOfVisit(visitID) else {
+            return
+        }
+
+        visits[visitIndex].components.append(
+            SystemComponent(
+                kind: kind,
+                name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                manufacturer: manufacturer.trimmingCharacters(in: .whitespacesAndNewlines),
+                model: model.trimmingCharacters(in: .whitespacesAndNewlines),
+                notes: notes.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        )
+        persistChanges()
+    }
+
     func attachPhoto(data: Data, to roomID: UUID, in visitID: UUID) {
         do {
             let url = try repository.makeEvidenceFileURL(fileExtension: "jpg", visitID: visitID, roomID: roomID)
             try data.write(to: url, options: .atomic)
             appendEvidence(Evidence(kind: .photo, localFileName: url.lastPathComponent), to: roomID, in: visitID)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func attachPhoto(data: Data, to componentID: UUID, in visitID: UUID) {
+        do {
+            let url = try repository.makeEvidenceFileURL(fileExtension: "jpg", visitID: visitID, componentID: componentID)
+            try data.write(to: url, options: .atomic)
+            appendEvidence(Evidence(kind: .photo, localFileName: url.lastPathComponent), toComponent: componentID, in: visitID)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -87,8 +125,21 @@ final class VisitListViewModel: ObservableObject {
         }
     }
 
+    func prepareVoiceNoteURL(for componentID: UUID, in visitID: UUID) -> URL? {
+        do {
+            return try repository.makeEvidenceFileURL(fileExtension: "m4a", visitID: visitID, componentID: componentID)
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
     func attachVoiceNote(from url: URL, to roomID: UUID, in visitID: UUID) {
         appendEvidence(Evidence(kind: .voiceNote, localFileName: url.lastPathComponent), to: roomID, in: visitID)
+    }
+
+    func attachVoiceNote(from url: URL, to componentID: UUID, in visitID: UUID) {
+        appendEvidence(Evidence(kind: .voiceNote, localFileName: url.lastPathComponent), toComponent: componentID, in: visitID)
     }
 
     func attachTextNote(text: String, to roomID: UUID, in visitID: UUID) {
@@ -98,6 +149,18 @@ final class VisitListViewModel: ObservableObject {
             let url = try repository.makeEvidenceFileURL(fileExtension: "txt", visitID: visitID, roomID: roomID)
             try Data(trimmed.utf8).write(to: url, options: .atomic)
             appendEvidence(Evidence(kind: .textNote, localFileName: url.lastPathComponent), to: roomID, in: visitID)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func attachTextNote(text: String, to componentID: UUID, in visitID: UUID) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do {
+            let url = try repository.makeEvidenceFileURL(fileExtension: "txt", visitID: visitID, componentID: componentID)
+            try Data(trimmed.utf8).write(to: url, options: .atomic)
+            appendEvidence(Evidence(kind: .textNote, localFileName: url.lastPathComponent), toComponent: componentID, in: visitID)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -137,12 +200,26 @@ final class VisitListViewModel: ObservableObject {
         persistChanges()
     }
 
+    private func appendEvidence(_ evidence: Evidence, toComponent componentID: UUID, in visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID),
+              let componentIndex = indexOfComponent(componentID, in: visitIndex) else {
+            return
+        }
+
+        visits[visitIndex].components[componentIndex].evidence.insert(evidence, at: 0)
+        persistChanges()
+    }
+
     private func indexOfVisit(_ visitID: UUID) -> Int? {
         visits.firstIndex { $0.id == visitID }
     }
 
     private func indexOfRoom(_ roomID: UUID, in visitIndex: Int) -> Int? {
         visits[visitIndex].rooms.firstIndex { $0.id == roomID }
+    }
+
+    private func indexOfComponent(_ componentID: UUID, in visitIndex: Int) -> Int? {
+        visits[visitIndex].components.firstIndex { $0.id == componentID }
     }
 
     private func persistChanges() {

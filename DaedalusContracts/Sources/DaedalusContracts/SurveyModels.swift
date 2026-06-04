@@ -108,19 +108,112 @@ public struct Room: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+public enum SystemComponentKind: String, Codable, CaseIterable, Identifiable, Sendable {
+    case boiler
+    case cylinder
+    case controls
+    case feedAndExpansion
+    case pump
+    case radiator
+    case pipework
+    case gasMeter
+    case other
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .boiler:
+            return "Boiler"
+        case .cylinder:
+            return "Cylinder"
+        case .controls:
+            return "Controls"
+        case .feedAndExpansion:
+            return "Feed & Expansion"
+        case .pump:
+            return "Pump"
+        case .radiator:
+            return "Radiator"
+        case .pipework:
+            return "Pipework"
+        case .gasMeter:
+            return "Gas Meter"
+        case .other:
+            return "Other"
+        }
+    }
+}
+
+public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
+    public let id: UUID
+    public var kind: SystemComponentKind
+    public var name: String
+    public var manufacturer: String
+    public var model: String
+    public var notes: String
+    public var evidence: [Evidence]
+
+    public init(
+        id: UUID = UUID(),
+        kind: SystemComponentKind,
+        name: String = "",
+        manufacturer: String = "",
+        model: String = "",
+        notes: String = "",
+        evidence: [Evidence] = []
+    ) {
+        self.id = id
+        self.kind = kind
+        self.name = name
+        self.manufacturer = manufacturer
+        self.model = model
+        self.notes = notes
+        self.evidence = evidence
+    }
+}
+
 public struct Visit: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public var reference: String
     public var createdAt: Date
     public var twinKind: TwinKind
     public var rooms: [Room]
+    public var components: [SystemComponent]
 
-    public init(id: UUID = UUID(), reference: String, createdAt: Date = Date(), twinKind: TwinKind, rooms: [Room] = []) {
+    public init(
+        id: UUID = UUID(),
+        reference: String,
+        createdAt: Date = Date(),
+        twinKind: TwinKind,
+        rooms: [Room] = [],
+        components: [SystemComponent] = []
+    ) {
         self.id = id
         self.reference = reference
         self.createdAt = createdAt
         self.twinKind = twinKind
         self.rooms = rooms
+        self.components = components
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case reference
+        case createdAt
+        case twinKind
+        case rooms
+        case components
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        reference = try container.decode(String.self, forKey: .reference)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        twinKind = try container.decode(TwinKind.self, forKey: .twinKind)
+        rooms = try container.decode([Room].self, forKey: .rooms)
+        components = try container.decodeIfPresent([SystemComponent].self, forKey: .components) ?? []
     }
 }
 
