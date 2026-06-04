@@ -4,13 +4,18 @@ import SwiftUI
 struct AddComponentView: View {
     @Environment(\.dismiss) private var dismiss
 
-    @State private var kind: SystemComponentKind = .boiler
+    @State private var kind: SystemComponentKind
     @State private var name = ""
     @State private var manufacturer = ""
     @State private var model = ""
     @State private var notes = ""
 
     let onAdd: (SystemComponentKind, String, String, String, String) -> Void
+
+    init(defaultKind: SystemComponentKind = .boiler, onAdd: @escaping (SystemComponentKind, String, String, String, String) -> Void) {
+        _kind = State(initialValue: defaultKind)
+        self.onAdd = onAdd
+    }
 
     var body: some View {
         NavigationStack {

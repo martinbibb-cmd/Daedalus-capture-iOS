@@ -110,13 +110,14 @@ public struct Room: Codable, Hashable, Identifiable, Sendable {
 
 public enum SystemComponentKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case boiler
-    case cylinder
+    case flue
     case controls
+    case cylinder
     case feedAndExpansion
-    case pump
-    case radiator
-    case pipework
     case gasMeter
+    case radiator
+    case pump
+    case pipework
     case other
 
     public var id: String { rawValue }
@@ -125,24 +126,40 @@ public enum SystemComponentKind: String, Codable, CaseIterable, Identifiable, Se
         switch self {
         case .boiler:
             return "Boiler"
-        case .cylinder:
-            return "Cylinder"
+        case .flue:
+            return "Flue"
         case .controls:
             return "Controls"
+        case .cylinder:
+            return "Cylinder"
         case .feedAndExpansion:
             return "Feed & Expansion"
-        case .pump:
-            return "Pump"
-        case .radiator:
-            return "Radiator"
-        case .pipework:
-            return "Pipework"
         case .gasMeter:
             return "Gas Meter"
+        case .radiator:
+            return "Radiator"
+        case .pump:
+            return "Pump"
+        case .pipework:
+            return "Pipework"
         case .other:
             return "Other"
         }
     }
+
+    /// Canonical survey traversal order for system-first capture.
+    public static let canonicalOrder: [SystemComponentKind] = [
+        .boiler,
+        .flue,
+        .controls,
+        .cylinder,
+        .feedAndExpansion,
+        .gasMeter,
+        .radiator,
+        .pump,
+        .pipework,
+        .other
+    ]
 }
 
 public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
