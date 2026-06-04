@@ -155,9 +155,9 @@ struct RoomDetailView: View {
     private func toggleVoiceRecording() {
         if recorder.isRecording {
             if let url = recorder.stopRecording() {
-                viewModel.attachVoiceNote(from: url, to: roomID, in: visitID)
+                viewModel.attachVoiceNoteToRoom(from: url, to: roomID, in: visitID)
             }
-        } else if let url = viewModel.prepareVoiceNoteURL(for: roomID, in: visitID) {
+        } else if let url = viewModel.prepareRoomVoiceNoteURL(for: roomID, in: visitID) {
             recorder.startRecording(to: url)
         }
     }

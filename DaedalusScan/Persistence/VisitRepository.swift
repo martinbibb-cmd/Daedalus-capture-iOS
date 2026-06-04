@@ -251,21 +251,21 @@ final class VisitRepository {
             for evidence in room.evidence where !evidence.localFileName.isEmpty {
                 try? fileManager.removeItem(at: dir.appendingPathComponent(evidence.localFileName))
             }
-
-            private extension VisitImportConflictResolution {
-                var contractStrategy: VisitImportConflictStrategy {
-                    switch self {
-                    case .replaceExistingVisit:
-                        return .replaceExistingVisit
-                    case .keepBoth:
-                        return .keepBoth
-                    }
-                }
-            }
         }
         for component in visit.components {
             for evidence in component.evidence where !evidence.localFileName.isEmpty {
                 try? fileManager.removeItem(at: dir.appendingPathComponent(evidence.localFileName))
+            }
+        }
+    }
+
+    private extension VisitImportConflictResolution {
+        var contractStrategy: VisitImportConflictStrategy {
+            switch self {
+            case .replaceExistingVisit:
+                return .replaceExistingVisit
+            case .keepBoth:
+                return .keepBoth
             }
         }
     }

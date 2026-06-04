@@ -97,51 +97,6 @@ struct ComponentDetailView: View {
                         }
                     }
                 }
-
-                private struct EvidenceReviewRow: View {
-                    let evidence: Evidence
-                    let onStatusChange: (ReviewStatus?) -> Void
-                    let onNotesChange: (String) -> Void
-
-                    var body: some View {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Label(
-                                    evidence.kind == .photo ? "Photo" : evidence.kind == .voiceNote ? "Voice Note" : "Text Note",
-                                    systemImage: evidence.kind == .photo ? "camera" : evidence.kind == .voiceNote ? "waveform" : "text.alignleft"
-                                )
-                                Spacer()
-                                Text(evidence.localFileName)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            Picker(
-                                "Review",
-                                selection: Binding(
-                                    get: { evidence.reviewStatus },
-                                    set: onStatusChange
-                                )
-                            ) {
-                                Text("Not set").tag(Optional<ReviewStatus>.none)
-                                ForEach(ReviewStatus.allCases, id: \.self) { status in
-                                    Text(status.title).tag(Optional(status))
-                                }
-                            }
-                            .pickerStyle(.menu)
-                            TextField(
-                                "Review notes",
-                                text: Binding(
-                                    get: { evidence.reviewNotes ?? "" },
-                                    set: onNotesChange
-                                ),
-                                axis: .vertical
-                            )
-                            .lineLimit(2...3)
-                        }
-                        .padding(.vertical, 4)
-                    }
-                }
                 .navigationTitle(component.kind.title)
                 .safeAreaInset(edge: .bottom) {
                     HStack {
@@ -203,11 +158,56 @@ struct ComponentDetailView: View {
     private func toggleVoiceRecording() {
         if recorder.isRecording {
             if let url = recorder.stopRecording() {
-                viewModel.attachVoiceNote(from: url, to: componentID, in: visitID)
+                viewModel.attachVoiceNoteToComponent(from: url, to: componentID, in: visitID)
             }
-        } else if let url = viewModel.prepareVoiceNoteURL(for: componentID, in: visitID) {
+        } else if let url = viewModel.prepareComponentVoiceNoteURL(for: componentID, in: visitID) {
             recorder.startRecording(to: url)
         }
+    }
+}
+
+private struct EvidenceReviewRow: View {
+    let evidence: Evidence
+    let onStatusChange: (ReviewStatus?) -> Void
+    let onNotesChange: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label(
+                    evidence.kind == .photo ? "Photo" : evidence.kind == .voiceNote ? "Voice Note" : "Text Note",
+                    systemImage: evidence.kind == .photo ? "camera" : evidence.kind == .voiceNote ? "waveform" : "text.alignleft"
+                )
+                Spacer()
+                Text(evidence.localFileName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Picker(
+                "Review",
+                selection: Binding(
+                    get: { evidence.reviewStatus },
+                    set: onStatusChange
+                )
+            ) {
+                Text("Not set").tag(Optional<ReviewStatus>.none)
+                ForEach(ReviewStatus.allCases, id: \.self) { status in
+                    Text(status.title).tag(Optional(status))
+                }
+            }
+            .pickerStyle(.menu)
+            TextField(
+                "Review notes",
+                text: Binding(
+                    get: { evidence.reviewNotes ?? "" },
+                    set: onNotesChange
+                ),
+                axis: .vertical
+            )
+            .lineLimit(2...3)
+        }
+        .padding(.vertical, 4)
     }
 }
 

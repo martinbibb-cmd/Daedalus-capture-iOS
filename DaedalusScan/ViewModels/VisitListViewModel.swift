@@ -194,7 +194,7 @@ final class VisitListViewModel: ObservableObject {
         }
     }
 
-    func prepareVoiceNoteURL(for roomID: UUID, in visitID: UUID) -> URL? {
+    func prepareRoomVoiceNoteURL(for roomID: UUID, in visitID: UUID) -> URL? {
         do {
             return try repository.makeEvidenceFileURL(fileExtension: "m4a", visitID: visitID, roomID: roomID)
         } catch {
@@ -203,7 +203,7 @@ final class VisitListViewModel: ObservableObject {
         }
     }
 
-    func prepareVoiceNoteURL(for componentID: UUID, in visitID: UUID) -> URL? {
+    func prepareComponentVoiceNoteURL(for componentID: UUID, in visitID: UUID) -> URL? {
         do {
             return try repository.makeEvidenceFileURL(fileExtension: "m4a", visitID: visitID, componentID: componentID)
         } catch {
@@ -212,11 +212,11 @@ final class VisitListViewModel: ObservableObject {
         }
     }
 
-    func attachVoiceNote(from url: URL, to roomID: UUID, in visitID: UUID) {
+    func attachVoiceNoteToRoom(from url: URL, to roomID: UUID, in visitID: UUID) {
         appendEvidence(Evidence(kind: .voiceNote, localFileName: url.lastPathComponent), to: roomID, in: visitID)
     }
 
-    func attachVoiceNote(from url: URL, to componentID: UUID, in visitID: UUID) {
+    func attachVoiceNoteToComponent(from url: URL, to componentID: UUID, in visitID: UUID) {
         appendEvidence(Evidence(kind: .voiceNote, localFileName: url.lastPathComponent), toComponent: componentID, in: visitID)
     }
 
