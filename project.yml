@@ -30,17 +30,35 @@ targets:
       - path: DaedalusScan/App
     dependencies:
       - target: DaedalusScanCore
+    info:
+      path: DaedalusScan/App/Info.plist
+      properties:
+        CFBundleDisplayName: Daedalus Scan
+        LSRequiresIPhoneOS: true
+        NSCameraUsageDescription: Daedalus Scan captures room evidence photos.
+        NSPhotoLibraryUsageDescription: Daedalus Scan stores captured visit evidence.
+        NSMicrophoneUsageDescription: Daedalus Scan records voice note evidence.
+        UILaunchScreen: {}
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Daedalus Scan Package
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Owner
+            LSItemContentTypes:
+              - com.daedalus.scan.package
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: com.daedalus.scan.package
+            UTTypeDescription: Daedalus Scan Package
+            UTTypeConformsTo:
+              - public.json
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - daedalusscan
+              public.mime-type:
+                - application/json
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.martinbibb.daedalus.scan
         PRODUCT_NAME: Daedalus Scan
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: Daedalus Scan
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_LSRequiresIPhoneOS: YES
-        INFOPLIST_KEY_NSCameraUsageDescription: Daedalus Scan captures room evidence photos.
-        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Daedalus Scan stores captured visit evidence.
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: Daedalus Scan records voice note evidence.
         SUPPORTS_MACCATALYST: NO
         TARGETED_DEVICE_FAMILY: 1
 schemes:

@@ -1,12 +1,13 @@
 import SwiftUI
+import UIKit
 
 struct VisitListView: View {
     @ObservedObject var viewModel: VisitListViewModel
 
     @State private var isPresentingCreateVisit = false
     @State private var isPresentingImport = false
-    @State private var isPresentingExport = false
-    @State private var exportDocument = VisitExportDocument.empty
+    @State private var isPresentingShareSheet = false
+    @State private var shareURL: URL?
 
     var body: some View {
         NavigationStack {
@@ -46,14 +47,14 @@ struct VisitListView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Menu("Package") {
-                        Button("Export Visits") {
-                            if let document = viewModel.makeExportDocument() {
-                                exportDocument = document
-                                isPresentingExport = true
+                        Button("Export Visit Package") {
+                            if let url = viewModel.makeExportTempURL() {
+                                shareURL = url
+                                isPresentingShareSheet = true
                             }
                         }
 
-                        Button("Import Visits") {
+                        Button("Import Visit Package") {
                             isPresentingImport = true
                         }
                     }
@@ -73,6 +74,11 @@ struct VisitListView: View {
                 viewModel.createVisit(reference: reference, twinKind: twinKind)
             }
         }
+        .sheet(isPresented: $isPresentingShareSheet) {
+            if let url = shareURL {
+                ActivityView(url: url)
+            }
+        }
         .fileImporter(
             isPresented: $isPresentingImport,
             allowedContentTypes: [.daedalusScanPackage, .json]
@@ -83,15 +89,19 @@ struct VisitListView: View {
                 viewModel.errorMessage = error.localizedDescription
             }
         }
-        .fileExporter(
-            isPresented: $isPresentingExport,
-            document: exportDocument,
-            contentType: .daedalusScanPackage,
-            defaultFilename: "DaedalusScanExport"
-        ) { result in
-            if case let .failure(error) = result {
-                viewModel.errorMessage = error.localizedDescription
-            }
+        .onOpenURL { url in
+            viewModel.importPackage(from: url)
+        }
+        .alert(
+            "Daedalus Scan",
+            isPresented: Binding(
+                get: { viewModel.statusMessage != nil },
+                set: { if !$0 { viewModel.statusMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(viewModel.statusMessage ?? "")
         }
         .alert(
             "Daedalus Scan",
@@ -105,4 +115,14 @@ struct VisitListView: View {
             Text(viewModel.errorMessage ?? "")
         }
     }
+}
+
+private struct ActivityView: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

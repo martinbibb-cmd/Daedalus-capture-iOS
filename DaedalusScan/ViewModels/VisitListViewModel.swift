@@ -6,6 +6,7 @@ import Foundation
 final class VisitListViewModel: ObservableObject {
     @Published private(set) var visits: [Visit] = []
     @Published var errorMessage: String?
+    @Published var statusMessage: String?
 
     private let repository: VisitRepository
 
@@ -268,9 +269,14 @@ final class VisitListViewModel: ObservableObject {
         persistChanges()
     }
 
-    func makeExportDocument() -> VisitExportDocument? {
+    func makeExportTempURL() -> URL? {
         do {
-            return try VisitExportDocument(package: repository.exportPackage(visits: visits))
+            let document = try VisitExportDocument(package: repository.exportPackage(visits: visits))
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("DaedalusScanExport.daedalusscan")
+            try document.data.write(to: url, options: .atomic)
+            statusMessage = "Export created"
+            return url
         } catch {
             errorMessage = error.localizedDescription
             return nil
@@ -280,6 +286,7 @@ final class VisitListViewModel: ObservableObject {
     func importPackage(from url: URL) {
         do {
             visits = try repository.importPackage(from: url).sorted { $0.createdAt > $1.createdAt }
+            statusMessage = "Import succeeded"
         } catch {
             errorMessage = error.localizedDescription
         }
