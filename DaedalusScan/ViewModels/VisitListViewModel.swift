@@ -91,6 +91,26 @@ final class VisitListViewModel: ObservableObject {
         appendEvidence(Evidence(kind: .voiceNote, localFileName: url.lastPathComponent), to: roomID, in: visitID)
     }
 
+    func attachTextNote(text: String, to roomID: UUID, in visitID: UUID) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do {
+            let url = try repository.makeEvidenceFileURL(fileExtension: "txt", visitID: visitID, roomID: roomID)
+            try Data(trimmed.utf8).write(to: url, options: .atomic)
+            appendEvidence(Evidence(kind: .textNote, localFileName: url.lastPathComponent), to: roomID, in: visitID)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func deleteVisit(id: UUID) {
+        if let visit = visits.first(where: { $0.id == id }) {
+            repository.deleteEvidenceFiles(for: visit)
+        }
+        visits.removeAll { $0.id == id }
+        persistChanges()
+    }
+
     func makeExportDocument() -> VisitExportDocument? {
         do {
             return try VisitExportDocument(package: repository.exportPackage(visits: visits))

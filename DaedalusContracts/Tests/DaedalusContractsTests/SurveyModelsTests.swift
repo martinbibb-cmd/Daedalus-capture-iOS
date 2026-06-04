@@ -14,6 +14,7 @@ final class SurveyModelsTests: XCTestCase {
     }
 
     func testVisitPackageRoundTripPreservesRoomsSurveyAndEvidence() throws {
+        let textBytes = Data("Good insulation observed.".utf8)
         let room = Room(
             name: "Kitchen",
             survey: [
@@ -21,8 +22,9 @@ final class SurveyModelsTests: XCTestCase {
                 "ventilation.extract.count": SurveyResponse(numericValue: 2)
             ],
             evidence: [
-                Evidence(kind: .photo, localFileName: "kitchen-photo.jpg"),
-                Evidence(kind: .voiceNote, localFileName: "kitchen-note.m4a")
+                Evidence(kind: .photo, localFileName: "kitchen-photo.jpg", embeddedData: Data([0xFF, 0xD8])),
+                Evidence(kind: .voiceNote, localFileName: "kitchen-note.m4a", embeddedData: Data([0x00, 0x01])),
+                Evidence(kind: .textNote, localFileName: "kitchen-note.txt", embeddedData: textBytes)
             ]
         )
         let visit = Visit(reference: "VIS-001", twinKind: .home, rooms: [room])
@@ -38,7 +40,10 @@ final class SurveyModelsTests: XCTestCase {
 
         XCTAssertEqual(decoded.visits.count, 1)
         XCTAssertEqual(decoded.visits[0].reference, "VIS-001")
-        XCTAssertEqual(decoded.visits[0].rooms[0].evidence.map(\.kind), [.photo, .voiceNote])
+        let decodedEvidence = decoded.visits[0].rooms[0].evidence
+        XCTAssertEqual(decodedEvidence.map(\.kind), [.photo, .voiceNote, .textNote])
+        XCTAssertEqual(decodedEvidence[0].embeddedData, Data([0xFF, 0xD8]))
+        XCTAssertEqual(decodedEvidence[2].embeddedData, textBytes)
         XCTAssertEqual(decoded.visits[0].rooms[0].survey["ventilation.extract.count"]?.numericValue, 2)
     }
 }

@@ -67,6 +67,7 @@ public struct SurveyResponse: Codable, Hashable, Sendable {
 public enum EvidenceKind: String, Codable, CaseIterable, Sendable {
     case photo
     case voiceNote
+    case textNote
 }
 
 public struct Evidence: Codable, Hashable, Identifiable, Sendable {
@@ -74,12 +75,22 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
     public var kind: EvidenceKind
     public var localFileName: String
     public var createdAt: Date
+    /// Embedded file bytes included in an exported VisitPackage to enable round-trip restore.
+    /// Nil when stored locally; populated by the exporter and consumed by the importer.
+    public var embeddedData: Data?
 
-    public init(id: UUID = UUID(), kind: EvidenceKind, localFileName: String, createdAt: Date = Date()) {
+    public init(
+        id: UUID = UUID(),
+        kind: EvidenceKind,
+        localFileName: String,
+        createdAt: Date = Date(),
+        embeddedData: Data? = nil
+    ) {
         self.id = id
         self.kind = kind
         self.localFileName = localFileName
         self.createdAt = createdAt
+        self.embeddedData = embeddedData
     }
 }
 

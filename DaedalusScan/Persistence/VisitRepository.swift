@@ -37,7 +37,22 @@ final class VisitRepository {
     }
 
     func exportPackage(visits: [Visit]) -> VisitPackage {
-        VisitPackage(visits: visits)
+        let evidenceDir = try? evidenceDirectoryURL()
+        let embeddedVisits = visits.map { visit -> Visit in
+            var v = visit
+            v.rooms = visit.rooms.map { room -> Room in
+                var r = room
+                r.evidence = room.evidence.map { evidence -> Evidence in
+                    guard let dir = evidenceDir, !evidence.localFileName.isEmpty else { return evidence }
+                    var e = evidence
+                    e.embeddedData = try? Data(contentsOf: dir.appendingPathComponent(evidence.localFileName))
+                    return e
+                }
+                return r
+            }
+            return v
+        }
+        return VisitPackage(visits: embeddedVisits)
     }
 
     func importPackage(from url: URL) throws -> [Visit] {
@@ -50,8 +65,39 @@ final class VisitRepository {
 
         let data = try Data(contentsOf: url)
         let package = try decoder.decode(VisitPackage.self, from: data)
-        try save(visits: package.visits)
-        return package.visits
+
+        let evidenceDir = try? evidenceDirectoryURL()
+        let restoredVisits = package.visits.map { visit -> Visit in
+            var v = visit
+            v.rooms = visit.rooms.map { room -> Room in
+                var r = room
+                r.evidence = room.evidence.map { evidence -> Evidence in
+                    var e = evidence
+                    if let dir = evidenceDir,
+                       let bytes = evidence.embeddedData,
+                       !evidence.localFileName.isEmpty {
+                        let fileURL = dir.appendingPathComponent(evidence.localFileName)
+                        try? bytes.write(to: fileURL, options: .atomic)
+                    }
+                    e.embeddedData = nil
+                    return e
+                }
+                return r
+            }
+            return v
+        }
+
+        try save(visits: restoredVisits)
+        return restoredVisits
+    }
+
+    func deleteEvidenceFiles(for visit: Visit) {
+        guard let dir = try? evidenceDirectoryURL() else { return }
+        for room in visit.rooms {
+            for evidence in room.evidence where !evidence.localFileName.isEmpty {
+                try? fileManager.removeItem(at: dir.appendingPathComponent(evidence.localFileName))
+            }
+        }
     }
 
     func makeEvidenceFileURL(fileExtension: String, visitID: UUID, roomID: UUID) throws -> URL {

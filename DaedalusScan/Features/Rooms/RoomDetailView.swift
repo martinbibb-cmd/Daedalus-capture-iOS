@@ -8,6 +8,8 @@ struct RoomDetailView: View {
 
     @StateObject private var recorder = VoiceNoteRecorder()
     @State private var isPresentingCamera = false
+    @State private var isPresentingTextNote = false
+    @State private var textNoteContent = ""
 
     var body: some View {
         Group {
@@ -30,15 +32,18 @@ struct RoomDetailView: View {
                                 .foregroundStyle(.secondary)
                         } else {
                             ForEach(room.evidence) { evidence in
-                                HStack {
-                                    Label(evidence.kind == .photo ? "Photo" : "Voice Note", systemImage: evidence.kind == .photo ? "camera" : "waveform")
-                                    Spacer()
-                                    Text(evidence.localFileName)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
+                                    HStack {
+                                        Label(
+                                            evidence.kind == .photo ? "Photo" : evidence.kind == .voiceNote ? "Voice Note" : "Text Note",
+                                            systemImage: evidence.kind == .photo ? "camera" : evidence.kind == .voiceNote ? "waveform" : "text.alignleft"
+                                        )
+                                        Spacer()
+                                        Text(evidence.localFileName)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
                                 }
-                            }
                         }
                     }
                 }
@@ -60,6 +65,15 @@ struct RoomDetailView: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
+
+                        Button {
+                            textNoteContent = ""
+                            isPresentingTextNote = true
+                        } label: {
+                            Label("Text Note", systemImage: "text.alignleft")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
                     }
                     .padding()
                     .background(.bar)
@@ -67,6 +81,11 @@ struct RoomDetailView: View {
                 .sheet(isPresented: $isPresentingCamera) {
                     CameraCaptureView { imageData in
                         viewModel.attachPhoto(data: imageData, to: roomID, in: visitID)
+                    }
+                }
+                .sheet(isPresented: $isPresentingTextNote) {
+                    TextNoteSheet(text: $textNoteContent) {
+                        viewModel.attachTextNote(text: textNoteContent, to: roomID, in: visitID)
                     }
                 }
                 .onChange(of: recorder.errorMessage) { _, newValue in
@@ -147,5 +166,32 @@ private struct SurveyQuestionRow: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+private struct TextNoteSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var text: String
+    let onSave: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            TextEditor(text: $text)
+                .padding()
+                .navigationTitle("Text Note")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { dismiss() }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") {
+                            onSave()
+                            dismiss()
+                        }
+                        .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+        }
     }
 }

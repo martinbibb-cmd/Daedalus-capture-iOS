@@ -32,6 +32,11 @@ struct VisitListView: View {
                             }
                         }
                     }
+                    .onDelete { indexSet in
+                        for index in indexSet {
+                            viewModel.deleteVisit(id: viewModel.visits[index].id)
+                        }
+                    }
                 }
             }
             .navigationTitle("Visits")
