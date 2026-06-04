@@ -310,6 +310,21 @@ final class VisitListViewModel: ObservableObject {
         }
     }
 
+    func makeExportTempURL(for visitID: UUID) -> URL? {
+        guard let visit = visit(id: visitID) else { return nil }
+        do {
+            let document = try VisitExportDocument(package: repository.exportPackage(visits: [visit]))
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("DaedalusScanExport_\(visit.reference).daedalusscan")
+            try document.data.write(to: url, options: .atomic)
+            statusMessage = "Export created"
+            return url
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
     func importPackage(from url: URL) {
         do {
             let conflicts = try repository.detectImportConflicts(from: url)

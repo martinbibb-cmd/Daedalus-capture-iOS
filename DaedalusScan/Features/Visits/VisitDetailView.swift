@@ -7,12 +7,19 @@ struct VisitDetailView: View {
 
     @State private var isPresentingRoomAlert = false
     @State private var isPresentingSummary = false
+    @State private var isPresentingShareSheet = false
+    @State private var shareURL: URL?
     @State private var roomName = ""
     @State private var addingComponentKind: SystemComponentKind?
+    @State private var quickNavigateRoomID: UUID?
 
     var body: some View {
         if let visit = viewModel.visit(id: visitID) {
             List {
+                captureAtAGlanceSection(visit: visit)
+                quickActionsSection(visit: visit)
+                needsReviewSection(visit: visit)
+
                 Section("Visit") {
                     LabeledContent("Reference", value: visit.reference)
                     LabeledContent("Twin", value: visit.twinKind.title)
@@ -54,6 +61,10 @@ struct VisitDetailView: View {
                             }
                         }
                         .pickerStyle(.menu)
+                        if captured.isEmpty {
+                            Text("No \(kind.title.lowercased()) captured")
+                                .foregroundStyle(.secondary)
+                        }
                         ForEach(captured) { component in
                             NavigationLink {
                                 ComponentDetailView(viewModel: viewModel, visitID: visitID, componentID: component.id)
@@ -68,6 +79,10 @@ struct VisitDetailView: View {
                 }
 
                 Section("Rooms") {
+                    if visit.rooms.isEmpty {
+                        Text("No rooms captured")
+                            .foregroundStyle(.secondary)
+                    }
                     ForEach(visit.rooms) { room in
                         NavigationLink(room.name) {
                             RoomDetailView(viewModel: viewModel, visitID: visitID, roomID: room.id)
@@ -89,6 +104,14 @@ struct VisitDetailView: View {
             }
             .navigationDestination(isPresented: $isPresentingSummary) {
                 VisitSummaryView(visit: visit)
+            }
+            .navigationDestination(item: $quickNavigateRoomID) { roomID in
+                RoomDetailView(viewModel: viewModel, visitID: visitID, roomID: roomID)
+            }
+            .sheet(isPresented: $isPresentingShareSheet) {
+                if let url = shareURL {
+                    ActivityView(url: url)
+                }
             }
             .alert("Add Room", isPresented: $isPresentingRoomAlert) {
                 TextField("Room name", text: $roomName)
@@ -117,6 +140,95 @@ struct VisitDetailView: View {
         }
     }
 
+    // MARK: - At a glance
+
+    @ViewBuilder
+    private func captureAtAGlanceSection(visit: Visit) -> some View {
+        let totalEvidence = visit.rooms.reduce(0) { $0 + $1.evidence.count }
+            + visit.components.reduce(0) { $0 + $1.evidence.count }
+        let checkedSections = SystemComponentKind.canonicalOrder.filter {
+            (visit.sectionStatuses[$0] ?? .notChecked) != .notChecked
+        }.count
+        let totalSections = SystemComponentKind.canonicalOrder.count
+
+        Section("Capture") {
+            LabeledContent("Rooms", value: "\(visit.rooms.count)")
+            LabeledContent("Components", value: "\(visit.components.count)")
+            LabeledContent("Evidence items", value: "\(totalEvidence)")
+            LabeledContent("Sections checked", value: "\(checkedSections) / \(totalSections)")
+        }
+    }
+
+    // MARK: - Quick actions
+
+    @ViewBuilder
+    private func quickActionsSection(visit: Visit) -> some View {
+        Section("Quick Actions") {
+            Button {
+                addingComponentKind = .boiler
+            } label: {
+                Label("Add Boiler", systemImage: "flame")
+            }
+            Button {
+                addingComponentKind = .flue
+            } label: {
+                Label("Add Flue", systemImage: "arrow.up.right")
+            }
+            Button {
+                roomName = ""
+                isPresentingRoomAlert = true
+            } label: {
+                Label("Add Room", systemImage: "door.left.hand.open")
+            }
+            Button {
+                if let firstRoom = visit.rooms.first {
+                    quickNavigateRoomID = firstRoom.id
+                } else {
+                    roomName = ""
+                    isPresentingRoomAlert = true
+                }
+            } label: {
+                Label("Add Evidence", systemImage: "paperclip")
+            }
+            Button {
+                isPresentingSummary = true
+            } label: {
+                Label("Open Summary", systemImage: "list.bullet.clipboard")
+            }
+            Button {
+                if let url = viewModel.makeExportTempURL(for: visitID) {
+                    shareURL = url
+                    isPresentingShareSheet = true
+                }
+            } label: {
+                Label("Export Visit Package", systemImage: "square.and.arrow.up")
+            }
+        }
+    }
+
+    // MARK: - Needs Review
+
+    @ViewBuilder
+    private func needsReviewSection(visit: Visit) -> some View {
+        let needsReviewCount = visit.rooms.filter { $0.reviewStatus == .needsReview }.count
+            + visit.components.filter { $0.reviewStatus == .needsReview }.count
+        if needsReviewCount > 0 {
+            Section {
+                NavigationLink {
+                    VisitSummaryView(visit: visit)
+                } label: {
+                    Label(
+                        "\(needsReviewCount) item\(needsReviewCount == 1 ? "" : "s") need\(needsReviewCount == 1 ? "s" : "") review",
+                        systemImage: "eye"
+                    )
+                    .foregroundStyle(.orange)
+                }
+            }
+        }
+    }
+
+    // MARK: - Component row
+
     @ViewBuilder
     private func componentRowLabel(for component: SystemComponent) -> some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -139,3 +251,4 @@ struct VisitDetailView: View {
         }
     }
 }
+
