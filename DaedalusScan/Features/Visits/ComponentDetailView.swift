@@ -135,7 +135,7 @@ struct ComponentDetailView: View {
                 }
                 .sheet(isPresented: $isPresentingTextNote) {
                     ComponentTextNoteSheet(text: $textNoteContent) {
-                        viewModel.attachTextNote(text: textNoteContent, to: componentID, in: visitID)
+                        viewModel.attachTextNoteToComponent(text: textNoteContent, to: componentID, in: visitID)
                     }
                 }
                 .onChange(of: recorder.errorMessage) { _, newValue in

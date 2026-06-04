@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import DaedalusContracts
 
 struct VisitListView: View {
     @ObservedObject var viewModel: VisitListViewModel
@@ -207,4 +208,3 @@ struct VisitListView: View {
         return roomCount + componentCount
     }
 }
-
