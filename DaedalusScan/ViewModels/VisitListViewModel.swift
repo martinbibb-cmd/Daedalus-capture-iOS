@@ -232,7 +232,7 @@ final class VisitListViewModel: ObservableObject {
         }
     }
 
-    func attachTextNote(text: String, to componentID: UUID, in visitID: UUID) {
+    func attachTextNoteToComponent(text: String, to componentID: UUID, in visitID: UUID) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         do {
