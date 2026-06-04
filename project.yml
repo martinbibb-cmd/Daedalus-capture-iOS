@@ -20,6 +20,7 @@ targets:
       - package: DaedalusContracts
     settings:
       base:
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
         GENERATE_INFOPLIST_FILE: YES
         SUPPORTS_MACCATALYST: NO
   DaedalusScanApp:
