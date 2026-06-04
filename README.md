@@ -20,11 +20,21 @@ Daedalus Scan captures structured survey data, photos and voice notes for site v
 
 Daedalus Scan remains strictly capture-only:
 - captures visit metadata, structured survey answers, photos and voice notes
+- does not include LiDAR capture yet
 - does not include recommendations
 - does not include quotations
 - does not include pricing
 - does not include heat-loss analysis
+- does not include customer advice
 - does not include sales logic
+
+## Known non-goals (MVP)
+
+- no LiDAR yet
+- no recommendations
+- no pricing
+- no heat-loss
+- no customer advice
 
 ## Features in this scaffold
 
@@ -79,3 +89,24 @@ The shared contract package can be validated from a fresh clone with:
 cd DaedalusContracts
 swift test
 ```
+
+## MVP manual test script (iPhone)
+
+Use this script on a physical iPhone after running `./bootstrap.sh` and launching `DaedalusScanApp`.
+
+1. Create a visit with reference `MVP-SMOKE-001`.
+2. Add one additional room.
+3. Add three components: one boiler, one flue, and one other component kind.
+4. In a room, attach one photo, one voice note, and one text note.
+5. In a component, attach one photo, one voice note, and one text note.
+6. Set section statuses (for example boiler = Present, flue = Not Accessible).
+7. Set review status + notes on:
+   - room
+   - room survey response
+   - room evidence item
+   - component
+   - component evidence item
+8. Export the visit package and verify the export completes.
+9. Import the exported package and choose **Keep Both** when prompted for conflict resolution.
+10. Re-import the same package and choose **Replace Existing Visit** when prompted.
+11. Confirm the visit list and detail screens still open correctly after both conflict paths.

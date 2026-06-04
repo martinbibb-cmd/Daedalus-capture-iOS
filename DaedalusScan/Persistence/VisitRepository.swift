@@ -123,40 +123,15 @@ final class VisitRepository {
         }
 
         let resolution = conflictResolution ?? .replaceExistingVisit
-        var visitsByID: [UUID: Visit] = Dictionary(uniqueKeysWithValues: existingVisits.map { ($0.id, $0) })
-        var orderedVisitIDs = existingVisits.map(\.id)
-        var reservedReferences = Set(existingVisits.map(\.reference))
-        var replacedVisits: [Visit] = []
-
-        for importedVisit in package.visits {
-            var candidate = importedVisit
-
-            if let existing = visitsByID[importedVisit.id] {
-                switch resolution {
-                case .replaceExistingVisit:
-                    if replacedVisits.contains(where: { $0.id == existing.id }) == false {
-                        replacedVisits.append(existing)
-                    }
-                case .keepBoth:
-                    let existingIDs = Set(visitsByID.keys)
-                    let newID = makeUniqueVisitID(excluding: existingIDs)
-                    let newReference = makeImportedReference(base: importedVisit.reference, reservedReferences: reservedReferences)
-                    candidate = makeVisitCopy(from: importedVisit, id: newID, reference: newReference)
-                }
-            }
-
-            if visitsByID[candidate.id] == nil {
-                orderedVisitIDs.append(candidate.id)
-            }
-            visitsByID[candidate.id] = candidate
-            reservedReferences.insert(candidate.reference)
-        }
-
-        replacedVisits.forEach(deleteEvidenceFiles(for:))
+        let mergeResult = VisitImportMerger.merge(
+            existingVisits: existingVisits,
+            importedVisits: package.visits,
+            strategy: resolution.contractStrategy
+        )
+        mergeResult.replacedVisits.forEach(deleteEvidenceFiles(for:))
 
         let evidenceDir = try evidenceDirectoryURL()
-        let mergedVisits = try orderedVisitIDs
-            .compactMap { visitsByID[$0] }
+        let mergedVisits = try mergeResult.visits
             .map { try restoreEvidence(for: $0, evidenceDirectory: evidenceDir) }
 
         try save(visits: mergedVisits)
@@ -270,52 +245,22 @@ final class VisitRepository {
         return candidate
     }
 
-    private func makeUniqueVisitID(excluding ids: Set<UUID>) -> UUID {
-        var candidate = UUID()
-        while ids.contains(candidate) {
-            candidate = UUID()
-        }
-        return candidate
-    }
-
-    private func makeImportedReference(base: String, reservedReferences: Set<String>) -> String {
-        guard reservedReferences.contains(base) else {
-            return base
-        }
-
-        let suffix = "Imported copy"
-        var candidate = "\(base) (\(suffix))"
-        var count = 2
-        while reservedReferences.contains(candidate) {
-            candidate = "\(base) (\(suffix) \(count))"
-            count += 1
-        }
-        return candidate
-    }
-
-    private func makeVisitCopy(from visit: Visit, id: UUID, reference: String) -> Visit {
-        Visit(
-            id: id,
-            reference: reference,
-            createdAt: visit.createdAt,
-            twinKind: visit.twinKind,
-            customerName: visit.customerName,
-            addressLine: visit.addressLine,
-            postcode: visit.postcode,
-            engineerName: visit.engineerName,
-            appointmentDate: visit.appointmentDate,
-            notes: visit.notes,
-            rooms: visit.rooms,
-            components: visit.components,
-            sectionStatuses: visit.sectionStatuses
-        )
-    }
-
     func deleteEvidenceFiles(for visit: Visit) {
         guard let dir = try? evidenceDirectoryURL() else { return }
         for room in visit.rooms {
             for evidence in room.evidence where !evidence.localFileName.isEmpty {
                 try? fileManager.removeItem(at: dir.appendingPathComponent(evidence.localFileName))
+            }
+
+            private extension VisitImportConflictResolution {
+                var contractStrategy: VisitImportConflictStrategy {
+                    switch self {
+                    case .replaceExistingVisit:
+                        return .replaceExistingVisit
+                    case .keepBoth:
+                        return .keepBoth
+                    }
+                }
             }
         }
         for component in visit.components {

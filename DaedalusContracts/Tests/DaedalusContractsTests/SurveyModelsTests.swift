@@ -371,4 +371,121 @@ final class SurveyModelsTests: XCTestCase {
         XCTAssertNil(room.evidence.first?.reviewStatus)
         XCTAssertNil(room.evidence.first?.reviewNotes)
     }
+
+    func testMVPSmokeCaptureLoopRoundTrip() throws {
+        var visit = Visit(reference: "MVP-001", twinKind: .home)
+        visit.rooms.append(
+            Room(
+                name: "Kitchen",
+                reviewStatus: .needsReview,
+                reviewNotes: "Room capture pending confirmation.",
+                survey: [
+                    "heating.emitters.present": SurveyResponse(booleanValue: true, reviewStatus: .confirmed)
+                ],
+                evidence: [
+                    Evidence(
+                        kind: .photo,
+                        localFileName: "kitchen-photo.jpg",
+                        reviewStatus: .needsReview,
+                        reviewNotes: "Recheck framing."
+                    ),
+                    Evidence(
+                        kind: .voiceNote,
+                        localFileName: "kitchen-note.m4a",
+                        reviewStatus: .draft,
+                        reviewNotes: "Engineer verbal note."
+                    ),
+                    Evidence(
+                        kind: .textNote,
+                        localFileName: "kitchen-note.txt",
+                        reviewStatus: .confirmed,
+                        reviewNotes: "Text evidence captured."
+                    )
+                ]
+            )
+        )
+        visit.components.append(
+            SystemComponent(kind: .boiler, name: "Boiler A", reviewStatus: .confirmed, reviewNotes: "Boiler reviewed.")
+        )
+        visit.components.append(
+            SystemComponent(kind: .flue, name: "Flue A", reviewStatus: .draft, reviewNotes: "Flue initial capture.")
+        )
+        visit.components.append(
+            SystemComponent(kind: .controls, name: "Controls A", reviewStatus: .needsReview, reviewNotes: "Controls review required.")
+        )
+        visit.sectionStatuses[.boiler] = .present
+        visit.sectionStatuses[.flue] = .notAccessible
+
+        let encoded = try JSONEncoder.iso8601Encoded.encode(VisitPackage(visits: [visit]))
+        let decoded = try JSONDecoder.iso8601Decoded.decode(VisitPackage.self, from: encoded)
+        let roundTripped = decoded.visits[0]
+
+        XCTAssertEqual(roundTripped.reference, "MVP-001")
+        XCTAssertEqual(roundTripped.rooms.count, 1)
+        XCTAssertEqual(roundTripped.rooms[0].name, "Kitchen")
+        XCTAssertEqual(roundTripped.rooms[0].evidence.map(\.kind), [.photo, .voiceNote, .textNote])
+        XCTAssertEqual(roundTripped.rooms[0].evidence[0].reviewStatus, .needsReview)
+        XCTAssertEqual(roundTripped.rooms[0].evidence[1].reviewNotes, "Engineer verbal note.")
+        XCTAssertEqual(roundTripped.rooms[0].survey["heating.emitters.present"]?.reviewStatus, .confirmed)
+        XCTAssertEqual(roundTripped.components.map(\.kind), [.boiler, .flue, .controls])
+        XCTAssertEqual(roundTripped.components[0].reviewStatus, .confirmed)
+        XCTAssertEqual(roundTripped.sectionStatuses[.boiler], .present)
+        XCTAssertEqual(roundTripped.sectionStatuses[.flue], .notAccessible)
+    }
+
+    func testMVPSmokeConflictReplaceExistingVisit() {
+        let sharedID = UUID()
+        let existing = Visit(id: sharedID, reference: "VIS-100", twinKind: .home, notes: "Original")
+        let imported = Visit(id: sharedID, reference: "VIS-100", twinKind: .system, notes: "Imported replacement")
+
+        let merged = VisitImportMerger.merge(
+            existingVisits: [existing],
+            importedVisits: [imported],
+            strategy: .replaceExistingVisit
+        )
+
+        XCTAssertEqual(merged.visits.count, 1)
+        XCTAssertEqual(merged.replacedVisits.count, 1)
+        XCTAssertEqual(merged.replacedVisits[0].id, existing.id)
+        XCTAssertEqual(merged.visits[0].id, sharedID)
+        XCTAssertEqual(merged.visits[0].notes, "Imported replacement")
+    }
+
+    func testMVPSmokeConflictKeepBothCreatesImportedCopy() {
+        let sharedID = UUID()
+        let existing = Visit(id: sharedID, reference: "VIS-200", twinKind: .home)
+        let imported = Visit(id: sharedID, reference: "VIS-200", twinKind: .system)
+
+        let merged = VisitImportMerger.merge(
+            existingVisits: [existing],
+            importedVisits: [imported],
+            strategy: .keepBoth
+        )
+
+        XCTAssertEqual(merged.replacedVisits.count, 0)
+        XCTAssertEqual(merged.visits.count, 2)
+        XCTAssertEqual(merged.visits[0].id, sharedID)
+        XCTAssertEqual(merged.visits[0].reference, "VIS-200")
+
+        let copiedVisit = merged.visits[1]
+        XCTAssertNotEqual(copiedVisit.id, sharedID)
+        XCTAssertEqual(copiedVisit.twinKind, .system)
+        XCTAssertEqual(copiedVisit.reference, "VIS-200 (Imported copy)")
+    }
+}
+
+private extension JSONEncoder {
+    static var iso8601Encoded: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }
+}
+
+private extension JSONDecoder {
+    static var iso8601Decoded: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }
 }
