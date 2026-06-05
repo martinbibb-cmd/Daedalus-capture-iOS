@@ -2,8 +2,12 @@ import SwiftUI
 import UIKit
 import DaedalusContracts
 
-struct VisitListView: View {
+public struct VisitListView: View {
     @ObservedObject var viewModel: VisitListViewModel
+
+    public init(viewModel: VisitListViewModel) {
+        self.viewModel = viewModel
+    }
 
     @State private var isPresentingCreateVisit = false
     @State private var isPresentingImport = false
