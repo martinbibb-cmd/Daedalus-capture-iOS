@@ -43,116 +43,126 @@ struct SurveySectionCaptureView: View {
     var body: some View {
         Group {
             if visit != nil {
-                List {
-                    Section("Capture") {
-                        Picker("Status", selection: statusBinding) {
-                            ForEach(SectionStatus.allCases, id: \.self) { status in
-                                Text(status.title).tag(status)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        LabeledContent("Evidence", value: "\(evidenceCount)")
-                    }
-
-                    Section("Review Later") {
-                        Toggle("Flag for post-capture review", isOn: reviewLaterBinding)
-                    } footer: {
-                        Text("Use this to queue transcription and structured extraction after field capture.")
-                    }
-
-                    Section {
-                        DisclosureGroup("Advanced Details", isExpanded: $isShowingAdvancedDetails) {
-                            if components.isEmpty {
-                                Text("No section components yet.")
-                                    .foregroundStyle(.secondary)
-                                    .padding(.top, 6)
-                            }
-                            ForEach(Array(components.enumerated()), id: \.element.id) { index, component in
-                                NavigationLink("Component \(index + 1)") {
-                                    ComponentDetailView(viewModel: viewModel, visitID: visitID, componentID: component.id)
-                                }
-                            }
-                            Button("Add Another \(kind.surveyTitle)") {
-                                viewModel.addComponent(to: visitID, kind: kind, name: "", manufacturer: "", model: "", notes: "")
-                            }
-                            .padding(.top, 4)
-                        }
-                    }
-                }
-                .navigationTitle(kind.surveyTitle)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Done") {
-                            dismiss()
-                        }
-                    }
-                }
-                .safeAreaInset(edge: .bottom) {
-                    HStack {
-                        Button {
-                            activeComponentID = viewModel.ensureComponent(for: kind, visitID: visitID)
-                            if activeComponentID != nil {
-                                isPresentingCamera = true
-                            }
-                        } label: {
-                            Label("Photo", systemImage: "camera")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-
-                        Button {
-                            toggleVoiceRecording()
-                        } label: {
-                            Label(recorder.isRecording ? "Stop Note" : "Voice Note", systemImage: recorder.isRecording ? "stop.circle" : "waveform")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-
-                        Button {
-                            activeComponentID = viewModel.ensureComponent(for: kind, visitID: visitID)
-                            if activeComponentID != nil {
-                                textNoteContent = ""
-                                isPresentingTextNote = true
-                            }
-                        } label: {
-                            Label("Text Note", systemImage: "text.alignleft")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                    .padding()
-                    .background(.bar)
-                }
-                .sheet(isPresented: $isPresentingCamera) {
-                    CameraCaptureView { imageData in
-                        if let componentID = activeComponentID ?? viewModel.ensureComponent(for: kind, visitID: visitID) {
-                            viewModel.attachPhoto(data: imageData, toComponent: componentID, in: visitID)
-                        }
-                    }
-                }
-                .sheet(isPresented: $isPresentingTextNote) {
-                    SurveySectionTextNoteSheet(text: $textNoteContent) {
-                        if let componentID = activeComponentID ?? viewModel.ensureComponent(for: kind, visitID: visitID) {
-                            viewModel.attachTextNoteToComponent(text: textNoteContent, to: componentID, in: visitID)
-                        }
-                    }
-                }
-                .onChange(of: recorder.errorMessage) { _, newValue in
-                    if let newValue {
-                        viewModel.errorMessage = newValue
-                    }
-                }
-                .onDisappear {
-                    if recorder.isRecording {
-                        _ = recorder.stopRecording()
-                    }
-                }
+                mainContent
             } else {
                 Text("Section not found")
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    private var mainContent: some View {
+        List {
+            statusSection
+            evidenceSection
+            advancedSection
+        }
+        .navigationTitle(kind.surveyTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Done") { dismiss() }
+            }
+        }
+        .safeAreaInset(edge: .bottom) { navigationSection }
+        .sheet(isPresented: $isPresentingCamera) {
+            CameraCaptureView { imageData in
+                if let componentID = activeComponentID ?? viewModel.ensureComponent(for: kind, visitID: visitID) {
+                    viewModel.attachPhoto(data: imageData, toComponent: componentID, in: visitID)
+                }
+            }
+        }
+        .sheet(isPresented: $isPresentingTextNote) {
+            SurveySectionTextNoteSheet(text: $textNoteContent) {
+                if let componentID = activeComponentID ?? viewModel.ensureComponent(for: kind, visitID: visitID) {
+                    viewModel.attachTextNoteToComponent(text: textNoteContent, to: componentID, in: visitID)
+                }
+            }
+        }
+        .onChange(of: recorder.errorMessage) { _, newValue in
+            if let newValue { viewModel.errorMessage = newValue }
+        }
+        .onDisappear {
+            if recorder.isRecording { _ = recorder.stopRecording() }
+        }
+    }
+
+    private var statusSection: some View {
+        Section("Capture") {
+            Picker("Status", selection: statusBinding) {
+                ForEach(SectionStatus.allCases, id: \.self) { status in
+                    Text(status.title).tag(status)
+                }
+            }
+            .pickerStyle(.menu)
+            LabeledContent("Evidence", value: "\(evidenceCount)")
+        }
+    }
+
+    private var evidenceSection: some View {
+        Section("Review Later") {
+            Toggle("Flag for post-capture review", isOn: reviewLaterBinding)
+        } footer: {
+            Text("Use this to queue transcription and structured extraction after field capture.")
+        }
+    }
+
+    private var advancedSection: some View {
+        Section {
+            DisclosureGroup("Advanced Details", isExpanded: $isShowingAdvancedDetails) {
+                if components.isEmpty {
+                    Text("No section components yet.")
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 6)
+                }
+                ForEach(Array(components.enumerated()), id: \.element.id) { index, component in
+                    NavigationLink("Component \(index + 1)") {
+                        ComponentDetailView(viewModel: viewModel, visitID: visitID, componentID: component.id)
+                    }
+                }
+                Button("Add Another \(kind.surveyTitle)") {
+                    viewModel.addComponent(to: visitID, kind: kind, name: "", manufacturer: "", model: "", notes: "")
+                }
+                .padding(.top, 4)
+            }
+        }
+    }
+
+    private var navigationSection: some View {
+        HStack {
+            Button {
+                activeComponentID = viewModel.ensureComponent(for: kind, visitID: visitID)
+                if activeComponentID != nil { isPresentingCamera = true }
+            } label: {
+                Label("Photo", systemImage: "camera")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+
+            Button {
+                toggleVoiceRecording()
+            } label: {
+                let isRecording = recorder.isRecording
+                Label(isRecording ? "Stop Note" : "Voice Note",
+                      systemImage: isRecording ? "stop.circle" : "waveform")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+
+            Button {
+                activeComponentID = viewModel.ensureComponent(for: kind, visitID: visitID)
+                if activeComponentID != nil {
+                    textNoteContent = ""
+                    isPresentingTextNote = true
+                }
+            } label: {
+                Label("Text Note", systemImage: "text.alignleft")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding()
+        .background(.bar)
     }
 
     private func toggleVoiceRecording() {
