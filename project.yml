@@ -6,7 +6,7 @@ settings:
     SWIFT_VERSION: 5.10
 packages:
   DaedalusContracts:
-    path: ./DaedalusContracts
+    path: DaedalusContracts
 targets:
   DaedalusScanCore:
     type: library.static
@@ -32,6 +32,8 @@ targets:
       - path: DaedalusScan/App
     dependencies:
       - target: DaedalusScanCore
+      - package: DaedalusContracts
+        product: DaedalusContracts
     info:
       path: DaedalusScan/App/Info.plist
       properties:
