@@ -73,10 +73,12 @@ struct VisitDetailView: View {
             isSectionComplete(kind: kind, visit: visit)
         }.count
 
-        Section("Survey Mode") {
+        Section {
             LabeledContent("Sections complete", value: "\(completedSections) / \(surveySections.count)")
             LabeledContent("Evidence items", value: "\(totalEvidence)")
             LabeledContent("Rooms", value: "\(visit.rooms.count)")
+        } header: {
+            Text("Survey Mode")
         }
     }
 
@@ -101,7 +103,7 @@ struct VisitDetailView: View {
 
     @ViewBuilder
     private func roomsSection(visit: Visit) -> some View {
-        Section("Rooms") {
+        Section {
             if visit.rooms.isEmpty {
                 Text("No rooms captured")
                     .foregroundStyle(.secondary)
@@ -115,13 +117,15 @@ struct VisitDetailView: View {
                 roomName = ""
                 isPresentingRoomAlert = true
             }
+        } header: {
+            Text("Rooms")
         } footer: {
             Text("Rooms are optional in survey mode and can be captured after system evidence.")
         }
     }
 
     private var quickActionsSection: some View {
-        Section("Quick Actions") {
+        Section {
             Button {
                 isPresentingSummary = true
             } label: {
@@ -135,6 +139,8 @@ struct VisitDetailView: View {
             } label: {
                 Label("Export Visit Package", systemImage: "square.and.arrow.up")
             }
+        } header: {
+            Text("Quick Actions")
         }
     }
 
@@ -159,7 +165,7 @@ struct VisitDetailView: View {
 
     @ViewBuilder
     private func visitMetadataSection(visit: Visit) -> some View {
-        Section("Visit") {
+        Section {
             LabeledContent("Reference", value: visit.reference)
             LabeledContent("Twin", value: visit.twinKind.title)
             LabeledContent("Created") {
@@ -185,6 +191,8 @@ struct VisitDetailView: View {
             if !visit.notes.isEmpty {
                 LabeledContent("Notes", value: visit.notes)
             }
+        } header: {
+            Text("Visit")
         }
     }
 
