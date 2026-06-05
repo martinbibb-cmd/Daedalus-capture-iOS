@@ -1,4 +1,3 @@
-import DaedalusContracts
 import Foundation
 
 enum VisitPackageImportError: LocalizedError {

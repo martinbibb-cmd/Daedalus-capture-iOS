@@ -1,6 +1,5 @@
 import SwiftUI
 import UIKit
-import DaedalusContracts
 
 public struct VisitListView: View {
     @ObservedObject var viewModel: VisitListViewModel

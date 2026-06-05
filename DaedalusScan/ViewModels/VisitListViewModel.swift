@@ -1,5 +1,4 @@
 import Combine
-import DaedalusContracts
 import Foundation
 
 @MainActor

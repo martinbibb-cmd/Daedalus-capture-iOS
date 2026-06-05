@@ -1,4 +1,3 @@
-import DaedalusContracts
 import SwiftUI
 
 struct CreateVisitView: View {

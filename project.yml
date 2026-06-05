@@ -4,21 +4,16 @@ options:
 settings:
   base:
     SWIFT_VERSION: 5.10
-packages:
-  DaedalusContracts:
-    path: DaedalusContracts
 targets:
   DaedalusScanCore:
-    type: library.static
+    type: framework
     platform: iOS
     deploymentTarget: "17.0"
     sources:
       - path: DaedalusScan
         excludes:
           - App
-    dependencies:
-      - package: DaedalusContracts
-        product: DaedalusContracts
+      - path: DaedalusContracts/Sources/DaedalusContracts
     settings:
       base:
         ENABLE_USER_SCRIPT_SANDBOXING: NO
@@ -32,8 +27,6 @@ targets:
       - path: DaedalusScan/App
     dependencies:
       - target: DaedalusScanCore
-      - package: DaedalusContracts
-        product: DaedalusContracts
     info:
       path: DaedalusScan/App/Info.plist
       properties:

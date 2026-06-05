@@ -13,7 +13,7 @@ Daedalus Scan captures structured survey data, photos and voice notes for site v
 - iOS only
 - XcodeGen is the source of truth
 - MVVM presentation flow
-- `DaedalusContracts` local package placeholder (temporary until switched to canonical `Daedalus-contracts` repository dependency)
+- `DaedalusContracts` source compiled directly into `DaedalusScanCore` (no SPM boundary for the app build; `DaedalusContracts/Package.swift` is kept for standalone `swift test` validation only)
 - JSON persistence for local-first storage
 
 ## Capture-only boundaries
