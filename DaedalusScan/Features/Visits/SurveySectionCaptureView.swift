@@ -88,7 +88,7 @@ struct SurveySectionCaptureView: View {
     }
 
     private var statusSection: some View {
-        Section("Capture") {
+        Section {
             Picker("Status", selection: statusBinding) {
                 ForEach(SectionStatus.allCases, id: \.self) { status in
                     Text(status.title).tag(status)
@@ -96,12 +96,16 @@ struct SurveySectionCaptureView: View {
             }
             .pickerStyle(.menu)
             LabeledContent("Evidence", value: "\(evidenceCount)")
+        } header: {
+            Text("Capture")
         }
     }
 
     private var evidenceSection: some View {
-        Section("Review Later") {
+        Section {
             Toggle("Flag for post-capture review", isOn: reviewLaterBinding)
+        } header: {
+            Text("Review Later")
         } footer: {
             Text("Use this to queue transcription and structured extraction after field capture.")
         }
