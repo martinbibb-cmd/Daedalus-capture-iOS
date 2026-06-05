@@ -82,14 +82,20 @@ struct VisitDetailView: View {
 
     @ViewBuilder
     private func surveyModeSection(visit: Visit) -> some View {
-        Section("Start Survey") {
+        Section {
             ForEach(surveySections, id: \.id) { kind in
                 NavigationLink {
-                    SurveySectionCaptureView(viewModel: viewModel, visitID: visitID, kind: kind)
+                    SurveySectionCaptureView(
+                        viewModel: viewModel,
+                        visitID: visitID,
+                        kind: kind
+                    )
                 } label: {
                     surveyRow(kind: kind, visit: visit)
                 }
             }
+        } header: {
+            Text("Start Survey")
         }
     }
 
