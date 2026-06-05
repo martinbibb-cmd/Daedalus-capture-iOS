@@ -20,7 +20,7 @@ struct VisitExportDocument: FileDocument {
         self.data = data
     }
 
-    init(package: VisitPackage) throws {
+    init<Package: Encodable>(package: Package) throws {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
