@@ -9,89 +9,28 @@ struct VisitDetailView: View {
     @State private var isPresentingShareSheet = false
     @State private var shareURL: URL?
     @State private var roomName = ""
-    @State private var addingComponentKind: SystemComponentKind?
-    @State private var quickNavigateRoomID: UUID?
+
+    private let surveySections: [SystemComponentKind] = [
+        .boiler,
+        .flue,
+        .controls,
+        .cylinder,
+        .feedAndExpansion,
+        .gasMeter,
+        .radiator,
+        .pump,
+        .pipework
+    ]
 
     var body: some View {
         if let visit = viewModel.visit(id: visitID) {
             List {
                 captureAtAGlanceSection(visit: visit)
-                quickActionsSection(visit: visit)
+                surveyModeSection(visit: visit)
+                roomsSection(visit: visit)
+                quickActionsSection
                 needsReviewSection(visit: visit)
-
-                Section("Visit") {
-                    LabeledContent("Reference", value: visit.reference)
-                    LabeledContent("Twin", value: visit.twinKind.title)
-                    LabeledContent("Created") {
-                        Text(visit.createdAt.formatted(date: .abbreviated, time: .shortened))
-                    }
-                    if !visit.customerName.isEmpty {
-                        LabeledContent("Customer", value: visit.customerName)
-                    }
-                    if !visit.addressLine.isEmpty {
-                        LabeledContent("Address", value: visit.addressLine)
-                    }
-                    if !visit.postcode.isEmpty {
-                        LabeledContent("Postcode", value: visit.postcode)
-                    }
-                    if let engineer = visit.engineerName {
-                        LabeledContent("Engineer", value: engineer)
-                    }
-                    if let date = visit.appointmentDate {
-                        LabeledContent("Appointment") {
-                            Text(date.formatted(date: .abbreviated, time: .omitted))
-                        }
-                    }
-                    if !visit.notes.isEmpty {
-                        LabeledContent("Notes", value: visit.notes)
-                    }
-                }
-
-                ForEach(SystemComponentKind.canonicalOrder, id: \.id) { kind in
-                    let captured = visit.components.filter { $0.kind == kind }
-                    let statusBinding = Binding<SectionStatus>(
-                        get: { visit.sectionStatuses[kind] ?? .notChecked },
-                        set: { viewModel.setSectionStatus($0, for: kind, visitID: visitID) }
-                    )
-                    Section(kind.title) {
-                        Picker("Status", selection: statusBinding) {
-                            ForEach(SectionStatus.allCases, id: \.self) { status in
-                                Text(status.title).tag(status)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        if captured.isEmpty {
-                            Text("No \(kind.title.lowercased()) captured")
-                                .foregroundStyle(.secondary)
-                        }
-                        ForEach(captured) { component in
-                            NavigationLink {
-                                ComponentDetailView(viewModel: viewModel, visitID: visitID, componentID: component.id)
-                            } label: {
-                                componentRowLabel(for: component)
-                            }
-                        }
-                        Button("Add \(kind.title)") {
-                            addingComponentKind = kind
-                        }
-                    }
-                }
-
-                Section("Rooms") {
-                    if visit.rooms.isEmpty {
-                        Text("No rooms captured")
-                            .foregroundStyle(.secondary)
-                    }
-                    ForEach(visit.rooms) { room in
-                        NavigationLink(room.name) {
-                            RoomDetailView(viewModel: viewModel, visitID: visitID, roomID: room.id)
-                        }
-                    }
-                    Button("Add Room") {
-                        roomName = ""
-                        isPresentingRoomAlert = true
-                    }
-                }
+                visitMetadataSection(visit: visit)
             }
             .navigationTitle(visit.reference)
             .toolbar {
@@ -103,9 +42,6 @@ struct VisitDetailView: View {
             }
             .navigationDestination(isPresented: $isPresentingSummary) {
                 VisitSummaryView(visit: visit)
-            }
-            .navigationDestination(item: $quickNavigateRoomID) { roomID in
-                RoomDetailView(viewModel: viewModel, visitID: visitID, roomID: roomID)
             }
             .sheet(isPresented: $isPresentingShareSheet) {
                 if let url = shareURL {
@@ -119,19 +55,7 @@ struct VisitDetailView: View {
                     viewModel.addRoom(to: visitID, named: roomName)
                 }
             } message: {
-                Text("Create a room to continue structured capture.")
-            }
-            .sheet(item: $addingComponentKind) { kind in
-                AddComponentView(defaultKind: kind) { kind, name, manufacturer, model, notes in
-                    viewModel.addComponent(
-                        to: visitID,
-                        kind: kind,
-                        name: name,
-                        manufacturer: manufacturer,
-                        model: model,
-                        notes: notes
-                    )
-                }
+                Text("Add rooms for optional room-by-room evidence capture.")
             }
         } else {
             Text("Visit not found")
@@ -139,56 +63,59 @@ struct VisitDetailView: View {
         }
     }
 
-    // MARK: - At a glance
+    // MARK: - Sections
 
     @ViewBuilder
     private func captureAtAGlanceSection(visit: Visit) -> some View {
         let totalEvidence = visit.rooms.reduce(0) { $0 + $1.evidence.count }
             + visit.components.reduce(0) { $0 + $1.evidence.count }
-        let checkedSections = SystemComponentKind.canonicalOrder.filter {
-            (visit.sectionStatuses[$0] ?? .notChecked) != .notChecked
+        let completedSections = surveySections.filter { kind in
+            isSectionComplete(kind: kind, visit: visit)
         }.count
-        let totalSections = SystemComponentKind.canonicalOrder.count
 
-        Section("Capture") {
-            LabeledContent("Rooms", value: "\(visit.rooms.count)")
-            LabeledContent("Components", value: "\(visit.components.count)")
+        Section("Survey Mode") {
+            LabeledContent("Sections complete", value: "\(completedSections) / \(surveySections.count)")
             LabeledContent("Evidence items", value: "\(totalEvidence)")
-            LabeledContent("Sections checked", value: "\(checkedSections) / \(totalSections)")
+            LabeledContent("Rooms", value: "\(visit.rooms.count)")
         }
     }
 
-    // MARK: - Quick actions
+    @ViewBuilder
+    private func surveyModeSection(visit: Visit) -> some View {
+        Section("Start Survey") {
+            ForEach(surveySections, id: \.id) { kind in
+                NavigationLink {
+                    SurveySectionCaptureView(viewModel: viewModel, visitID: visitID, kind: kind)
+                } label: {
+                    surveyRow(kind: kind, visit: visit)
+                }
+            }
+        }
+    }
 
     @ViewBuilder
-    private func quickActionsSection(visit: Visit) -> some View {
-        Section("Quick Actions") {
-            Button {
-                addingComponentKind = .boiler
-            } label: {
-                Label("Add Boiler", systemImage: "flame")
+    private func roomsSection(visit: Visit) -> some View {
+        Section("Rooms") {
+            if visit.rooms.isEmpty {
+                Text("No rooms captured")
+                    .foregroundStyle(.secondary)
             }
-            Button {
-                addingComponentKind = .flue
-            } label: {
-                Label("Add Flue", systemImage: "arrow.up.right")
+            ForEach(visit.rooms) { room in
+                NavigationLink(room.name) {
+                    RoomDetailView(viewModel: viewModel, visitID: visitID, roomID: room.id)
+                }
             }
-            Button {
+            Button("Add Room") {
                 roomName = ""
                 isPresentingRoomAlert = true
-            } label: {
-                Label("Add Room", systemImage: "door.left.hand.open")
             }
-            Button {
-                if let firstRoom = visit.rooms.first {
-                    quickNavigateRoomID = firstRoom.id
-                } else {
-                    roomName = ""
-                    isPresentingRoomAlert = true
-                }
-            } label: {
-                Label("Add Evidence", systemImage: "paperclip")
-            }
+        } footer: {
+            Text("Rooms are optional in survey mode and can be captured after system evidence.")
+        }
+    }
+
+    private var quickActionsSection: some View {
+        Section("Quick Actions") {
             Button {
                 isPresentingSummary = true
             } label: {
@@ -205,8 +132,6 @@ struct VisitDetailView: View {
         }
     }
 
-    // MARK: - Needs Review
-
     @ViewBuilder
     private func needsReviewSection(visit: Visit) -> some View {
         let needsReviewCount = visit.rooms.filter { $0.reviewStatus == .needsReview }.count
@@ -217,7 +142,7 @@ struct VisitDetailView: View {
                     VisitSummaryView(visit: visit)
                 } label: {
                     Label(
-                        "\(needsReviewCount) item\(needsReviewCount == 1 ? "" : "s") need\(needsReviewCount == 1 ? "s" : "") review",
+                        "\(needsReviewCount) item\(needsReviewCount == 1 ? "" : "s") queued for review",
                         systemImage: "eye"
                     )
                     .foregroundStyle(.orange)
@@ -226,28 +151,64 @@ struct VisitDetailView: View {
         }
     }
 
-    // MARK: - Component row
-
     @ViewBuilder
-    private func componentRowLabel(for component: SystemComponent) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if !component.name.isEmpty {
-                Text(component.name)
-            } else if !component.manufacturer.isEmpty || !component.model.isEmpty {
-                Text([component.manufacturer, component.model]
-                    .filter { !$0.isEmpty }
-                    .joined(separator: " "))
-            } else {
-                Text(component.kind.title)
-                    .foregroundStyle(.secondary)
+    private func visitMetadataSection(visit: Visit) -> some View {
+        Section("Visit") {
+            LabeledContent("Reference", value: visit.reference)
+            LabeledContent("Twin", value: visit.twinKind.title)
+            LabeledContent("Created") {
+                Text(visit.createdAt.formatted(date: .abbreviated, time: .shortened))
             }
-            if !component.notes.isEmpty {
-                Text(component.notes)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+            if !visit.customerName.isEmpty {
+                LabeledContent("Customer", value: visit.customerName)
+            }
+            if !visit.addressLine.isEmpty {
+                LabeledContent("Address", value: visit.addressLine)
+            }
+            if !visit.postcode.isEmpty {
+                LabeledContent("Postcode", value: visit.postcode)
+            }
+            if let engineer = visit.engineerName {
+                LabeledContent("Engineer", value: engineer)
+            }
+            if let date = visit.appointmentDate {
+                LabeledContent("Appointment") {
+                    Text(date.formatted(date: .abbreviated, time: .omitted))
+                }
+            }
+            if !visit.notes.isEmpty {
+                LabeledContent("Notes", value: visit.notes)
             }
         }
     }
-}
 
+    // MARK: - Helpers
+
+    @ViewBuilder
+    private func surveyRow(kind: SystemComponentKind, visit: Visit) -> some View {
+        let sectionStatus = visit.sectionStatuses[kind] ?? .notChecked
+        let evidenceCount = visit.components
+            .filter { $0.kind == kind }
+            .reduce(0) { $0 + $1.evidence.count }
+        let isComplete = isSectionComplete(kind: kind, visit: visit)
+
+        HStack {
+            Image(systemName: isComplete ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(isComplete ? .green : .secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(kind.surveyTitle)
+                Text("\(sectionStatus.title) · \(evidenceCount) evidence")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func isSectionComplete(kind: SystemComponentKind, visit: Visit) -> Bool {
+        let hasStatus = (visit.sectionStatuses[kind] ?? .notChecked) != .notChecked
+        let hasEvidence = visit.components
+            .filter { $0.kind == kind }
+            .contains { !$0.evidence.isEmpty }
+        return hasStatus || hasEvidence
+    }
+}

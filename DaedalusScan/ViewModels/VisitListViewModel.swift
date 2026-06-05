@@ -249,6 +249,36 @@ public final class VisitListViewModel: ObservableObject {
         persistChanges()
     }
 
+    func ensureComponent(for kind: SystemComponentKind, visitID: UUID) -> UUID? {
+        guard let visitIndex = indexOfVisit(visitID) else { return nil }
+        if let existing = visits[visitIndex].components.first(where: { $0.kind == kind }) {
+            return existing.id
+        }
+        let component = SystemComponent(kind: kind)
+        visits[visitIndex].components.append(component)
+        persistChanges()
+        return component.id
+    }
+
+    func setSectionReviewLater(_ enabled: Bool, for kind: SystemComponentKind, visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID) else { return }
+        var didChange = false
+        for index in visits[visitIndex].components.indices where visits[visitIndex].components[index].kind == kind {
+            if enabled {
+                if visits[visitIndex].components[index].reviewStatus == nil {
+                    visits[visitIndex].components[index].reviewStatus = .needsReview
+                    didChange = true
+                }
+            } else if visits[visitIndex].components[index].reviewStatus == .needsReview {
+                visits[visitIndex].components[index].reviewStatus = nil
+                didChange = true
+            }
+        }
+        if didChange {
+            persistChanges()
+        }
+    }
+
     func setComponentReviewStatus(_ status: ReviewStatus?, componentID: UUID, visitID: UUID) {
         guard let visitIndex = indexOfVisit(visitID),
               let componentIndex = indexOfComponent(componentID, in: visitIndex) else {

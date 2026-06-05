@@ -3,6 +3,18 @@ import SwiftUI
 struct VisitSummaryView: View {
     let visit: Visit
 
+    private let surveySections: [SystemComponentKind] = [
+        .boiler,
+        .flue,
+        .controls,
+        .cylinder,
+        .feedAndExpansion,
+        .gasMeter,
+        .radiator,
+        .pump,
+        .pipework
+    ]
+
     private var totalEvidence: Int {
         let roomEvidence = visit.rooms.reduce(0) { $0 + $1.evidence.count }
         let componentEvidence = visit.components.reduce(0) { $0 + $1.evidence.count }
@@ -28,16 +40,14 @@ struct VisitSummaryView: View {
         return counts
     }
 
-    private var checkedSectionCount: Int {
-        SystemComponentKind.canonicalOrder.filter { kind in
-            (visit.sectionStatuses[kind] ?? .notChecked) != .notChecked
-        }.count
+    private var completedSectionCount: Int {
+        surveySections.filter(isSectionComplete).count
     }
 
-    private var totalSections: Int { SystemComponentKind.canonicalOrder.count }
+    private var totalSections: Int { surveySections.count }
 
     private var isReadyToExport: Bool {
-        checkedSectionCount == totalSections
+        completedSectionCount == totalSections
     }
 
     var body: some View {
@@ -58,7 +68,7 @@ struct VisitSummaryView: View {
             LabeledContent("System components", value: "\(visit.components.count)")
             LabeledContent("Evidence items", value: "\(totalEvidence)")
             LabeledContent("Survey responses", value: "\(totalSurveyResponses)")
-            LabeledContent("Sections checked", value: "\(checkedSectionCount) / \(totalSections)")
+            LabeledContent("Sections complete", value: "\(completedSectionCount) / \(totalSections)")
             if !reviewStatusCounts.isEmpty {
                 reviewStatusRows
             }
@@ -84,8 +94,8 @@ struct VisitSummaryView: View {
                         .font(.body)
                     Text(
                         isReadyToExport
-                            ? "All sections have a recorded status."
-                            : "\(totalSections - checkedSectionCount) section\(totalSections - checkedSectionCount == 1 ? "" : "s") not yet checked."
+                            ? "All survey sections have status and/or evidence."
+                            : "\(totalSections - completedSectionCount) section\(totalSections - completedSectionCount == 1 ? "" : "s") still need capture."
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -99,7 +109,7 @@ struct VisitSummaryView: View {
 
     private var canonicalSectionsSection: some View {
         Section("Sections") {
-            ForEach(SystemComponentKind.canonicalOrder, id: \.id) { kind in
+            ForEach(surveySections, id: \.id) { kind in
                 sectionRow(for: kind)
             }
         }
@@ -116,10 +126,10 @@ struct VisitSummaryView: View {
 
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(kind.title)
+                Text(kind.surveyTitle)
                     .font(.headline)
                 Spacer()
-                sectionStatusBadge(sectionStatus)
+                sectionStatusBadge(kind: kind, sectionStatus: sectionStatus)
             }
             HStack(spacing: 16) {
                 captureChip(systemImage: "square.stack", value: components.count, label: "components")
@@ -136,17 +146,20 @@ struct VisitSummaryView: View {
     }
 
     @ViewBuilder
-    private func sectionStatusBadge(_ status: SectionStatus) -> some View {
-        Text(status.title)
+    private func sectionStatusBadge(kind: SystemComponentKind, sectionStatus: SectionStatus) -> some View {
+        Text(isSectionComplete(kind) ? "Complete" : sectionStatus.title)
             .font(.caption)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(sectionStatusColor(status).opacity(0.15))
-            .foregroundStyle(sectionStatusColor(status))
+            .background(sectionStatusColor(kind: kind, status: sectionStatus).opacity(0.15))
+            .foregroundStyle(sectionStatusColor(kind: kind, status: sectionStatus))
             .clipShape(Capsule())
     }
 
-    private func sectionStatusColor(_ status: SectionStatus) -> Color {
+    private func sectionStatusColor(kind: SystemComponentKind, status: SectionStatus) -> Color {
+        if isSectionComplete(kind) {
+            return .green
+        }
         switch status {
         case .notChecked: return .secondary
         case .present: return .green
@@ -159,5 +172,13 @@ struct VisitSummaryView: View {
     @ViewBuilder
     private func captureChip(systemImage: String, value: Int, label: String) -> some View {
         Label("\(value) \(label)", systemImage: systemImage)
+    }
+
+    private func isSectionComplete(_ kind: SystemComponentKind) -> Bool {
+        let hasStatus = (visit.sectionStatuses[kind] ?? .notChecked) != .notChecked
+        let hasEvidence = visit.components
+            .filter { $0.kind == kind }
+            .contains { !$0.evidence.isEmpty }
+        return hasStatus || hasEvidence
     }
 }

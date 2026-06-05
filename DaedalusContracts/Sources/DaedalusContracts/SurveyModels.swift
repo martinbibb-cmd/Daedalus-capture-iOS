@@ -190,6 +190,15 @@ public enum SystemComponentKind: String, Codable, CaseIterable, Identifiable, Se
         }
     }
 
+    public var surveyTitle: String {
+        switch self {
+        case .radiator:
+            return "Emitters"
+        default:
+            return title
+        }
+    }
+
     /// Canonical survey traversal order for system-first capture.
     public static let canonicalOrder: [SystemComponentKind] = [
         .boiler,
