@@ -31,13 +31,15 @@ public final class VisitListViewModel: ObservableObject {
 
     func createVisit(
         reference: String,
-        twinKind: TwinKind,
         customerName: String = "",
         addressLine: String = "",
         postcode: String = "",
         engineerName: String? = nil,
         appointmentDate: Date? = nil,
-        notes: String = ""
+        notes: String = "",
+        currentSystemType: HeatingSystemType = .unknown,
+        proposedSystemType: HeatingSystemType = .unknown,
+        captureMode: CaptureMode = .current
     ) {
         let trimmedReference = reference.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedReference.isEmpty else {
@@ -48,13 +50,16 @@ public final class VisitListViewModel: ObservableObject {
         visits.insert(
             Visit(
                 reference: trimmedReference,
-                twinKind: twinKind,
+                twinKind: .system,
                 customerName: customerName.trimmingCharacters(in: .whitespacesAndNewlines),
                 addressLine: addressLine.trimmingCharacters(in: .whitespacesAndNewlines),
                 postcode: postcode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
                 engineerName: normalizedOptionalString(engineerName ?? ""),
                 appointmentDate: appointmentDate,
                 notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
+                currentSystemType: currentSystemType,
+                proposedSystemType: proposedSystemType,
+                captureMode: captureMode,
                 rooms: [Room(name: "Room 1")],
                 components: []
             ),
@@ -110,6 +115,44 @@ public final class VisitListViewModel: ObservableObject {
     func setRoomReviewNotes(_ notes: String, roomID: UUID, visitID: UUID) {
         guard let visitIndex = indexOfVisit(visitID), let roomIndex = indexOfRoom(roomID, in: visitIndex) else {
             return
+        }
+
+        func setRoomNotes(_ notes: String, roomID: UUID, visitID: UUID) {
+            guard let visitIndex = indexOfVisit(visitID), let roomIndex = indexOfRoom(roomID, in: visitIndex) else {
+                return
+            }
+            visits[visitIndex].rooms[roomIndex].notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+            persistChanges()
+        }
+
+        func setCaptureMode(_ mode: CaptureMode, for visitID: UUID) {
+            guard let visitIndex = indexOfVisit(visitID) else { return }
+            visits[visitIndex].captureMode = mode
+            persistChanges()
+        }
+
+        func setCurrentSystemType(_ type: HeatingSystemType, for visitID: UUID) {
+            guard let visitIndex = indexOfVisit(visitID) else { return }
+            visits[visitIndex].currentSystemType = type
+            persistChanges()
+        }
+
+        func setProposedSystemType(_ type: HeatingSystemType, for visitID: UUID) {
+            guard let visitIndex = indexOfVisit(visitID) else { return }
+            visits[visitIndex].proposedSystemType = type
+            persistChanges()
+        }
+
+        func setVisitNotes(_ notes: String, for visitID: UUID) {
+            guard let visitIndex = indexOfVisit(visitID) else { return }
+            visits[visitIndex].notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+            persistChanges()
+        }
+
+        func sectionList(for visitID: UUID) -> [CaptureSection] {
+            guard let visit = visit(id: visitID) else { return [] }
+            let systemType = visit.captureMode == .current ? visit.currentSystemType : visit.proposedSystemType
+            return SystemComponentKind.captureSections(for: systemType)
         }
         visits[visitIndex].rooms[roomIndex].reviewNotes = normalizedOptionalString(notes)
         persistChanges()
@@ -245,16 +288,21 @@ public final class VisitListViewModel: ObservableObject {
 
     func setSectionStatus(_ status: SectionStatus, for kind: SystemComponentKind, visitID: UUID) {
         guard let visitIndex = indexOfVisit(visitID) else { return }
-        visits[visitIndex].sectionStatuses[kind] = status
+        if visits[visitIndex].captureMode == .current {
+            visits[visitIndex].sectionStatuses[kind] = status
+        } else {
+            visits[visitIndex].proposedSectionStatuses[kind] = status
+        }
         persistChanges()
     }
 
     func ensureComponent(for kind: SystemComponentKind, visitID: UUID) -> UUID? {
         guard let visitIndex = indexOfVisit(visitID) else { return nil }
-        if let existing = visits[visitIndex].components.first(where: { $0.kind == kind }) {
+        let captureMode = visits[visitIndex].captureMode
+        if let existing = visits[visitIndex].components.first(where: { $0.kind == kind && $0.captureMode == captureMode }) {
             return existing.id
         }
-        let component = SystemComponent(kind: kind)
+        let component = SystemComponent(kind: kind, captureMode: captureMode)
         visits[visitIndex].components.append(component)
         persistChanges()
         return component.id
@@ -262,8 +310,11 @@ public final class VisitListViewModel: ObservableObject {
 
     func setSectionReviewLater(_ enabled: Bool, for kind: SystemComponentKind, visitID: UUID) {
         guard let visitIndex = indexOfVisit(visitID) else { return }
+        let captureMode = visits[visitIndex].captureMode
         var didChange = false
-        for index in visits[visitIndex].components.indices where visits[visitIndex].components[index].kind == kind {
+        for index in visits[visitIndex].components.indices where
+            visits[visitIndex].components[index].kind == kind &&
+            visits[visitIndex].components[index].captureMode == captureMode {
             if enabled {
                 if visits[visitIndex].components[index].reviewStatus == nil {
                     visits[visitIndex].components[index].reviewStatus = .needsReview
@@ -331,7 +382,6 @@ public final class VisitListViewModel: ObservableObject {
             let url = FileManager.default.temporaryDirectory
                 .appendingPathComponent("DaedalusScanExport.daedalusscan")
             try document.data.write(to: url, options: .atomic)
-            statusMessage = "Export created"
             return url
         } catch {
             errorMessage = error.localizedDescription
@@ -346,7 +396,6 @@ public final class VisitListViewModel: ObservableObject {
             let url = FileManager.default.temporaryDirectory
                 .appendingPathComponent("DaedalusScanExport_\(visit.reference).daedalusscan")
             try document.data.write(to: url, options: .atomic)
-            statusMessage = "Export created"
             return url
         } catch {
             errorMessage = error.localizedDescription

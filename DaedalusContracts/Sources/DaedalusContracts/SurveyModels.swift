@@ -19,6 +19,40 @@ public enum TwinKind: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+public enum HeatingSystemType: String, Codable, CaseIterable, Hashable, Sendable {
+    case combi
+    case regularSealed
+    case regularOpenVented
+    case unknown
+
+    public var title: String {
+        switch self {
+        case .combi:
+            return "Combi"
+        case .regularSealed:
+            return "Regular/System (Cylinder)"
+        case .regularOpenVented:
+            return "Regular/Open-Vented"
+        case .unknown:
+            return "Unknown"
+        }
+    }
+}
+
+public enum CaptureMode: String, Codable, CaseIterable, Hashable, Sendable {
+    case current
+    case proposed
+
+    public var title: String {
+        switch self {
+        case .current:
+            return "Current System"
+        case .proposed:
+            return "Proposed System"
+        }
+    }
+}
+
 public enum SurveyFieldKind: String, Codable, CaseIterable, Sendable {
     case boolean
     case singleChoice
@@ -131,6 +165,7 @@ public struct Room: Codable, Hashable, Identifiable, Sendable {
     public var name: String
     public var reviewStatus: ReviewStatus?
     public var reviewNotes: String?
+    public var notes: String
     public var survey: [String: SurveyResponse]
     public var evidence: [Evidence]
 
@@ -139,6 +174,7 @@ public struct Room: Codable, Hashable, Identifiable, Sendable {
         name: String,
         reviewStatus: ReviewStatus? = nil,
         reviewNotes: String? = nil,
+        notes: String = "",
         survey: [String: SurveyResponse] = [:],
         evidence: [Evidence] = []
     ) {
@@ -146,8 +182,41 @@ public struct Room: Codable, Hashable, Identifiable, Sendable {
         self.name = name
         self.reviewStatus = reviewStatus
         self.reviewNotes = reviewNotes
+        self.notes = notes
         self.survey = survey
         self.evidence = evidence
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case reviewStatus
+        case reviewNotes
+        case notes
+        case survey
+        case evidence
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        reviewStatus = try container.decodeIfPresent(ReviewStatus.self, forKey: .reviewStatus)
+        reviewNotes = try container.decodeIfPresent(String.self, forKey: .reviewNotes)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
+        survey = try container.decodeIfPresent([String: SurveyResponse].self, forKey: .survey) ?? [:]
+        evidence = try container.decodeIfPresent([Evidence].self, forKey: .evidence) ?? []
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(reviewStatus, forKey: .reviewStatus)
+        try container.encodeIfPresent(reviewNotes, forKey: .reviewNotes)
+        try container.encode(notes, forKey: .notes)
+        try container.encode(survey, forKey: .survey)
+        try container.encode(evidence, forKey: .evidence)
     }
 }
 
@@ -266,6 +335,47 @@ public enum ComponentAccessibilityValue: String, Codable, CaseIterable, Sendable
 }
 
 public extension SystemComponentKind {
+    static func captureSections(for systemType: HeatingSystemType) -> [CaptureSection] {
+        switch systemType {
+        case .combi:
+            return [
+                CaptureSection(kind: .boiler, isRequired: true),
+                CaptureSection(kind: .flue, isRequired: true),
+                CaptureSection(kind: .controls, isRequired: true),
+                CaptureSection(kind: .gasMeter, isRequired: true),
+                CaptureSection(kind: .pipework, isRequired: true),
+                CaptureSection(kind: .radiator, isRequired: true)
+            ]
+        case .regularSealed:
+            return [
+                CaptureSection(kind: .boiler, isRequired: true),
+                CaptureSection(kind: .flue, isRequired: true),
+                CaptureSection(kind: .controls, isRequired: true),
+                CaptureSection(kind: .cylinder, isRequired: true),
+                CaptureSection(kind: .gasMeter, isRequired: true),
+                CaptureSection(kind: .pipework, isRequired: true),
+                CaptureSection(kind: .pump, isRequired: true),
+                CaptureSection(kind: .radiator, isRequired: true)
+            ]
+        case .regularOpenVented:
+            return [
+                CaptureSection(kind: .boiler, isRequired: true),
+                CaptureSection(kind: .flue, isRequired: true),
+                CaptureSection(kind: .controls, isRequired: true),
+                CaptureSection(kind: .cylinder, isRequired: true),
+                CaptureSection(kind: .feedAndExpansion, isRequired: true),
+                CaptureSection(kind: .gasMeter, isRequired: true),
+                CaptureSection(kind: .pipework, isRequired: true),
+                CaptureSection(kind: .pump, isRequired: true),
+                CaptureSection(kind: .radiator, isRequired: true)
+            ]
+        case .unknown:
+            return SystemComponentKind.canonicalOrder
+                .filter { $0 != .other }
+                .map { CaptureSection(kind: $0, isRequired: false) }
+        }
+    }
+
     var attributeFields: [ComponentAttributeField] {
         switch self {
         case .boiler:
@@ -343,6 +453,7 @@ public extension SystemComponentKind {
 public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public var kind: SystemComponentKind
+    public var captureMode: CaptureMode
     public var name: String
     public var manufacturer: String
     public var model: String
@@ -355,6 +466,7 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
     public init(
         id: UUID = UUID(),
         kind: SystemComponentKind,
+        captureMode: CaptureMode = .current,
         name: String = "",
         manufacturer: String = "",
         model: String = "",
@@ -366,6 +478,7 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
     ) {
         self.id = id
         self.kind = kind
+        self.captureMode = captureMode
         self.name = name
         self.manufacturer = manufacturer
         self.model = model
@@ -379,6 +492,7 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id
         case kind
+        case captureMode
         case name
         case manufacturer
         case model
@@ -393,6 +507,7 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         kind = try container.decode(SystemComponentKind.self, forKey: .kind)
+        captureMode = try container.decodeIfPresent(CaptureMode.self, forKey: .captureMode) ?? .current
         name = try container.decode(String.self, forKey: .name)
         manufacturer = try container.decode(String.self, forKey: .manufacturer)
         model = try container.decode(String.self, forKey: .model)
@@ -407,6 +522,7 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
         try container.encode(kind, forKey: .kind)
+        try container.encode(captureMode, forKey: .captureMode)
         try container.encode(name, forKey: .name)
         try container.encode(manufacturer, forKey: .manufacturer)
         try container.encode(model, forKey: .model)
@@ -429,9 +545,13 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
     public var engineerName: String?
     public var appointmentDate: Date?
     public var notes: String
+    public var currentSystemType: HeatingSystemType
+    public var proposedSystemType: HeatingSystemType
+    public var captureMode: CaptureMode
     public var rooms: [Room]
     public var components: [SystemComponent]
     public var sectionStatuses: [SystemComponentKind: SectionStatus]
+    public var proposedSectionStatuses: [SystemComponentKind: SectionStatus]
 
     public init(
         id: UUID = UUID(),
@@ -444,9 +564,13 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         engineerName: String? = nil,
         appointmentDate: Date? = nil,
         notes: String = "",
+        currentSystemType: HeatingSystemType = .unknown,
+        proposedSystemType: HeatingSystemType = .unknown,
+        captureMode: CaptureMode = .current,
         rooms: [Room] = [],
         components: [SystemComponent] = [],
-        sectionStatuses: [SystemComponentKind: SectionStatus] = [:]
+        sectionStatuses: [SystemComponentKind: SectionStatus] = [:],
+        proposedSectionStatuses: [SystemComponentKind: SectionStatus] = [:]
     ) {
         self.id = id
         self.reference = reference
@@ -458,9 +582,13 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         self.engineerName = engineerName
         self.appointmentDate = appointmentDate
         self.notes = notes
+        self.currentSystemType = currentSystemType
+        self.proposedSystemType = proposedSystemType
+        self.captureMode = captureMode
         self.rooms = rooms
         self.components = components
         self.sectionStatuses = sectionStatuses
+        self.proposedSectionStatuses = proposedSectionStatuses
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -474,9 +602,13 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         case engineerName
         case appointmentDate
         case notes
+        case currentSystemType
+        case proposedSystemType
+        case captureMode
         case rooms
         case components
         case sectionStatuses
+        case proposedSectionStatuses
     }
 
     public init(from decoder: Decoder) throws {
@@ -491,9 +623,13 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         engineerName = try container.decodeIfPresent(String.self, forKey: .engineerName)
         appointmentDate = try container.decodeIfPresent(Date.self, forKey: .appointmentDate)
         notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
+        currentSystemType = try container.decodeIfPresent(HeatingSystemType.self, forKey: .currentSystemType) ?? .unknown
+        proposedSystemType = try container.decodeIfPresent(HeatingSystemType.self, forKey: .proposedSystemType) ?? .unknown
+        captureMode = try container.decodeIfPresent(CaptureMode.self, forKey: .captureMode) ?? .current
         rooms = try container.decode([Room].self, forKey: .rooms)
         components = try container.decodeIfPresent([SystemComponent].self, forKey: .components) ?? []
         sectionStatuses = try container.decodeIfPresent([SystemComponentKind: SectionStatus].self, forKey: .sectionStatuses) ?? [:]
+        proposedSectionStatuses = try container.decodeIfPresent([SystemComponentKind: SectionStatus].self, forKey: .proposedSectionStatuses) ?? [:]
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -508,9 +644,23 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         try container.encodeIfPresent(engineerName, forKey: .engineerName)
         try container.encodeIfPresent(appointmentDate, forKey: .appointmentDate)
         try container.encode(notes, forKey: .notes)
+        try container.encode(currentSystemType, forKey: .currentSystemType)
+        try container.encode(proposedSystemType, forKey: .proposedSystemType)
+        try container.encode(captureMode, forKey: .captureMode)
         try container.encode(rooms, forKey: .rooms)
         try container.encode(components, forKey: .components)
         try container.encode(sectionStatuses, forKey: .sectionStatuses)
+        try container.encode(proposedSectionStatuses, forKey: .proposedSectionStatuses)
+    }
+}
+
+public struct CaptureSection: Hashable, Sendable {
+    public let kind: SystemComponentKind
+    public let isRequired: Bool
+
+    public init(kind: SystemComponentKind, isRequired: Bool) {
+        self.kind = kind
+        self.isRequired = isRequired
     }
 }
 
@@ -601,22 +751,5 @@ public struct VisitPackageMetadata: Codable, Hashable, Sendable {
 }
 
 public enum DaedalusCatalog {
-    public static let defaultSurvey: [SurveyQuestion] = [
-        SurveyQuestion(
-            key: "heating.emitters.present",
-            label: "Emitters present",
-            kind: .boolean
-        ),
-        SurveyQuestion(
-            key: "heating.system.type",
-            label: "Heating system type",
-            kind: .singleChoice,
-            allowedValues: ["Boiler", "Heat Pump", "Direct Electric", "Unknown"]
-        ),
-        SurveyQuestion(
-            key: "ventilation.extract.count",
-            label: "Extract fan count",
-            kind: .numeric
-        )
-    ]
+    public static let defaultSurvey: [SurveyQuestion] = []
 }

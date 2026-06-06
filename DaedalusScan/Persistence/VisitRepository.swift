@@ -173,6 +173,7 @@ public final class VisitRepository {
                 name: room.name,
                 reviewStatus: room.reviewStatus,
                 reviewNotes: room.reviewNotes,
+                notes: room.notes,
                 survey: room.survey,
                 evidence: restoredEvidence
             )
@@ -183,6 +184,7 @@ public final class VisitRepository {
             return SystemComponent(
                 id: component.id,
                 kind: component.kind,
+                captureMode: component.captureMode,
                 name: component.name,
                 manufacturer: component.manufacturer,
                 model: component.model,
@@ -205,9 +207,13 @@ public final class VisitRepository {
             engineerName: visit.engineerName,
             appointmentDate: visit.appointmentDate,
             notes: visit.notes,
+            currentSystemType: visit.currentSystemType,
+            proposedSystemType: visit.proposedSystemType,
+            captureMode: visit.captureMode,
             rooms: restoredRooms,
             components: restoredComponents,
-            sectionStatuses: visit.sectionStatuses
+            sectionStatuses: visit.sectionStatuses,
+            proposedSectionStatuses: visit.proposedSectionStatuses
         )
     }
 

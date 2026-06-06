@@ -91,9 +91,13 @@ public enum VisitImportMerger {
             engineerName: visit.engineerName,
             appointmentDate: visit.appointmentDate,
             notes: visit.notes,
+            currentSystemType: visit.currentSystemType,
+            proposedSystemType: visit.proposedSystemType,
+            captureMode: visit.captureMode,
             rooms: visit.rooms,
             components: visit.components,
-            sectionStatuses: visit.sectionStatuses
+            sectionStatuses: visit.sectionStatuses,
+            proposedSectionStatuses: visit.proposedSectionStatuses
         )
     }
 }

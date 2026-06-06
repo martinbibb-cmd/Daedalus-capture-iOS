@@ -19,7 +19,8 @@ struct SurveySectionCaptureView: View {
     }
 
     private var components: [SystemComponent] {
-        visit?.components.filter { $0.kind == kind } ?? []
+        guard let visit else { return [] }
+        return visit.components.filter { $0.kind == kind && $0.captureMode == visit.captureMode }
     }
 
     private var evidenceCount: Int {
@@ -28,7 +29,13 @@ struct SurveySectionCaptureView: View {
 
     private var statusBinding: Binding<SectionStatus> {
         Binding<SectionStatus>(
-            get: { visit?.sectionStatuses[kind] ?? .notChecked },
+            get: {
+                guard let visit else { return .notChecked }
+                if visit.captureMode == .current {
+                    return visit.sectionStatuses[kind] ?? .notChecked
+                }
+                return visit.proposedSectionStatuses[kind] ?? .notChecked
+            },
             set: { viewModel.setSectionStatus($0, for: kind, visitID: visitID) }
         )
     }
@@ -53,7 +60,7 @@ struct SurveySectionCaptureView: View {
 
     private var mainContent: some View {
         List {
-            statusSection
+            quickActionsSection
             evidenceSection
             advancedSection
         }
@@ -64,7 +71,6 @@ struct SurveySectionCaptureView: View {
                 Button("Done") { dismiss() }
             }
         }
-        .safeAreaInset(edge: .bottom) { navigationSection }
         .sheet(isPresented: $isPresentingCamera) {
             CameraCaptureView { imageData in
                 if let componentID = activeComponentID ?? viewModel.ensureComponent(for: kind, visitID: visitID) {
@@ -87,18 +93,58 @@ struct SurveySectionCaptureView: View {
         }
     }
 
-    private var statusSection: some View {
+    private var quickActionsSection: some View {
         Section {
-            Picker("Status", selection: statusBinding) {
-                ForEach(SectionStatus.allCases, id: \.self) { status in
-                    Text(status.title).tag(status)
+            HStack {
+                Button {
+                    activeComponentID = viewModel.ensureComponent(for: kind, visitID: visitID)
+                    if activeComponentID != nil { isPresentingCamera = true }
+                } label: {
+                    Label("Photo", systemImage: "camera")
+                        .frame(maxWidth: .infinity)
                 }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    toggleVoiceRecording()
+                } label: {
+                    let isRecording = recorder.isRecording
+                    Label(isRecording ? "Stop Note" : "Voice Note",
+                          systemImage: isRecording ? "stop.circle" : "waveform")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
             }
-            .pickerStyle(.menu)
+
+            HStack {
+                Button {
+                    activeComponentID = viewModel.ensureComponent(for: kind, visitID: visitID)
+                    if activeComponentID != nil {
+                        textNoteContent = ""
+                        isPresentingTextNote = true
+                    }
+                } label: {
+                    Label("Text Note", systemImage: "text.alignleft")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+
+                Menu {
+                    Picker("Status", selection: statusBinding) {
+                        ForEach(SectionStatus.allCases, id: \.self) { status in
+                            Text(status.title).tag(status)
+                        }
+                    }
+                    Toggle("Review Later", isOn: reviewLaterBinding)
+                } label: {
+                    Label("Status", systemImage: "checklist")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+
             LabeledContent("Evidence", value: "\(evidenceCount)")
-        } header: {
-            Text("Capture")
-        }
+        } header: { Text("Quick Capture") }
     }
 
     private var evidenceSection: some View {
@@ -130,43 +176,6 @@ struct SurveySectionCaptureView: View {
                 .padding(.top, 4)
             }
         }
-    }
-
-    private var navigationSection: some View {
-        HStack {
-            Button {
-                activeComponentID = viewModel.ensureComponent(for: kind, visitID: visitID)
-                if activeComponentID != nil { isPresentingCamera = true }
-            } label: {
-                Label("Photo", systemImage: "camera")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-
-            Button {
-                toggleVoiceRecording()
-            } label: {
-                let isRecording = recorder.isRecording
-                Label(isRecording ? "Stop Note" : "Voice Note",
-                      systemImage: isRecording ? "stop.circle" : "waveform")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-
-            Button {
-                activeComponentID = viewModel.ensureComponent(for: kind, visitID: visitID)
-                if activeComponentID != nil {
-                    textNoteContent = ""
-                    isPresentingTextNote = true
-                }
-            } label: {
-                Label("Text Note", systemImage: "text.alignleft")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-        }
-        .padding()
-        .background(.bar)
     }
 
     private func toggleVoiceRecording() {

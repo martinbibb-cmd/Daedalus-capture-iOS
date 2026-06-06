@@ -3,17 +3,10 @@ import SwiftUI
 struct VisitSummaryView: View {
     let visit: Visit
 
-    private let surveySections: [SystemComponentKind] = [
-        .boiler,
-        .flue,
-        .controls,
-        .cylinder,
-        .feedAndExpansion,
-        .gasMeter,
-        .radiator,
-        .pump,
-        .pipework
-    ]
+    private var surveySections: [CaptureSection] {
+        let systemType = visit.captureMode == .current ? visit.currentSystemType : visit.proposedSystemType
+        return SystemComponentKind.captureSections(for: systemType)
+    }
 
     private var totalEvidence: Int {
         let roomEvidence = visit.rooms.reduce(0) { $0 + $1.evidence.count }
@@ -41,13 +34,13 @@ struct VisitSummaryView: View {
     }
 
     private var completedSectionCount: Int {
-        surveySections.filter(isSectionComplete).count
+        surveySections.filter { $0.isRequired && isSectionComplete($0.kind) }.count
     }
 
-    private var totalSections: Int { surveySections.count }
+    private var totalSections: Int { surveySections.filter(\.isRequired).count }
 
     private var isReadyToExport: Bool {
-        completedSectionCount == totalSections
+        totalSections == 0 || completedSectionCount == totalSections
     }
 
     var body: some View {
@@ -68,7 +61,11 @@ struct VisitSummaryView: View {
             LabeledContent("System components", value: "\(visit.components.count)")
             LabeledContent("Evidence items", value: "\(totalEvidence)")
             LabeledContent("Survey responses", value: "\(totalSurveyResponses)")
-            LabeledContent("Sections complete", value: "\(completedSectionCount) / \(totalSections)")
+            if totalSections == 0 {
+                LabeledContent("Sections", value: "Guidance only")
+            } else {
+                LabeledContent("Sections complete", value: "\(completedSectionCount) / \(totalSections)")
+            }
             if !reviewStatusCounts.isEmpty {
                 reviewStatusRows
             }
@@ -93,7 +90,9 @@ struct VisitSummaryView: View {
                     Text("Ready to Export")
                         .font(.body)
                     Text(
-                        isReadyToExport
+                        totalSections == 0
+                            ? "Unknown system type uses guidance-only sections."
+                            : isReadyToExport
                             ? "All survey sections have status and/or evidence."
                             : "\(totalSections - completedSectionCount) section\(totalSections - completedSectionCount == 1 ? "" : "s") still need capture."
                     )
@@ -109,8 +108,8 @@ struct VisitSummaryView: View {
 
     private var canonicalSectionsSection: some View {
         Section("Sections") {
-            ForEach(surveySections, id: \.id) { kind in
-                sectionRow(for: kind)
+            ForEach(surveySections, id: \.kind.id) { section in
+                sectionRow(for: section)
             }
         }
     }
@@ -118,9 +117,12 @@ struct VisitSummaryView: View {
     // MARK: - Row builders
 
     @ViewBuilder
-    private func sectionRow(for kind: SystemComponentKind) -> some View {
-        let components = visit.components.filter { $0.kind == kind }
-        let sectionStatus = visit.sectionStatuses[kind] ?? .notChecked
+    private func sectionRow(for section: CaptureSection) -> some View {
+        let kind = section.kind
+        let components = visit.components.filter { $0.kind == kind && $0.captureMode == visit.captureMode }
+        let sectionStatus = visit.captureMode == .current
+            ? (visit.sectionStatuses[kind] ?? .notChecked)
+            : (visit.proposedSectionStatuses[kind] ?? .notChecked)
         let evidenceCount = components.reduce(0) { $0 + $1.evidence.count }
         let needsReviewCount = components.filter { $0.reviewStatus == .needsReview }.count
 
@@ -130,6 +132,11 @@ struct VisitSummaryView: View {
                     .font(.headline)
                 Spacer()
                 sectionStatusBadge(kind: kind, sectionStatus: sectionStatus)
+            }
+            if !section.isRequired {
+                Text("Guidance required, not mandatory")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
             }
             HStack(spacing: 16) {
                 captureChip(systemImage: "square.stack", value: components.count, label: "components")
@@ -175,9 +182,12 @@ struct VisitSummaryView: View {
     }
 
     private func isSectionComplete(_ kind: SystemComponentKind) -> Bool {
-        let hasStatus = (visit.sectionStatuses[kind] ?? .notChecked) != .notChecked
+        let status = visit.captureMode == .current
+            ? (visit.sectionStatuses[kind] ?? .notChecked)
+            : (visit.proposedSectionStatuses[kind] ?? .notChecked)
+        let hasStatus = status != .notChecked
         let hasEvidence = visit.components
-            .filter { $0.kind == kind }
+            .filter { $0.kind == kind && $0.captureMode == visit.captureMode }
             .contains { !$0.evidence.isEmpty }
         return hasStatus || hasEvidence
     }

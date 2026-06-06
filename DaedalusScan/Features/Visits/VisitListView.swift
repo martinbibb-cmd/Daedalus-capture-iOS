@@ -80,16 +80,18 @@ public struct VisitListView: View {
             }
         }
         .sheet(isPresented: $isPresentingCreateVisit) {
-            CreateVisitView { reference, twinKind, customerName, addressLine, postcode, engineerName, appointmentDate, notes in
+            CreateVisitView { reference, customerName, addressLine, postcode, engineerName, appointmentDate, notes, currentSystemType, proposedSystemType, captureMode in
                 viewModel.createVisit(
                     reference: reference,
-                    twinKind: twinKind,
                     customerName: customerName,
                     addressLine: addressLine,
                     postcode: postcode,
                     engineerName: engineerName,
                     appointmentDate: appointmentDate,
-                    notes: notes
+                    notes: notes,
+                    currentSystemType: currentSystemType,
+                    proposedSystemType: proposedSystemType,
+                    captureMode: captureMode
                 )
             }
         }
@@ -190,7 +192,7 @@ public struct VisitListView: View {
             }
 
             HStack(spacing: 12) {
-                Label(visit.twinKind.title, systemImage: "building.2")
+                Label("System · House · Home", systemImage: "building.2")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 

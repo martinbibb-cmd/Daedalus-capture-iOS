@@ -14,6 +14,18 @@ struct RoomDetailView: View {
         Group {
             if let room = viewModel.room(visitID: visitID, roomID: roomID) {
                 List {
+                    Section("Room Notes") {
+                        TextField(
+                            "Room notes",
+                            text: Binding(
+                                get: { room.notes },
+                                set: { viewModel.setRoomNotes($0, roomID: roomID, visitID: visitID) }
+                            ),
+                            axis: .vertical
+                        )
+                        .lineLimit(2...5)
+                    }
+
                     Section("Review") {
                         Picker(
                             "Status",
@@ -37,31 +49,6 @@ struct RoomDetailView: View {
                             axis: .vertical
                         )
                         .lineLimit(2...4)
-                    }
-
-                    Section("Survey") {
-                        ForEach(DaedalusCatalog.defaultSurvey) { question in
-                            SurveyQuestionRow(
-                                question: question,
-                                response: viewModel.response(for: question.key, visitID: visitID, roomID: roomID)
-                            ) { updatedResponse in
-                                viewModel.updateResponse(updatedResponse, for: question.key, visitID: visitID, roomID: roomID)
-                            } onReviewStatusChange: { status in
-                                viewModel.setSurveyResponseReviewStatus(
-                                    status,
-                                    questionKey: question.key,
-                                    roomID: roomID,
-                                    visitID: visitID
-                                )
-                            } onReviewNotesChange: { notes in
-                                viewModel.setSurveyResponseReviewNotes(
-                                    notes,
-                                    questionKey: question.key,
-                                    roomID: roomID,
-                                    visitID: visitID
-                                )
-                            }
-                        }
                     }
 
                     Section("Evidence") {
@@ -91,6 +78,8 @@ struct RoomDetailView: View {
                                 )
                             }
                         }
+                    } footer: {
+                        Text("Optional radiator/emitter evidence can be captured here.")
                     }
                 }
                 .navigationTitle(room.name)
@@ -159,85 +148,6 @@ struct RoomDetailView: View {
         } else if let url = viewModel.prepareRoomVoiceNoteURL(for: roomID, in: visitID) {
             recorder.startRecording(to: url)
         }
-    }
-}
-
-private struct SurveyQuestionRow: View {
-    let question: SurveyQuestion
-    let response: SurveyResponse
-    let onChange: (SurveyResponse) -> Void
-    let onReviewStatusChange: (ReviewStatus?) -> Void
-    let onReviewNotesChange: (String) -> Void
-
-    @State private var numericText = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(question.label)
-                .font(.headline)
-
-            switch question.kind {
-            case .boolean:
-                Toggle(
-                    "Answered",
-                    isOn: Binding(
-                        get: { response.booleanValue ?? false },
-                        set: { onChange(SurveyResponse(booleanValue: $0)) }
-                    )
-                )
-            case .singleChoice:
-                Picker(
-                    question.label,
-                    selection: Binding(
-                        get: { response.selectedValue ?? question.allowedValues.first ?? "" },
-                        set: { onChange(SurveyResponse(selectedValue: $0)) }
-                    )
-                ) {
-                    ForEach(question.allowedValues, id: \.self) { value in
-                        Text(value).tag(value)
-                    }
-                }
-                .pickerStyle(.segmented)
-            case .numeric:
-                TextField(
-                    "Value",
-                    text: Binding(
-                        get: { response.numericValue.map { String(Int($0)) } ?? numericText },
-                        set: { newValue in
-                            numericText = newValue
-                            onChange(SurveyResponse(numericValue: Double(newValue)))
-                        }
-                    )
-                )
-                .keyboardType(.numberPad)
-                .textFieldStyle(.roundedBorder)
-            }
-
-            Picker(
-                "Review",
-                selection: Binding(
-                    get: { response.reviewStatus },
-                    set: onReviewStatusChange
-                )
-            ) {
-                Text("Not set").tag(Optional<ReviewStatus>.none)
-                ForEach(ReviewStatus.allCases, id: \.self) { status in
-                    Text(status.title).tag(Optional(status))
-                }
-            }
-            .pickerStyle(.menu)
-
-            TextField(
-                "Review notes",
-                text: Binding(
-                    get: { response.reviewNotes ?? "" },
-                    set: onReviewNotesChange
-                ),
-                axis: .vertical
-            )
-            .lineLimit(2...3)
-        }
-        .padding(.vertical, 4)
     }
 }
 

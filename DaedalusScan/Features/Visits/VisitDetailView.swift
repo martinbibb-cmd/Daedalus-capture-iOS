@@ -10,23 +10,13 @@ struct VisitDetailView: View {
     @State private var shareURL: URL?
     @State private var roomName = ""
 
-    private let surveySections: [SystemComponentKind] = [
-        .boiler,
-        .flue,
-        .controls,
-        .cylinder,
-        .feedAndExpansion,
-        .gasMeter,
-        .radiator,
-        .pump,
-        .pipework
-    ]
-
     var body: some View {
         if let visit = viewModel.visit(id: visitID) {
+            let sections = viewModel.sectionList(for: visitID)
             List {
-                captureAtAGlanceSection(visit: visit)
-                surveyModeSection(visit: visit)
+                captureAtAGlanceSection(visit: visit, sections: sections)
+                systemContextSection(visit: visit)
+                surveyModeSection(visit: visit, sections: sections)
                 roomsSection(visit: visit)
                 quickActionsSection
                 needsReviewSection(visit: visit)
@@ -55,7 +45,7 @@ struct VisitDetailView: View {
                     viewModel.addRoom(to: visitID, named: roomName)
                 }
             } message: {
-                Text("Add rooms for optional room-by-room evidence capture.")
+                Text("Rooms capture optional room-level photo, voice, text, and radiator evidence.")
             }
         } else {
             Text("Visit not found")
@@ -63,41 +53,99 @@ struct VisitDetailView: View {
         }
     }
 
-    // MARK: - Sections
-
     @ViewBuilder
-    private func captureAtAGlanceSection(visit: Visit) -> some View {
+    private func captureAtAGlanceSection(visit: Visit, sections: [CaptureSection]) -> some View {
         let totalEvidence = visit.rooms.reduce(0) { $0 + $1.evidence.count }
             + visit.components.reduce(0) { $0 + $1.evidence.count }
-        let completedSections = surveySections.filter { kind in
-            isSectionComplete(kind: kind, visit: visit)
+        let requiredSections = sections.filter(\.isRequired)
+        let completedRequired = requiredSections.filter { section in
+            isSectionComplete(kind: section.kind, visit: visit)
         }.count
 
         Section {
-            LabeledContent("Sections complete", value: "\(completedSections) / \(surveySections.count)")
+            if requiredSections.isEmpty {
+                LabeledContent("Section guidance", value: "All sections shown")
+            } else {
+                LabeledContent("Required complete", value: "\(completedRequired) / \(requiredSections.count)")
+            }
             LabeledContent("Evidence items", value: "\(totalEvidence)")
             LabeledContent("Rooms", value: "\(visit.rooms.count)")
         } header: {
-            Text("Survey Mode")
+            Text("Capture Overview")
         }
     }
 
     @ViewBuilder
-    private func surveyModeSection(visit: Visit) -> some View {
+    private func systemContextSection(visit: Visit) -> some View {
+        Section("System Context") {
+            Picker(
+                "Capture mode",
+                selection: Binding(
+                    get: { visit.captureMode },
+                    set: { viewModel.setCaptureMode($0, for: visitID) }
+                )
+            ) {
+                ForEach(CaptureMode.allCases, id: \.self) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+
+            Picker(
+                "Current system",
+                selection: Binding(
+                    get: { visit.currentSystemType },
+                    set: { viewModel.setCurrentSystemType($0, for: visitID) }
+                )
+            ) {
+                ForEach(HeatingSystemType.allCases, id: \.self) { system in
+                    Text(system.title).tag(system)
+                }
+            }
+
+            Picker(
+                "Proposed system",
+                selection: Binding(
+                    get: { visit.proposedSystemType },
+                    set: { viewModel.setProposedSystemType($0, for: visitID) }
+                )
+            ) {
+                ForEach(HeatingSystemType.allCases, id: \.self) { system in
+                    Text(system.title).tag(system)
+                }
+            }
+
+            TextField(
+                "Customer/site notes",
+                text: Binding(
+                    get: { visit.notes },
+                    set: { viewModel.setVisitNotes($0, for: visitID) }
+                ),
+                axis: .vertical
+            )
+            .lineLimit(2...4)
+        }
+    }
+
+    @ViewBuilder
+    private func surveyModeSection(visit: Visit, sections: [CaptureSection]) -> some View {
         Section {
-            ForEach(surveySections, id: \.id) { kind in
+            ForEach(sections, id: \.kind.id) { section in
                 NavigationLink {
                     SurveySectionCaptureView(
                         viewModel: viewModel,
                         visitID: visitID,
-                        kind: kind
+                        kind: section.kind
                     )
                 } label: {
-                    surveyRow(kind: kind, visit: visit)
+                    surveyRow(kind: section.kind, visit: visit, isRequired: section.isRequired)
                 }
             }
         } header: {
-            Text("Start Survey")
+            Text("System Capture")
+        } footer: {
+            if sections.allSatisfy({ !$0.isRequired }) {
+                Text("Unknown system type: all sections shown as guidance-required, not mandatory.")
+            }
         }
     }
 
@@ -120,7 +168,7 @@ struct VisitDetailView: View {
         } header: {
             Text("Rooms")
         } footer: {
-            Text("Rooms are optional in survey mode and can be captured after system evidence.")
+            Text("Capture room name, photos, voice notes, text notes, and optional radiator evidence.")
         }
     }
 
@@ -137,7 +185,7 @@ struct VisitDetailView: View {
                     isPresentingShareSheet = true
                 }
             } label: {
-                Label("Export Visit Package", systemImage: "square.and.arrow.up")
+                Label("Share / Save .daedalusscan", systemImage: "square.and.arrow.up")
             }
         } header: {
             Text("Quick Actions")
@@ -167,7 +215,7 @@ struct VisitDetailView: View {
     private func visitMetadataSection(visit: Visit) -> some View {
         Section {
             LabeledContent("Reference", value: visit.reference)
-            LabeledContent("Twin", value: visit.twinKind.title)
+            LabeledContent("Twin Layers", value: "System · House · Home")
             LabeledContent("Created") {
                 Text(visit.createdAt.formatted(date: .abbreviated, time: .shortened))
             }
@@ -188,21 +236,18 @@ struct VisitDetailView: View {
                     Text(date.formatted(date: .abbreviated, time: .omitted))
                 }
             }
-            if !visit.notes.isEmpty {
-                LabeledContent("Notes", value: visit.notes)
-            }
         } header: {
             Text("Visit")
         }
     }
 
-    // MARK: - Helpers
-
     @ViewBuilder
-    private func surveyRow(kind: SystemComponentKind, visit: Visit) -> some View {
-        let sectionStatus = visit.sectionStatuses[kind] ?? .notChecked
+    private func surveyRow(kind: SystemComponentKind, visit: Visit, isRequired: Bool) -> some View {
+        let sectionStatus = visit.captureMode == .current
+            ? (visit.sectionStatuses[kind] ?? .notChecked)
+            : (visit.proposedSectionStatuses[kind] ?? .notChecked)
         let evidenceCount = visit.components
-            .filter { $0.kind == kind }
+            .filter { $0.kind == kind && $0.captureMode == visit.captureMode }
             .reduce(0) { $0 + $1.evidence.count }
         let isComplete = isSectionComplete(kind: kind, visit: visit)
 
@@ -215,13 +260,22 @@ struct VisitDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            Spacer()
+            if !isRequired {
+                Text("Guidance")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            }
         }
     }
 
     private func isSectionComplete(kind: SystemComponentKind, visit: Visit) -> Bool {
-        let hasStatus = (visit.sectionStatuses[kind] ?? .notChecked) != .notChecked
+        let sectionStatus = visit.captureMode == .current
+            ? (visit.sectionStatuses[kind] ?? .notChecked)
+            : (visit.proposedSectionStatuses[kind] ?? .notChecked)
+        let hasStatus = sectionStatus != .notChecked
         let hasEvidence = visit.components
-            .filter { $0.kind == kind }
+            .filter { $0.kind == kind && $0.captureMode == visit.captureMode }
             .contains { !$0.evidence.isEmpty }
         return hasStatus || hasEvidence
     }
