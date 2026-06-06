@@ -10,119 +10,24 @@ struct RoomDetailView: View {
     @State private var isPresentingTextNote = false
     @State private var textNoteContent = ""
 
-    var body: some View {
+    var body: some View { mainContent }
+
+    private var room: Room? {
+        viewModel.room(visitID: visitID, roomID: roomID)
+    }
+
+    private var mainContent: some View {
         Group {
-            if let room = viewModel.room(visitID: visitID, roomID: roomID) {
+            if let room {
                 List {
-                    Section("Room Notes") {
-                        TextField(
-                            "Room notes",
-                            text: Binding(
-                                get: { room.notes },
-                                set: { viewModel.setRoomNotes($0, roomID: roomID, visitID: visitID) }
-                            ),
-                            axis: .vertical
-                        )
-                        .lineLimit(2...5)
-                    }
-
-                    Section("Review") {
-                        Picker(
-                            "Status",
-                            selection: Binding(
-                                get: { room.reviewStatus },
-                                set: { viewModel.setRoomReviewStatus($0, roomID: roomID, visitID: visitID) }
-                            )
-                        ) {
-                            Text("Not set").tag(Optional<ReviewStatus>.none)
-                            ForEach(ReviewStatus.allCases, id: \.self) { status in
-                                Text(status.title).tag(Optional(status))
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        TextField(
-                            "Review notes",
-                            text: Binding(
-                                get: { room.reviewNotes ?? "" },
-                                set: { viewModel.setRoomReviewNotes($0, roomID: roomID, visitID: visitID) }
-                            ),
-                            axis: .vertical
-                        )
-                        .lineLimit(2...4)
-                    }
-
-                    Section("Evidence") {
-                        if room.evidence.isEmpty {
-                            Text("No evidence captured yet.")
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ForEach(room.evidence) { evidence in
-                                EvidenceReviewRow(
-                                    evidence: evidence,
-                                    onStatusChange: { status in
-                                        viewModel.setRoomEvidenceReviewStatus(
-                                            status,
-                                            evidenceID: evidence.id,
-                                            roomID: roomID,
-                                            visitID: visitID
-                                        )
-                                    },
-                                    onNotesChange: { notes in
-                                        viewModel.setRoomEvidenceReviewNotes(
-                                            notes,
-                                            evidenceID: evidence.id,
-                                            roomID: roomID,
-                                            visitID: visitID
-                                        )
-                                    }
-                                )
-                            }
-                        }
-                    } footer: {
-                        Text("Optional radiator/emitter evidence can be captured here.")
-                    }
+                    roomNotesSection
+                    reviewSection
+                    evidenceSection
                 }
                 .navigationTitle(room.name)
-                .safeAreaInset(edge: .bottom) {
-                    HStack {
-                        Button {
-                            isPresentingCamera = true
-                        } label: {
-                            Label("Photo", systemImage: "camera")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-
-                        Button {
-                            toggleVoiceRecording()
-                        } label: {
-                            Label(recorder.isRecording ? "Stop Note" : "Voice Note", systemImage: recorder.isRecording ? "stop.circle" : "waveform")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-
-                        Button {
-                            textNoteContent = ""
-                            isPresentingTextNote = true
-                        } label: {
-                            Label("Text Note", systemImage: "text.alignleft")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                    .padding()
-                    .background(.bar)
-                }
-                .sheet(isPresented: $isPresentingCamera) {
-                    CameraCaptureView { imageData in
-                        viewModel.attachPhoto(data: imageData, to: roomID, in: visitID)
-                    }
-                }
-                .sheet(isPresented: $isPresentingTextNote) {
-                    TextNoteSheet(text: $textNoteContent) {
-                        viewModel.attachTextNote(text: textNoteContent, to: roomID, in: visitID)
-                    }
-                }
+                .safeAreaInset(edge: .bottom) { bottomCaptureBar }
+                .sheet(isPresented: $isPresentingCamera) { cameraSheet }
+                .sheet(isPresented: $isPresentingTextNote) { textNoteSheet }
                 .onChange(of: recorder.errorMessage) { _, newValue in
                     if let newValue {
                         viewModel.errorMessage = newValue
@@ -138,6 +43,151 @@ struct RoomDetailView: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    private var roomNotesSection: some View {
+        Section {
+            TextField(
+                "Room notes",
+                text: roomNotesBinding,
+                axis: .vertical
+            )
+            .lineLimit(2...5)
+        } header: {
+            Text("Room Notes")
+        }
+    }
+
+    private var reviewSection: some View {
+        Section {
+            Picker("Status", selection: roomReviewStatusBinding) {
+                Text("Not set").tag(Optional<ReviewStatus>.none)
+                ForEach(ReviewStatus.allCases, id: \.self) { status in
+                    Text(status.title).tag(Optional(status))
+                }
+            }
+            .pickerStyle(.menu)
+            TextField(
+                "Review notes",
+                text: roomReviewNotesBinding,
+                axis: .vertical
+            )
+            .lineLimit(2...4)
+        } header: {
+            Text("Review")
+        }
+    }
+
+    private var evidenceSection: some View {
+        Section {
+            if let room {
+                if room.evidence.isEmpty {
+                    Text("No evidence captured yet.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(room.evidence) { evidence in
+                        EvidenceReviewRow(
+                            evidence: evidence,
+                            onStatusChange: { status in
+                                setRoomEvidenceReviewStatus(status, evidenceID: evidence.id)
+                            },
+                            onNotesChange: { notes in
+                                setRoomEvidenceReviewNotes(notes, evidenceID: evidence.id)
+                            }
+                        )
+                    }
+                }
+            }
+        } header: {
+            Text("Evidence")
+        } footer: {
+            Text("Optional radiator/emitter evidence can be captured here.")
+        }
+    }
+
+    private var bottomCaptureBar: some View {
+        HStack {
+            Button {
+                isPresentingCamera = true
+            } label: {
+                Label("Photo", systemImage: "camera")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+
+            Button {
+                toggleVoiceRecording()
+            } label: {
+                Label(
+                    recorder.isRecording ? "Stop Note" : "Voice Note",
+                    systemImage: recorder.isRecording ? "stop.circle" : "waveform"
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+
+            Button {
+                textNoteContent = ""
+                isPresentingTextNote = true
+            } label: {
+                Label("Text Note", systemImage: "text.alignleft")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding()
+        .background(.bar)
+    }
+
+    private var textNoteSheet: some View {
+        TextNoteSheet(text: $textNoteContent) {
+            viewModel.attachTextNote(text: textNoteContent, to: roomID, in: visitID)
+        }
+    }
+
+    private var cameraSheet: some View {
+        CameraCaptureView { imageData in
+            viewModel.attachPhoto(data: imageData, to: roomID, in: visitID)
+        }
+    }
+
+    private var roomNotesBinding: Binding<String> {
+        Binding(
+            get: { room?.notes ?? "" },
+            set: { viewModel.setRoomNotes($0, roomID: roomID, visitID: visitID) }
+        )
+    }
+
+    private var roomReviewStatusBinding: Binding<ReviewStatus?> {
+        Binding(
+            get: { room?.reviewStatus },
+            set: { viewModel.setRoomReviewStatus($0, roomID: roomID, visitID: visitID) }
+        )
+    }
+
+    private var roomReviewNotesBinding: Binding<String> {
+        Binding(
+            get: { room?.reviewNotes ?? "" },
+            set: { viewModel.setRoomReviewNotes($0, roomID: roomID, visitID: visitID) }
+        )
+    }
+
+    private func setRoomEvidenceReviewStatus(_ status: ReviewStatus?, evidenceID: UUID) {
+        viewModel.setRoomEvidenceReviewStatus(
+            status,
+            evidenceID: evidenceID,
+            roomID: roomID,
+            visitID: visitID
+        )
+    }
+
+    private func setRoomEvidenceReviewNotes(_ notes: String, evidenceID: UUID) {
+        viewModel.setRoomEvidenceReviewNotes(
+            notes,
+            evidenceID: evidenceID,
+            roomID: roomID,
+            visitID: visitID
+        )
     }
 
     private func toggleVoiceRecording() {
