@@ -10,9 +10,9 @@ struct SurveySectionCaptureView: View {
     @State private var isPresentingCamera = false
     @State private var isPresentingTextNote = false
     @State private var isPresentingStatusDialog = false
+    @State private var isPresentingAdvancedDetails = false
     @State private var textNoteContent = ""
     @State private var activeComponentID: UUID?
-    @State private var isShowingAdvancedDetails = false
 
     private var visit: Visit? {
         viewModel.visit(id: visitID)
@@ -60,21 +60,28 @@ struct SurveySectionCaptureView: View {
         }
     }
 
-    private var cockpitContent: some View {
-        ZStack(alignment: .bottom) {
-            VStack(spacing: 12) {
-                sectionSelector
-                sectionContext
-                cameraSurface
-                advancedSection
-                Spacer(minLength: 96)
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 10)
+    // MARK: - Camera-first layout
 
-            arcQuickActions
-                .padding(.bottom, 18)
+    private var cockpitContent: some View {
+        ZStack(alignment: .top) {
+            // Layer 0: full-screen live camera surface
+            LiveCameraPreviewView()
+                .ignoresSafeArea()
+                .onTapGesture {
+                    activeComponentID = viewModel.ensureComponent(for: selectedKind, visitID: visitID)
+                    if activeComponentID != nil { isPresentingCamera = true }
+                }
+
+            // Layer 1: top compact overlay (section chips + status badge)
+            topOverlay
+
+            // Layer 2: bottom scrim + radial actions overlaid on camera
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                bottomOverlay
+            }
         }
+        .ignoresSafeArea(edges: .bottom)
         .navigationTitle("Capture")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $isPresentingCamera) {
@@ -90,6 +97,9 @@ struct SurveySectionCaptureView: View {
                     viewModel.attachTextNoteToComponent(text: textNoteContent, to: componentID, in: visitID)
                 }
             }
+        }
+        .sheet(isPresented: $isPresentingAdvancedDetails) {
+            advancedDetailsSheet
         }
         .confirmationDialog("Set Section Status", isPresented: $isPresentingStatusDialog) {
             ForEach(SectionStatus.allCases, id: \.self) { status in
@@ -107,104 +117,104 @@ struct SurveySectionCaptureView: View {
         }
     }
 
-    private var sectionSelector: some View {
+    // MARK: - Top overlay
+
+    private var topOverlay: some View {
+        VStack(spacing: 0) {
+            statusBadge
+            compactSectionSelector
+        }
+        .background(
+            LinearGradient(
+                colors: [.black.opacity(0.55), .clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+    }
+
+    private var statusBadge: some View {
+        HStack(spacing: 6) {
+            Text(selectedKind.surveyTitle)
+                .font(.caption.weight(.bold))
+            Circle()
+                .fill(sectionStatus.indicatorColor)
+                .frame(width: 7, height: 7)
+            Text(sectionStatus.title)
+                .font(.caption)
+            if evidenceCount > 0 {
+                Label("\(evidenceCount)", systemImage: "camera.fill")
+                    .font(.caption)
+                    .padding(.leading, 4)
+            }
+            Spacer()
+            Button {
+                isPresentingAdvancedDetails = true
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.subheadline)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+    }
+
+    private var compactSectionSelector: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 ForEach(sections, id: \.kind.id) { section in
                     Button {
                         selectedKind = section.kind
                     } label: {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 4) {
                             Text(section.kind.surveyTitle)
-                                .font(.caption.weight(.semibold))
+                                .font(.caption2.weight(.semibold))
                             if section.isRequired {
                                 Circle()
-                                    .frame(width: 6, height: 6)
+                                    .frame(width: 5, height: 5)
                             }
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .foregroundStyle(selectedKind == section.kind ? .white : .primary)
-                        .background(selectedKind == section.kind ? Color.accentColor : Color(.secondarySystemBackground))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .foregroundStyle(selectedKind == section.kind ? .white : .white.opacity(0.75))
+                        .background(
+                            selectedKind == section.kind
+                                ? Color.accentColor
+                                : Color.white.opacity(0.15)
+                        )
                         .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.vertical, 2)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 4)
         }
     }
 
-    private var sectionContext: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(selectedKind.surveyTitle)
-                    .font(.headline)
-                Text("Status: \(sectionStatus.title)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 4) {
-                Text("\(evidenceCount)")
-                    .font(.headline)
-                Text("evidence")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+    // MARK: - Bottom overlay
+
+    private var bottomOverlay: some View {
+        ZStack {
+            LinearGradient(
+                colors: [.clear, .black.opacity(0.65)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            arcQuickActions
+                .padding(.bottom, 8)
         }
-        .padding(12)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .frame(height: 172)
     }
 
-    private var cameraSurface: some View {
-        Button {
-            activeComponentID = viewModel.ensureComponent(for: selectedKind, visitID: visitID)
-            if activeComponentID != nil { isPresentingCamera = true }
-        } label: {
-            ZStack {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.black.opacity(0.92))
-                VStack(spacing: 10) {
-                    Image(systemName: "camera.viewfinder")
-                        .font(.system(size: 42))
-                    Text("Camera Preview")
-                        .font(.headline)
-                    Text("Tap to capture \(selectedKind.surveyTitle.lowercased()) evidence")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 320)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var advancedSection: some View {
-        DisclosureGroup("Advanced Details", isExpanded: $isShowingAdvancedDetails) {
-            if components.isEmpty {
-                Text("No section components yet.")
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 6)
-            }
-            ForEach(Array(components.enumerated()), id: \.element.id) { index, component in
-                NavigationLink("Component \(index + 1)") {
-                    ComponentDetailView(viewModel: viewModel, visitID: visitID, componentID: component.id)
-                }
-            }
-            Button("Add Another \(selectedKind.surveyTitle)") {
-                viewModel.addComponent(to: visitID, kind: selectedKind, name: "", manufacturer: "", model: "", notes: "")
-            }
-            .padding(.top, 4)
-        }
-    }
-
+    // MARK: - Arc quick actions
+    // Buttons fan symmetrically upward from the bottom-centre anchor.
+    // Angles are distributed around −90° (straight up) so all buttons
+    // remain within the container bounds.
     private var arcQuickActions: some View {
         GeometryReader { geometry in
+            let arcAngles: [Double] = [-160, -125, -90, -55, -20]
             let labels = [
                 ("Photo", "camera.fill"),
                 (recorder.isRecording ? "Stop" : "Voice", recorder.isRecording ? "stop.fill" : "waveform"),
@@ -212,12 +222,12 @@ struct SurveySectionCaptureView: View {
                 ("Status", "checkmark.seal.fill"),
                 (reviewLaterBinding.wrappedValue ? "Reviewed" : "Review", "clock.badge.questionmark")
             ]
+            let radius = min(geometry.size.width * 0.38, 108.0)
 
             ZStack {
                 ForEach(Array(labels.enumerated()), id: \.offset) { index, item in
-                    let angle = Angle(degrees: Double(-80 + (index * 40)))
-                    let radius = min(geometry.size.width * 0.42, 118)
-                    let x = (geometry.size.width / 2) + CGFloat(cos(angle.radians)) * radius
+                    let angle = Angle(degrees: arcAngles[index])
+                    let x = geometry.size.width / 2 + CGFloat(cos(angle.radians)) * radius
                     let y = geometry.size.height + CGFloat(sin(angle.radians)) * radius
 
                     Button {
@@ -230,9 +240,14 @@ struct SurveySectionCaptureView: View {
                                 .font(.caption2)
                         }
                         .foregroundStyle(.white)
-                        .frame(width: 58, height: 58)
-                        .background(Color.accentColor)
+                        .frame(width: 56, height: 56)
+                        .background(
+                            recorder.isRecording && index == 1
+                                ? Color.red
+                                : Color.accentColor
+                        )
                         .clipShape(Circle())
+                        .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
                     }
                     .buttonStyle(.plain)
                     .position(x: x, y: y)
@@ -240,8 +255,37 @@ struct SurveySectionCaptureView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(height: 128)
     }
+
+    // MARK: - Advanced details sheet
+
+    private var advancedDetailsSheet: some View {
+        NavigationStack {
+            List {
+                if components.isEmpty {
+                    Text("No section components yet.")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(Array(components.enumerated()), id: \.element.id) { index, component in
+                    NavigationLink("Component \(index + 1)") {
+                        ComponentDetailView(viewModel: viewModel, visitID: visitID, componentID: component.id)
+                    }
+                }
+                Button("Add Another \(selectedKind.surveyTitle)") {
+                    viewModel.addComponent(to: visitID, kind: selectedKind, name: "", manufacturer: "", model: "", notes: "")
+                }
+            }
+            .navigationTitle("\(selectedKind.surveyTitle) Details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { isPresentingAdvancedDetails = false }
+                }
+            }
+        }
+    }
+
+    // MARK: - Actions
 
     private func handleQuickAction(_ index: Int) {
         switch index {
@@ -282,6 +326,22 @@ struct SurveySectionCaptureView: View {
         recorder.startRecording(to: url)
     }
 }
+
+// MARK: - SectionStatus UI helpers
+
+private extension SectionStatus {
+    var indicatorColor: Color {
+        switch self {
+        case .notChecked:    return .gray
+        case .present:       return .green
+        case .notPresent:    return .orange
+        case .unknown:       return .yellow
+        case .notAccessible: return .red
+        }
+    }
+}
+
+// MARK: - Text note sheet
 
 private struct SurveySectionTextNoteSheet: View {
     @Environment(\.dismiss) private var dismiss
