@@ -15,6 +15,24 @@ enum VisitPackageImportError: LocalizedError {
             return "This package conflicts with existing visits. Choose how to continue import."
         }
     }
+
+    enum VisitPackageExportError: LocalizedError {
+        case singleVisitRequired
+        case validationFailed([PackageValidationIssue])
+
+        var errorDescription: String? {
+            switch self {
+            case .singleVisitRequired:
+                return "Daedalus package export currently supports one visit at a time. Open a visit and export it from the capture screen."
+            case let .validationFailed(issues):
+                let details = issues.prefix(5).map { issue in
+                    "\(issue.path): \(issue.message)"
+                }
+                let suffix = issues.count > details.count ? "\n…\(issues.count - details.count) more issue(s)" : ""
+                return "Export blocked by contract validation.\n" + details.joined(separator: "\n") + suffix
+            }
+        }
+    }
 }
 
 enum VisitImportConflictResolution {
@@ -64,42 +82,22 @@ public final class VisitRepository {
         try data.write(to: url, options: .atomic)
     }
 
-    func exportPackage(visits: [Visit]) -> VisitPackage {
-        let evidenceDir = try? evidenceDirectoryURL()
-        let embeddedVisits = visits.map { visit -> Visit in
-            var v = visit
-            v.rooms = visit.rooms.map { room -> Room in
-                var r = room
-                r.evidence = room.evidence.map { evidence -> Evidence in
-                    guard let dir = evidenceDir, !evidence.localFileName.isEmpty else { return evidence }
-                    var e = evidence
-                    e.embeddedData = try? Data(contentsOf: dir.appendingPathComponent(evidence.localFileName))
-                    return e
-                }
-                return r
-            }
-            v.components = visit.components.map { component -> SystemComponent in
-                var c = component
-                c.evidence = component.evidence.map { evidence -> Evidence in
-                    guard let dir = evidenceDir, !evidence.localFileName.isEmpty else { return evidence }
-                    var e = evidence
-                    e.embeddedData = try? Data(contentsOf: dir.appendingPathComponent(evidence.localFileName))
-                    return e
-                }
-                return c
-            }
-            return v
+    func exportPackage(visits: [Visit]) throws -> DaedalusPackage {
+        guard visits.count == 1, let visit = visits.first else {
+            throw VisitPackageExportError.singleVisitRequired
         }
+
         let exportDate = Date()
-        let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-        let metadata = VisitPackageMetadata(
-            schemaVersion: Self.supportedSchemaVersion,
+        let package = DaedalusPackageExporter.makePackage(
+            from: visit,
             createdAt: exportDate,
-            exportedByApp: VisitPackageMetadata.canonicalSource,
-            appVersion: appVersion,
             source: VisitPackageMetadata.canonicalSource
         )
-        return VisitPackage(metadata: metadata, exportedAt: exportDate, visits: embeddedVisits)
+        let validation = validateDaedalusPackage(package)
+        guard validation.valid else {
+            throw VisitPackageExportError.validationFailed(validation.issues)
+        }
+        return package
     }
 
     func detectImportConflicts(from url: URL) throws -> [VisitImportConflict] {
