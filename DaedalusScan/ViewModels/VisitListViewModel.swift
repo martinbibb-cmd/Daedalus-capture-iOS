@@ -116,46 +116,46 @@ public final class VisitListViewModel: ObservableObject {
         guard let visitIndex = indexOfVisit(visitID), let roomIndex = indexOfRoom(roomID, in: visitIndex) else {
             return
         }
-
-        func setRoomNotes(_ notes: String, roomID: UUID, visitID: UUID) {
-            guard let visitIndex = indexOfVisit(visitID), let roomIndex = indexOfRoom(roomID, in: visitIndex) else {
-                return
-            }
-            visits[visitIndex].rooms[roomIndex].notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-            persistChanges()
-        }
-
-        func setCaptureMode(_ mode: CaptureMode, for visitID: UUID) {
-            guard let visitIndex = indexOfVisit(visitID) else { return }
-            visits[visitIndex].captureMode = mode
-            persistChanges()
-        }
-
-        func setCurrentSystemType(_ type: HeatingSystemType, for visitID: UUID) {
-            guard let visitIndex = indexOfVisit(visitID) else { return }
-            visits[visitIndex].currentSystemType = type
-            persistChanges()
-        }
-
-        func setProposedSystemType(_ type: HeatingSystemType, for visitID: UUID) {
-            guard let visitIndex = indexOfVisit(visitID) else { return }
-            visits[visitIndex].proposedSystemType = type
-            persistChanges()
-        }
-
-        func setVisitNotes(_ notes: String, for visitID: UUID) {
-            guard let visitIndex = indexOfVisit(visitID) else { return }
-            visits[visitIndex].notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-            persistChanges()
-        }
-
-        func sectionList(for visitID: UUID) -> [CaptureSection] {
-            guard let visit = visit(id: visitID) else { return [] }
-            let systemType = visit.captureMode == .current ? visit.currentSystemType : visit.proposedSystemType
-            return SystemComponentKind.captureSections(for: systemType)
-        }
         visits[visitIndex].rooms[roomIndex].reviewNotes = normalizedOptionalString(notes)
         persistChanges()
+    }
+
+    func setRoomNotes(_ notes: String, roomID: UUID, visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID), let roomIndex = indexOfRoom(roomID, in: visitIndex) else {
+            return
+        }
+        visits[visitIndex].rooms[roomIndex].notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        persistChanges()
+    }
+
+    func setCaptureMode(_ mode: CaptureMode, for visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID) else { return }
+        visits[visitIndex].captureMode = mode
+        persistChanges()
+    }
+
+    func setCurrentSystemType(_ type: HeatingSystemType, for visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID) else { return }
+        visits[visitIndex].currentSystemType = type
+        persistChanges()
+    }
+
+    func setProposedSystemType(_ type: HeatingSystemType, for visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID) else { return }
+        visits[visitIndex].proposedSystemType = type
+        persistChanges()
+    }
+
+    func setVisitNotes(_ notes: String, for visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID) else { return }
+        visits[visitIndex].notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        persistChanges()
+    }
+
+    func sectionList(for visitID: UUID) -> [CaptureSection] {
+        guard let visit = visit(id: visitID) else { return [] }
+        let systemType = visit.captureMode == .current ? visit.currentSystemType : visit.proposedSystemType
+        return SystemComponentKind.captureSections(for: systemType)
     }
 
     func setSurveyResponseReviewStatus(
