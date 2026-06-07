@@ -68,7 +68,7 @@ public final class VisitListViewModel: ObservableObject {
         return visit.id
     }
 
-    func addRoom(to visitID: UUID, named name: String) {
+    func addRoom(to visitID: UUID, named name: String, placement: SpatialPlacement? = nil) {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty, let visitIndex = indexOfVisit(visitID) else {
             errorMessage = "Room name is required."
@@ -78,7 +78,7 @@ public final class VisitListViewModel: ObservableObject {
         visits[visitIndex].rooms.append(
             Room(
                 name: trimmedName,
-                spatialPlacement: SpatialPlacement(captureState: .approximate, confidence: .low)
+                spatialPlacement: placement ?? SpatialPlacement(captureState: .approximate, confidence: .low)
             )
         )
         persistChanges()
@@ -313,17 +313,27 @@ public final class VisitListViewModel: ObservableObject {
         persistChanges()
     }
 
-    func addSpatialObject(to visitID: UUID, kind: SystemComponentKind, areaID: UUID?) -> UUID? {
+    func addSpatialObject(
+        to visitID: UUID,
+        kind: SystemComponentKind,
+        areaID: UUID?,
+        placement: SpatialPlacement? = nil
+    ) -> UUID? {
         guard let visitIndex = indexOfVisit(visitID) else { return nil }
         let captureMode = visits[visitIndex].captureMode
         let component = SystemComponent(
             kind: kind,
             captureMode: captureMode,
-            spatialPlacement: SpatialPlacement(captureState: .failed, confidence: .unknown)
+            spatialPlacement: placement ?? SpatialPlacement(captureState: .failed, confidence: .unknown)
         )
         visits[visitIndex].components.append(component)
         persistChanges()
-        applyAreaReference(toComponent: component.id, roomID: areaID, visitID: visitID)
+        applyAreaReference(
+            toComponent: component.id,
+            roomID: areaID,
+            visitID: visitID,
+            preserveExistingPlacement: placement != nil
+        )
         return component.id
     }
 
@@ -343,7 +353,12 @@ public final class VisitListViewModel: ObservableObject {
         return component.id
     }
 
-    func applyAreaReference(toComponent componentID: UUID, roomID: UUID?, visitID: UUID) {
+    func applyAreaReference(
+        toComponent componentID: UUID,
+        roomID: UUID?,
+        visitID: UUID,
+        preserveExistingPlacement: Bool = false
+    ) {
         guard let visitIndex = indexOfVisit(visitID),
               let componentIndex = indexOfComponent(componentID, in: visitIndex) else {
             return
@@ -352,16 +367,20 @@ public final class VisitListViewModel: ObservableObject {
         if let roomID,
            let roomIndex = indexOfRoom(roomID, in: visitIndex) {
             let room = visits[visitIndex].rooms[roomIndex]
-            visits[visitIndex].components[componentIndex].spatialPlacement = SpatialPlacement(
-                captureState: .areaReferenceOnly,
-                confidence: .low
-            )
+            if !preserveExistingPlacement {
+                visits[visitIndex].components[componentIndex].spatialPlacement = SpatialPlacement(
+                    captureState: .areaReferenceOnly,
+                    confidence: .low
+                )
+            }
             visits[visitIndex].components[componentIndex].componentAttributes["location"] = room.name
         } else {
-            visits[visitIndex].components[componentIndex].spatialPlacement = SpatialPlacement(
-                captureState: .failed,
-                confidence: .unknown
-            )
+            if !preserveExistingPlacement {
+                visits[visitIndex].components[componentIndex].spatialPlacement = SpatialPlacement(
+                    captureState: .failed,
+                    confidence: .unknown
+                )
+            }
             visits[visitIndex].components[componentIndex].componentAttributes.removeValue(forKey: "location")
         }
         persistChanges()

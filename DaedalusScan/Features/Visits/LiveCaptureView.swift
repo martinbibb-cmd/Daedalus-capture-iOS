@@ -14,6 +14,8 @@ struct LiveCaptureView: View {
     @State private var isPresentingCaptureArea = false
     @State private var isPresentingCaptureObject = false
     @State private var isPresentingAttachEvidence = false
+    @State private var spatialSession = SpatialCaptureSession()
+    @State private var livePlacementState = LivePlacementState.unavailable
 
     private var visit: Visit? {
         viewModel.visit(id: visitID)
@@ -74,12 +76,17 @@ struct LiveCaptureView: View {
                     }
                     .sheet(isPresented: $isPresentingCaptureArea) {
                         CaptureAreaSheet { name in
-                            viewModel.addRoom(to: visitID, named: name)
+                            viewModel.addRoom(to: visitID, named: name, placement: currentPlacementMetadata)
                         }
                     }
                     .sheet(isPresented: $isPresentingCaptureObject) {
                         CaptureObjectSheet(areas: visit.rooms) { kind, areaID in
-                            _ = viewModel.addSpatialObject(to: visitID, kind: kind, areaID: areaID)
+                            _ = viewModel.addSpatialObject(
+                                to: visitID,
+                                kind: kind,
+                                areaID: areaID,
+                                placement: currentPlacementMetadata
+                            )
                         }
                     }
                     .sheet(isPresented: $isPresentingAttachEvidence) {
@@ -96,6 +103,9 @@ struct LiveCaptureView: View {
         ScrollView {
             VStack(spacing: 16) {
                 liveCaptureSurface
+                    .onAppear {
+                        syncPlacementStateForSession()
+                    }
 
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Captured so far")
@@ -206,12 +216,23 @@ struct LiveCaptureView: View {
                     endPoint: .bottom
                 )
 
-                Text("Live capture")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .padding(12)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Live capture")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                    Label("Spatial session: \(spatialSession.status.title)", systemImage: "dot.radiowaves.left.and.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(sessionStatusColor)
+                    Label(placementLabel, systemImage: "location")
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.9))
+                }
+                .padding(12)
             }
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+            spatialSessionControls
+                .background(Color(.tertiarySystemGroupedBackground))
 
             primaryActions
                 .background(Color(.secondarySystemGroupedBackground))
@@ -252,6 +273,107 @@ struct LiveCaptureView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(.bar)
+    }
+
+    private var spatialSessionControls: some View {
+        HStack(spacing: 10) {
+            Button {
+                startSpatialSession()
+            } label: {
+                Label("Start", systemImage: "play.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(spatialSession.status == .scanning)
+
+            Button {
+                pauseSpatialSession()
+            } label: {
+                Label("Pause", systemImage: "pause.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .disabled(spatialSession.status != .scanning)
+
+            Button {
+                completeSpatialSession()
+            } label: {
+                Label("Complete", systemImage: "checkmark.circle.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .disabled(spatialSession.status != .scanning && spatialSession.status != .paused)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+    }
+
+    private var currentPlacementMetadata: SpatialPlacement? {
+        guard spatialSession.status == .scanning || spatialSession.status == .paused else {
+            return nil
+        }
+        return livePlacementState.currentPlacement
+    }
+
+    private var placementLabel: String {
+        if livePlacementState.hasAnchor {
+            return "Placement anchor available"
+        }
+        return "No anchor — fallback active"
+    }
+
+    private var sessionStatusColor: Color {
+        switch spatialSession.status {
+        case .scanning:
+            return .green
+        case .paused:
+            return .yellow
+        case .failed:
+            return .red
+        case .completed:
+            return .blue
+        case .notStarted:
+            return .white
+        }
+    }
+
+    private func startSpatialSession() {
+        if spatialSession.status == .completed || spatialSession.status == .failed {
+            spatialSession.id = UUID()
+        }
+        if spatialSession.startedAt == nil || spatialSession.status == .completed || spatialSession.status == .failed {
+            spatialSession.startedAt = Date()
+        }
+        spatialSession.endedAt = nil
+        spatialSession.status = .scanning
+        syncPlacementStateForSession()
+    }
+
+    private func pauseSpatialSession() {
+        guard spatialSession.status == .scanning else { return }
+        spatialSession.status = .paused
+    }
+
+    private func completeSpatialSession() {
+        guard spatialSession.status == .scanning || spatialSession.status == .paused else { return }
+        spatialSession.status = .completed
+        spatialSession.endedAt = Date()
+        livePlacementState = .unavailable
+    }
+
+    private func syncPlacementStateForSession() {
+        guard spatialSession.status == .scanning else {
+            livePlacementState = .unavailable
+            return
+        }
+        livePlacementState = LivePlacementState(
+            currentAnchor: CapturedAnchor(
+                id: "session-\(spatialSession.id.uuidString)",
+                confidence: .medium
+            ),
+            lastKnownPosition: nil,
+            lastUpdatedAt: Date()
+        )
     }
 }
 
