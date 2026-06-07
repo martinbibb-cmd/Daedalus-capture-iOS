@@ -214,6 +214,7 @@ public final class VisitRepository {
             relationships: visit.relationships,
             components: restoredComponents,
             waterSupplyObservations: visit.waterSupplyObservations,
+            servicePointObservations: visit.servicePointObservations,
             sectionStatuses: visit.sectionStatuses,
             proposedSectionStatuses: visit.proposedSectionStatuses
         )

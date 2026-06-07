@@ -434,6 +434,12 @@ public final class VisitListViewModel: ObservableObject {
         persistChanges()
     }
 
+    func addServicePointObservation(to visitID: UUID, observation: ServicePointObservation) {
+        guard let visitIndex = indexOfVisit(visitID) else { return }
+        visits[visitIndex].servicePointObservations.insert(observation, at: 0)
+        persistChanges()
+    }
+
     func removeRelationship(visitID: UUID, relationshipID: UUID) {
         guard let visitIndex = indexOfVisit(visitID) else { return }
         visits[visitIndex].relationships.removeAll { $0.id == relationshipID }

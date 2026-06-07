@@ -225,6 +225,7 @@ public struct DaedalusPackage: Codable, Hashable, Sendable {
     public var observations: [DaedalusObservation]
     public var relationships: [DaedalusRelationship]
     public var waterSupplyObservations: [WaterSupplyObservation]
+    public var servicePointObservations: [ServicePointObservation]
 
     public init(
         packageVersion: Int = currentPackageVersion,
@@ -234,7 +235,8 @@ public struct DaedalusPackage: Codable, Hashable, Sendable {
         createdAt: Date = Date(),
         observations: [DaedalusObservation],
         relationships: [DaedalusRelationship] = [],
-        waterSupplyObservations: [WaterSupplyObservation] = []
+        waterSupplyObservations: [WaterSupplyObservation] = [],
+        servicePointObservations: [ServicePointObservation] = []
     ) {
         self.packageVersion = packageVersion
         self.packageID = packageID
@@ -244,6 +246,7 @@ public struct DaedalusPackage: Codable, Hashable, Sendable {
         self.observations = observations
         self.relationships = relationships
         self.waterSupplyObservations = waterSupplyObservations
+        self.servicePointObservations = servicePointObservations
     }
 
     enum CodingKeys: String, CodingKey {
@@ -255,6 +258,7 @@ public struct DaedalusPackage: Codable, Hashable, Sendable {
         case observations
         case relationships
         case waterSupplyObservations
+        case servicePointObservations
     }
 
     public init(from decoder: Decoder) throws {
@@ -267,6 +271,7 @@ public struct DaedalusPackage: Codable, Hashable, Sendable {
         observations = try container.decode([DaedalusObservation].self, forKey: .observations)
         relationships = try container.decodeIfPresent([DaedalusRelationship].self, forKey: .relationships) ?? []
         waterSupplyObservations = try container.decodeIfPresent([WaterSupplyObservation].self, forKey: .waterSupplyObservations) ?? []
+        servicePointObservations = try container.decodeIfPresent([ServicePointObservation].self, forKey: .servicePointObservations) ?? []
     }
 }
 
@@ -519,6 +524,97 @@ public struct WaterSupplyObservation: Codable, Hashable, Identifiable, Sendable 
     }
 }
 
+public enum ServicePointType: String, Codable, CaseIterable, Identifiable, Sendable {
+    case kitchenTap
+    case bathTap
+    case basinTap
+    case showerMixer
+    case electricShower
+    case outsideTap
+    case washingMachineValve
+    case cylinderInlet
+    case other
+    case unknown
+
+    public var id: String { rawValue }
+}
+
+public enum SupplyType: String, Codable, CaseIterable, Identifiable, Sendable {
+    case mainsCold
+    case storedCold
+    case gravityHot
+    case mainsHot
+    case pumpedHot
+    case mixed
+    case unknown
+
+    public var id: String { rawValue }
+}
+
+public enum IntendedPressureType: String, Codable, CaseIterable, Identifiable, Sendable {
+    case mainsPressure
+    case gravityLowPressure
+    case pumped
+    case universal
+    case unknown
+
+    public var id: String { rawValue }
+}
+
+public enum ObservedIssue: String, Codable, CaseIterable, Identifiable, Sendable {
+    case poorFlow
+    case temperatureFluctuation
+    case slowBathFill
+    case noisyOperation
+    case outletRestrictionSuspected
+    case mismatchSuspected
+    case scaledOrRestricted
+    case noIssueObserved
+    case unknown
+
+    public var id: String { rawValue }
+}
+
+public struct ServicePointObservation: Codable, Hashable, Identifiable, Sendable {
+    public var id: String
+    public var areaID: String
+    public var servicePointType: ServicePointType
+    public var supplyType: SupplyType
+    public var intendedPressureType: IntendedPressureType
+    public var servedByAssetIDs: [String]
+    public var observedIssues: [ObservedIssue]
+    public var evidenceIDs: [String]
+    public var confidence: Confidence
+    public var provenance: TwinProvenance
+    public var notes: String?
+
+    public init(
+        id: String = UUID().uuidString,
+        areaID: String,
+        servicePointType: ServicePointType,
+        supplyType: SupplyType = .unknown,
+        intendedPressureType: IntendedPressureType = .unknown,
+        servedByAssetIDs: [String] = [],
+        observedIssues: [ObservedIssue] = [],
+        evidenceIDs: [String] = [],
+        confidence: Confidence,
+        provenance: TwinProvenance,
+        notes: String? = nil
+    ) {
+        self.id = id
+        self.areaID = areaID
+        self.servicePointType = servicePointType
+        self.supplyType = supplyType
+        self.intendedPressureType = intendedPressureType
+        self.servedByAssetIDs = servedByAssetIDs
+        self.observedIssues = observedIssues
+        self.evidenceIDs = evidenceIDs
+        self.confidence = confidence
+        self.provenance = provenance
+        self.notes = notes
+    }
+}
+
 public struct DaedalusObservation: Codable, Hashable, Identifiable, Sendable {
     public var observationID: String
     public var tag: String
@@ -748,9 +844,22 @@ public func validateTwinIntegrity(_ packageData: DaedalusPackage) -> [PackageVal
             message: "Duplicate water supply observation id"
         )
     )
+    issues.append(
+        contentsOf: duplicateIDIssues(
+            ids: packageData.servicePointObservations.map(\.id),
+            pathPrefix: "servicePointObservations",
+            code: "servicePointObservation.id.duplicate",
+            message: "Duplicate service point observation id"
+        )
+    )
     let evidenceObservationIDs = Set(
         packageData.observations
             .filter { $0.tag.localizedCaseInsensitiveContains("evidence") }
+            .map(\.observationID)
+    )
+    let areaObservationIDs = Set(
+        packageData.observations
+            .filter { $0.tag.localizedCaseInsensitiveCompare("area") == .orderedSame }
             .map(\.observationID)
     )
     for (observationIndex, observation) in packageData.waterSupplyObservations.enumerated() {
@@ -797,6 +906,37 @@ public func validateTwinIntegrity(_ packageData: DaedalusPackage) -> [PackageVal
             )
         }
     }
+    for (observationIndex, observation) in packageData.servicePointObservations.enumerated() {
+        if !areaObservationIDs.contains(observation.areaID) {
+            issues.append(
+                PackageValidationIssue(
+                    path: "servicePointObservations[\(observationIndex)].areaID",
+                    code: "servicePoint.area.reference.missing",
+                    message: "Service point area reference does not exist in package area observations: \(observation.areaID)"
+                )
+            )
+        }
+        for (assetIndex, assetID) in observation.servedByAssetIDs.enumerated()
+            where !observationIDs.contains(assetID) {
+            issues.append(
+                PackageValidationIssue(
+                    path: "servicePointObservations[\(observationIndex)].servedByAssetIDs[\(assetIndex)]",
+                    code: "servicePoint.servedByAsset.reference.missing",
+                    message: "Service point served asset reference does not exist in package observations array: \(assetID)"
+                )
+            )
+        }
+        for (evidenceIndex, evidenceID) in observation.evidenceIDs.enumerated()
+            where !evidenceObservationIDs.contains(evidenceID) {
+            issues.append(
+                PackageValidationIssue(
+                    path: "servicePointObservations[\(observationIndex)].evidenceIDs[\(evidenceIndex)]",
+                    code: "servicePoint.evidence.reference.missing",
+                    message: "Service point evidence reference does not exist in package observations array: \(evidenceID)"
+                )
+            )
+        }
+    }
     return issues
 }
 
@@ -819,7 +959,8 @@ public enum DaedalusPackageExporter {
             createdAt: createdAt,
             observations: observations(from: visit, source: source),
             relationships: visit.relationships.compactMap { $0.exportedDaedalusRelationship(source: source, visit: visit) },
-            waterSupplyObservations: visit.waterSupplyObservations.map { $0.exportedDaedalusWaterObservation(source: source, visit: visit) }
+            waterSupplyObservations: visit.waterSupplyObservations.map { $0.exportedDaedalusWaterObservation(source: source, visit: visit) },
+            servicePointObservations: visit.servicePointObservations.map { $0.exportedDaedalusServicePointObservation(source: source, visit: visit) }
         )
     }
 
@@ -1033,6 +1174,29 @@ private extension WaterSupplyObservation {
                 source: provenance.source.nilIfEmpty ?? source,
                 observedAt: provenance.observedAt ?? observedAt,
                 observedBy: provenance.observedBy.nilIfEmpty ?? observedBy.nilIfEmpty ?? visit.exportedObserver(source: source),
+                notes: provenance.notes ?? notes
+            ),
+            notes: notes
+        )
+    }
+}
+
+private extension ServicePointObservation {
+    func exportedDaedalusServicePointObservation(source: String, visit: Visit) -> ServicePointObservation {
+        ServicePointObservation(
+            id: id,
+            areaID: areaID,
+            servicePointType: servicePointType,
+            supplyType: supplyType,
+            intendedPressureType: intendedPressureType,
+            servedByAssetIDs: servedByAssetIDs,
+            observedIssues: observedIssues,
+            evidenceIDs: evidenceIDs,
+            confidence: confidence,
+            provenance: TwinProvenance(
+                source: provenance.source.nilIfEmpty ?? source,
+                observedAt: provenance.observedAt ?? visit.createdAt,
+                observedBy: provenance.observedBy.nilIfEmpty ?? visit.exportedObserver(source: source),
                 notes: provenance.notes ?? notes
             ),
             notes: notes

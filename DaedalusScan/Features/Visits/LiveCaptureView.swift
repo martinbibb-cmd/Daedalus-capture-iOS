@@ -15,6 +15,7 @@ struct LiveCaptureView: View {
     @State private var isPresentingCaptureObject = false
     @State private var isPresentingAttachEvidence = false
     @State private var isPresentingWaterTest = false
+    @State private var isPresentingServicePoint = false
     @State private var spatialSession = SpatialCaptureSession()
     @State private var livePlacementState = LivePlacementState.unavailable
 
@@ -96,6 +97,9 @@ struct LiveCaptureView: View {
                     }
                     .sheet(isPresented: $isPresentingWaterTest) {
                         WaterSupplyTestSheet(viewModel: viewModel, visitID: visitID)
+                    }
+                    .sheet(isPresented: $isPresentingServicePoint) {
+                        ServicePointSheet(viewModel: viewModel, visitID: visitID, visit: visit)
                     }
             } else {
                 ContentUnavailableView("Visit not found", systemImage: "exclamationmark.triangle")
@@ -203,6 +207,7 @@ struct LiveCaptureView: View {
 
                     CaptureLedgerCard(visit: visit)
                     WaterSupplyLedgerCard(observations: visit.waterSupplyObservations)
+                    ServicePointLedgerCard(observations: visit.servicePointObservations)
                     CompletenessOverlayCard(visit: visit)
                 }
             }
@@ -272,17 +277,25 @@ struct LiveCaptureView: View {
             .buttonStyle(.bordered)
 
             Button {
-                isPresentingAttachEvidence = true
+                isPresentingWaterTest = true
             } label: {
-                Label("Evidence", systemImage: "paperclip")
+                Label("Water Test", systemImage: "drop")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
 
             Button {
-                isPresentingWaterTest = true
+                isPresentingServicePoint = true
             } label: {
-                Label("Water Test", systemImage: "drop")
+                Label("Service Point", systemImage: "faucet")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+
+            Button {
+                isPresentingAttachEvidence = true
+            } label: {
+                Label("Evidence", systemImage: "paperclip")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
@@ -513,6 +526,41 @@ private struct WaterSupplyLedgerCard: View {
     }
 }
 
+private struct ServicePointLedgerCard: View {
+    let observations: [ServicePointObservation]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Service Points")
+                .font(.subheadline.weight(.semibold))
+            if observations.isEmpty {
+                Text("No outlets captured.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(observations.prefix(3)) { observation in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(observation.servicePointType.rawValue)
+                            Text("\(observation.supplyType.rawValue) · \(observation.intendedPressureType.rawValue)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text(observation.observedIssues.isEmpty ? "no issues" : "\(observation.observedIssues.count) issues")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.caption)
+                }
+            }
+        }
+        .padding(14)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
 private struct CompletenessOverlayCard: View {
     let visit: Visit
 
@@ -530,6 +578,7 @@ private struct CompletenessOverlayCard: View {
             overlayRow("Emitters", observed: components.contains { $0.canonicalCategory == .emitter })
             overlayRow("Meters", observed: components.contains { $0.canonicalSubtype == .gasMeter })
             overlayRow("Water Supply", observed: !visit.waterSupplyObservations.isEmpty)
+            overlayRow("Service Points", observed: !visit.servicePointObservations.isEmpty)
         }
         .padding(14)
         .background(Color(.secondarySystemGroupedBackground))

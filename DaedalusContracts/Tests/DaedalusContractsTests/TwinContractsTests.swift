@@ -130,11 +130,17 @@ final class TwinContractsTests: XCTestCase {
         XCTAssertEqual(fixture.waterSupplyObservations.map(\.id), [
             "water-flow-cup-kitchen",
             "water-pressure-flow-pairs",
+            "water-flow-cup-bath",
             "water-customer-report",
             "water-not-tested",
         ])
         XCTAssertTrue(fixture.waterSupplyObservations.contains { $0.method == .customerReported && $0.confidence == .unknown })
         XCTAssertTrue(fixture.waterSupplyObservations.contains { $0.method == .notTested && $0.absenceReason == .noSuitableOutlet })
+        XCTAssertEqual(fixture.servicePointObservations.count, 1)
+        XCTAssertEqual(fixture.servicePointObservations[0].servicePointType, .bathTap)
+        XCTAssertEqual(fixture.servicePointObservations[0].supplyType, .gravityHot)
+        XCTAssertEqual(fixture.servicePointObservations[0].intendedPressureType, .mainsPressure)
+        XCTAssertEqual(fixture.servicePointObservations[0].observedIssues, [.poorFlow, .mismatchSuspected])
     }
 
     func testCaptureExportShapeMatchesSharedHeatingSurveyExpectations() throws {
@@ -157,10 +163,16 @@ final class TwinContractsTests: XCTestCase {
         XCTAssertEqual(package.observations.filter { $0.tag == "controls" }.count, 1)
         XCTAssertEqual(package.observations.filter { $0.tag == "radiator" }.count, 3)
         XCTAssertEqual(package.observations.filter { $0.tag.contains("evidence") }.count, 3)
-        XCTAssertEqual(package.waterSupplyObservations.count, 4)
+        XCTAssertEqual(package.waterSupplyObservations.count, 5)
         XCTAssertEqual(package.waterSupplyObservations.first?.method, .flowCup)
         XCTAssertTrue(package.waterSupplyObservations.contains { $0.method == .pressureFlowTestKit })
+        XCTAssertTrue(package.waterSupplyObservations.contains { $0.id == "water-flow-cup-bath" && $0.location == .bathTap })
         XCTAssertTrue(package.waterSupplyObservations.contains { $0.method == .notTested && $0.absenceReason != nil })
+        XCTAssertEqual(package.servicePointObservations.count, 1)
+        XCTAssertEqual(package.servicePointObservations[0].servicePointType, .bathTap)
+        XCTAssertEqual(package.servicePointObservations[0].areaID, "00000000-0000-0000-0000-000000000102")
+        XCTAssertEqual(package.servicePointObservations[0].servedByAssetIDs, ["00000000-0000-0000-0000-000000000302"])
+        XCTAssertEqual(package.servicePointObservations[0].evidenceIDs, ["00000000-0000-0000-0000-000000000202"])
         XCTAssertEqual(package.relationships.map(\.type), fixture.relationships.map(\.type))
         XCTAssertTrue(package.observations.contains { $0.confidence == .observed })
         XCTAssertTrue(package.observations.contains { $0.confidence == .approximate })
@@ -211,6 +223,29 @@ final class TwinContractsTests: XCTestCase {
         let issues = validateTwinIntegrity(package)
 
         XCTAssertTrue(issues.contains { $0.code == "waterSupply.notTested.reasonMissing" })
+    }
+
+    func testServicePointValidationRejectsMissingAreaReference() {
+        var package = samplePackage()
+        package.servicePointObservations = [
+            servicePointObservation(areaID: "missing-area")
+        ]
+
+        let issues = validateTwinIntegrity(package)
+
+        XCTAssertTrue(issues.contains { $0.code == "servicePoint.area.reference.missing" })
+    }
+
+    func testServicePointValidationRejectsMissingAssetAndEvidenceReferences() {
+        var package = samplePackage()
+        package.servicePointObservations = [
+            servicePointObservation(servedByAssetIDs: ["missing-cylinder"], evidenceIDs: ["missing-evidence"])
+        ]
+
+        let issues = validateTwinIntegrity(package)
+
+        XCTAssertTrue(issues.contains { $0.code == "servicePoint.servedByAsset.reference.missing" })
+        XCTAssertTrue(issues.contains { $0.code == "servicePoint.evidence.reference.missing" })
     }
 
     private func samplePackage() -> DaedalusPackage {
@@ -314,6 +349,31 @@ final class TwinContractsTests: XCTestCase {
                 observedBy: "surveyor@example.com"
             ),
             notes: notes
+        )
+    }
+
+    private func servicePointObservation(
+        areaID: String = "00000000-0000-0000-0000-000000000020",
+        servedByAssetIDs: [String] = ["00000000-0000-0000-0000-000000000040"],
+        evidenceIDs: [String] = ["00000000-0000-0000-0000-000000000090"]
+    ) -> ServicePointObservation {
+        let createdAt = Date(timeIntervalSince1970: 1_704_067_200)
+        return ServicePointObservation(
+            id: "service-point-bath-tap",
+            areaID: areaID,
+            servicePointType: .bathTap,
+            supplyType: .gravityHot,
+            intendedPressureType: .mainsPressure,
+            servedByAssetIDs: servedByAssetIDs,
+            observedIssues: [.poorFlow, .mismatchSuspected],
+            evidenceIDs: evidenceIDs,
+            confidence: .approximate,
+            provenance: TwinProvenance(
+                source: "service-point-capture",
+                observedAt: createdAt,
+                observedBy: "surveyor@example.com"
+            ),
+            notes: "Bath tap poor flow observed."
         )
     }
 
@@ -430,6 +490,22 @@ final class TwinContractsTests: XCTestCase {
                 provenance: TwinProvenance(source: "water-supply-test", observedAt: Self.isoDate("2026-06-07T09:48:00Z")!, observedBy: "engineer-001")
             ),
             WaterSupplyObservation(
+                id: "water-flow-cup-bath",
+                observedAt: Self.isoDate("2026-06-07T09:47:00Z")!,
+                observedBy: "engineer-001",
+                method: .flowCup,
+                location: .bathTap,
+                intent: .servicePointExperience,
+                instrument: "calibrated flow cup",
+                values: [WaterMeasurementValue(name: .flowRate, value: "5", unit: "l/min", confidence: .approximate)],
+                boundaryConditions: WaterBoundaryConditions(otherOutletsOpenDuringTest: .false),
+                suspectedLimitations: [.restrictedOutlet],
+                confidence: .approximate,
+                evidenceIDs: [cylinderEvidence.id.uuidString],
+                provenance: TwinProvenance(source: "water-supply-test", observedAt: Self.isoDate("2026-06-07T09:47:00Z")!, observedBy: "engineer-001"),
+                notes: "Bath tap flow cup observation at the customer service point."
+            ),
+            WaterSupplyObservation(
                 id: "water-customer-report",
                 observedAt: Self.isoDate("2026-06-07T09:50:00Z")!,
                 observedBy: "engineer-001",
@@ -458,6 +534,21 @@ final class TwinContractsTests: XCTestCase {
                 notes: "No safe full-flow test point found."
             )
         ]
+        let servicePointObservations = [
+            ServicePointObservation(
+                id: "service-point-bath-tap",
+                areaID: airingCupboard.id.uuidString,
+                servicePointType: .bathTap,
+                supplyType: .gravityHot,
+                intendedPressureType: .mainsPressure,
+                servedByAssetIDs: [cylinder.id.uuidString],
+                observedIssues: [.poorFlow, .mismatchSuspected],
+                evidenceIDs: [cylinderEvidence.id.uuidString],
+                confidence: .approximate,
+                provenance: TwinProvenance(source: "service-point-capture", observedAt: Self.isoDate("2026-06-07T09:52:00Z")!, observedBy: "engineer-001"),
+                notes: "Bath tap appears intended for mains pressure but is served by open vented/gravity hot supply; poor flow observed."
+            )
+        ]
 
         return Visit(
             id: UUID(uuidString: "00000000-0000-0000-0000-00000000DAED")!,
@@ -476,7 +567,8 @@ final class TwinContractsTests: XCTestCase {
                 SpatialRelationship(sourceComponentID: thermostat.id, relationship: .controls, targetComponentID: livingRoomRadiator.id)
             ],
             components: [boiler, cylinder, thermostat, kitchenRadiator, hallRadiator, livingRoomRadiator],
-            waterSupplyObservations: waterObservations
+            waterSupplyObservations: waterObservations,
+            servicePointObservations: servicePointObservations
         )
     }
 

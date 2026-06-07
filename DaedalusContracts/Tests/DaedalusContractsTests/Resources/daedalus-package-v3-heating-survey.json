@@ -267,6 +267,43 @@
       }
     },
     {
+      "id": "water-flow-cup-bath",
+      "observedAt": "2026-06-07T09:47:00Z",
+      "observedBy": "engineer-001",
+      "method": "flowCup",
+      "location": "bathTap",
+      "intent": "servicePointExperience",
+      "instrument": "calibrated flow cup",
+      "values": [
+        {
+          "name": "flowRate",
+          "value": 5,
+          "unit": "l/min",
+          "confidence": "approximate"
+        }
+      ],
+      "boundaryConditions": {
+        "mainsStopTapFullyOpen": "unknown",
+        "visiblePrvFitted": "unknown",
+        "softenerOrFilterPresent": "unknown",
+        "otherOutletsOpenDuringTest": "false",
+        "restrictorOrAeratorSuspected": "unknown"
+      },
+      "suspectedLimitations": [
+        "restrictedOutlet"
+      ],
+      "confidence": "approximate",
+      "evidenceIDs": [
+        "evidence-cylinder-photo"
+      ],
+      "provenance": {
+        "method": "water-supply-test",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:47:00Z"
+      },
+      "notes": "Bath tap flow cup observation at the customer service point."
+    },
+    {
       "id": "water-customer-report",
       "observedAt": "2026-06-07T09:50:00Z",
       "observedBy": "engineer-001",
@@ -327,6 +364,32 @@
         "captured_at": "2026-06-07T09:51:00Z"
       },
       "notes": "No safe full-flow test point found."
+    }
+  ],
+  "servicePointObservations": [
+    {
+      "id": "service-point-bath-tap",
+      "areaID": "area-airing-cupboard",
+      "servicePointType": "bathTap",
+      "supplyType": "gravityHot",
+      "intendedPressureType": "mainsPressure",
+      "servedByAssetIDs": [
+        "cylinder-airing-cupboard"
+      ],
+      "observedIssues": [
+        "poorFlow",
+        "mismatchSuspected"
+      ],
+      "evidenceIDs": [
+        "evidence-cylinder-photo"
+      ],
+      "confidence": "approximate",
+      "provenance": {
+        "method": "service-point-capture",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:52:00Z"
+      },
+      "notes": "Bath tap appears intended for mains pressure but is served by open vented/gravity hot supply; poor flow observed."
     }
   ],
   "relationships": [

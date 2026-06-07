@@ -839,6 +839,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
     public var relationships: [SpatialRelationship]
     public var components: [SystemComponent]
     public var waterSupplyObservations: [WaterSupplyObservation]
+    public var servicePointObservations: [ServicePointObservation]
     public var sectionStatuses: [SystemComponentKind: SectionStatus]
     public var proposedSectionStatuses: [SystemComponentKind: SectionStatus]
 
@@ -865,6 +866,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         relationships: [SpatialRelationship] = [],
         components: [SystemComponent] = [],
         waterSupplyObservations: [WaterSupplyObservation] = [],
+        servicePointObservations: [ServicePointObservation] = [],
         sectionStatuses: [SystemComponentKind: SectionStatus] = [:],
         proposedSectionStatuses: [SystemComponentKind: SectionStatus] = [:]
     ) {
@@ -885,6 +887,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         self.relationships = relationships
         self.components = components
         self.waterSupplyObservations = waterSupplyObservations
+        self.servicePointObservations = servicePointObservations
         self.sectionStatuses = sectionStatuses
         self.proposedSectionStatuses = proposedSectionStatuses
     }
@@ -907,6 +910,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         case relationships
         case components
         case waterSupplyObservations
+        case servicePointObservations
         case sectionStatuses
         case proposedSectionStatuses
     }
@@ -930,6 +934,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         relationships = try container.decodeIfPresent([SpatialRelationship].self, forKey: .relationships) ?? []
         components = try container.decodeIfPresent([SystemComponent].self, forKey: .components) ?? []
         waterSupplyObservations = try container.decodeIfPresent([WaterSupplyObservation].self, forKey: .waterSupplyObservations) ?? []
+        servicePointObservations = try container.decodeIfPresent([ServicePointObservation].self, forKey: .servicePointObservations) ?? []
         sectionStatuses = try container.decodeIfPresent([SystemComponentKind: SectionStatus].self, forKey: .sectionStatuses) ?? [:]
         proposedSectionStatuses = try container.decodeIfPresent([SystemComponentKind: SectionStatus].self, forKey: .proposedSectionStatuses) ?? [:]
     }
@@ -953,6 +958,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         try container.encode(relationships, forKey: .relationships)
         try container.encode(components, forKey: .components)
         try container.encode(waterSupplyObservations, forKey: .waterSupplyObservations)
+        try container.encode(servicePointObservations, forKey: .servicePointObservations)
         try container.encode(sectionStatuses, forKey: .sectionStatuses)
         try container.encode(proposedSectionStatuses, forKey: .proposedSectionStatuses)
     }
