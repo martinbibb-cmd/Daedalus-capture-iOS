@@ -22,7 +22,7 @@ struct LiveCaptureView: View {
     var body: some View {
         Group {
             if let visit {
-                entityList(visit: visit)
+                cameraFirstCapture(visit: visit)
                     .navigationTitle(visit.reference)
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) {
@@ -33,10 +33,16 @@ struct LiveCaptureView: View {
                             }
                         }
                         ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                isPresentingCameraMode = true
+                            } label: {
+                                Label("Camera Mode", systemImage: "camera.viewfinder")
+                            }
+                        }
+                        ToolbarItem(placement: .topBarTrailing) {
                             Menu {
                                 Button("Visit Context") { isPresentingContext = true }
                                 Button("Capture Summary") { isPresentingSummary = true }
-                                Button("Camera Mode") { isPresentingCameraMode = true }
                                 Divider()
                                 Button("Export Package") {
                                     if let url = viewModel.makeExportTempURL(for: visitID) {
@@ -86,52 +92,135 @@ struct LiveCaptureView: View {
     }
 
     @ViewBuilder
-    private func entityList(visit: Visit) -> some View {
-        List {
-            Section("Captured Areas") {
-                if visit.rooms.isEmpty {
-                    Text("No areas captured yet.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(visit.rooms) { room in
-                        NavigationLink {
-                            RoomDetailView(viewModel: viewModel, visitID: visitID, roomID: room.id)
-                        } label: {
-                            SpatialAreaRow(room: room)
-                        }
-                    }
-                }
-            } footer: {
-                Text("captureState: approximate  •  confidence: approximate")
-                    .font(.caption2)
-            }
+    private func cameraFirstCapture(visit: Visit) -> some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                liveCaptureSurface
 
-            let components = visit.components.filter { $0.captureMode == visit.captureMode }
-            Section("Captured Objects") {
-                if components.isEmpty {
-                    Text("No objects captured yet.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(components) { component in
-                        NavigationLink {
-                            ComponentDetailView(
-                                viewModel: viewModel,
-                                visitID: visitID,
-                                componentID: component.id
-                            )
-                        } label: {
-                            SpatialObjectRow(component: component, rooms: visit.rooms)
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Captured so far")
+                        .font(.headline)
+                        .padding(.horizontal, 14)
+                        .padding(.top, 14)
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Captured Areas")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 14)
+                            .padding(.top, 12)
+                            .padding(.bottom, 8)
+
+                        if visit.rooms.isEmpty {
+                            Text("No areas captured yet.")
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 14)
+                                .padding(.bottom, 12)
+                        } else {
+                            ForEach(visit.rooms) { room in
+                                NavigationLink {
+                                    RoomDetailView(viewModel: viewModel, visitID: visitID, roomID: room.id)
+                                } label: {
+                                    SpatialAreaRow(room: room)
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 8)
+                                }
+                                .buttonStyle(.plain)
+                                if room.id != visit.rooms.last?.id {
+                                    Divider()
+                                        .padding(.leading, 14)
+                                }
+                            }
+                            .padding(.bottom, 8)
                         }
+
+                        Text("captureState: approximate  •  confidence: approximate")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 12)
                     }
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                    let components = visit.components.filter { $0.captureMode == visit.captureMode }
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Captured Objects")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 14)
+                            .padding(.top, 12)
+                            .padding(.bottom, 8)
+
+                        if components.isEmpty {
+                            Text("No objects captured yet.")
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 14)
+                                .padding(.bottom, 12)
+                        } else {
+                            ForEach(components) { component in
+                                NavigationLink {
+                                    ComponentDetailView(
+                                        viewModel: viewModel,
+                                        visitID: visitID,
+                                        componentID: component.id
+                                    )
+                                } label: {
+                                    SpatialObjectRow(component: component, rooms: visit.rooms)
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 8)
+                                }
+                                .buttonStyle(.plain)
+                                if component.id != components.last?.id {
+                                    Divider()
+                                        .padding(.leading, 14)
+                                }
+                            }
+                            .padding(.bottom, 8)
+                        }
+
+                        Text("Objects with area: roomAttached  •  Without area: evidenceOnly")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 12)
+                    }
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
-            } footer: {
-                Text("Objects with area: roomAttached  •  Without area: evidenceOnly")
-                    .font(.caption2)
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
         }
-        .safeAreaInset(edge: .bottom) {
+        .background(Color(.systemGroupedBackground))
+    }
+
+    private var liveCaptureSurface: some View {
+        VStack(spacing: 0) {
+            ZStack(alignment: .bottomLeading) {
+                LiveCameraPreviewView()
+                    .frame(height: 280)
+                    .clipped()
+
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.55)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                Text("Live capture")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .padding(12)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
             primaryActions
+                .background(Color(.secondarySystemGroupedBackground))
         }
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+        )
     }
 
     private var primaryActions: some View {
