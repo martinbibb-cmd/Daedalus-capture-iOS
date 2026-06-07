@@ -423,7 +423,7 @@ public final class VisitListViewModel: ObservableObject {
 
     func makeExportTempURL() -> URL? {
         do {
-            let document = try VisitExportDocument(package: repository.exportPackage(visits: visits))
+            let document = try VisitExportDocument(package: try repository.exportPackage(visits: visits))
             let url = FileManager.default.temporaryDirectory
                 .appendingPathComponent("DaedalusScanExport.daedalusscan")
             try document.data.write(to: url, options: .atomic)
@@ -437,7 +437,7 @@ public final class VisitListViewModel: ObservableObject {
     func makeExportTempURL(for visitID: UUID) -> URL? {
         guard let visit = visit(id: visitID) else { return nil }
         do {
-            let document = try VisitExportDocument(package: repository.exportPackage(visits: [visit]))
+            let document = try VisitExportDocument(package: try repository.exportPackage(visits: [visit]))
             let url = FileManager.default.temporaryDirectory
                 .appendingPathComponent("DaedalusScanExport_\(visit.reference).daedalusscan")
             try document.data.write(to: url, options: .atomic)
