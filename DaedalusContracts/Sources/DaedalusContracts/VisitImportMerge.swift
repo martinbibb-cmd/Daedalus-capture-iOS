@@ -95,6 +95,7 @@ public enum VisitImportMerger {
             proposedSystemType: visit.proposedSystemType,
             captureMode: visit.captureMode,
             rooms: visit.rooms,
+            relationships: visit.relationships,
             components: visit.components,
             sectionStatuses: visit.sectionStatuses,
             proposedSectionStatuses: visit.proposedSectionStatuses

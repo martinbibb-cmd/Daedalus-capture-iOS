@@ -79,6 +79,13 @@ final class TwinContractsTests: XCTestCase {
             customerName: "Family of four",
             notes: "Captured visit",
             rooms: [room],
+            relationships: [
+                SpatialRelationship(
+                    sourceComponentID: component.id,
+                    relationship: .containedIn,
+                    targetAreaID: room.id
+                )
+            ],
             components: [component]
         )
 
@@ -96,8 +103,13 @@ final class TwinContractsTests: XCTestCase {
         XCTAssertEqual(package.houseTwin.areas[0].confidence, .approximate)
         XCTAssertEqual(package.systemTwin.assets.count, 1)
         XCTAssertEqual(package.systemTwin.assets[0].assetType, .boiler)
+        XCTAssertEqual(package.systemTwin.assets[0].canonicalCategory, SystemComponentCategory.heatSource.rawValue)
+        XCTAssertEqual(package.systemTwin.assets[0].canonicalSubtype, SystemComponentSubtype.unknownHeatSource.rawValue)
         XCTAssertEqual(package.systemTwin.assets[0].placement.captureState, .roomAttached)
         XCTAssertEqual(package.systemTwin.assets[0].evidenceIDs, [evidenceID])
+        XCTAssertEqual(package.systemTwin.relationships.count, 1)
+        XCTAssertEqual(package.systemTwin.relationships[0].relationship, .containedIn)
+        XCTAssertEqual(package.systemTwin.relationships[0].targetAreaID, room.id)
         XCTAssertEqual(package.evidence.map(\.id), [evidenceID])
 
         let encoder = JSONEncoder()

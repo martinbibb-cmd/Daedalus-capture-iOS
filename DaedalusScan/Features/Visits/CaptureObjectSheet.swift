@@ -2,18 +2,20 @@ import SwiftUI
 
 struct CaptureObjectSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var kind: SystemComponentKind = .boiler
+    @State private var subtype: SystemComponentSubtype = .unknownHeatSource
     @State private var selectedAreaID: UUID?
     let areas: [Room]
-    let onCapture: (SystemComponentKind, UUID?) -> Void
+    let onCapture: (SystemComponentSubtype, UUID?) -> Void
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Object Type") {
-                    Picker("Type", selection: $kind) {
-                        ForEach(SystemComponentKind.allCases) { k in
-                            Text(k.title).tag(k)
+                ForEach(SystemComponentCategory.allCases.filter { $0 != .unknown }, id: \.id) { category in
+                    Section(category.title) {
+                        Picker("Type", selection: $subtype) {
+                            ForEach(SystemComponentSubtype.allCases.filter { $0.category == category }) { option in
+                                Text(option.title).tag(option)
+                            }
                         }
                     }
                 }
@@ -47,7 +49,7 @@ struct CaptureObjectSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
-                        onCapture(kind, selectedAreaID)
+                        onCapture(subtype, selectedAreaID)
                         dismiss()
                     }
                 }
