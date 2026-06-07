@@ -20,11 +20,11 @@ struct CreateVisitView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Visit Identity") {
+                Section("Minimal Visit Metadata") {
                     TextField("Visit reference (required)", text: $reference)
                         .textInputAutocapitalization(.characters)
                     LabeledContent("Twin Layers", value: "System · House · Home")
-                    Text("Create the visit, then continue directly into live camera capture.")
+                    Text("Enter what you have now, then continue directly into live capture.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
