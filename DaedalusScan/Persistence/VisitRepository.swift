@@ -213,6 +213,7 @@ public final class VisitRepository {
             rooms: restoredRooms,
             relationships: visit.relationships,
             components: restoredComponents,
+            waterSupplyObservations: visit.waterSupplyObservations,
             sectionStatuses: visit.sectionStatuses,
             proposedSectionStatuses: visit.proposedSectionStatuses
         )

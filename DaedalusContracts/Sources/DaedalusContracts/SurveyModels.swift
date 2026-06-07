@@ -838,6 +838,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
     public var rooms: [Room]
     public var relationships: [SpatialRelationship]
     public var components: [SystemComponent]
+    public var waterSupplyObservations: [WaterSupplyObservation]
     public var sectionStatuses: [SystemComponentKind: SectionStatus]
     public var proposedSectionStatuses: [SystemComponentKind: SectionStatus]
 
@@ -863,6 +864,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         rooms: [Room] = [],
         relationships: [SpatialRelationship] = [],
         components: [SystemComponent] = [],
+        waterSupplyObservations: [WaterSupplyObservation] = [],
         sectionStatuses: [SystemComponentKind: SectionStatus] = [:],
         proposedSectionStatuses: [SystemComponentKind: SectionStatus] = [:]
     ) {
@@ -882,6 +884,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         self.rooms = rooms
         self.relationships = relationships
         self.components = components
+        self.waterSupplyObservations = waterSupplyObservations
         self.sectionStatuses = sectionStatuses
         self.proposedSectionStatuses = proposedSectionStatuses
     }
@@ -903,6 +906,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         case rooms
         case relationships
         case components
+        case waterSupplyObservations
         case sectionStatuses
         case proposedSectionStatuses
     }
@@ -925,6 +929,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         rooms = try container.decode([Room].self, forKey: .rooms)
         relationships = try container.decodeIfPresent([SpatialRelationship].self, forKey: .relationships) ?? []
         components = try container.decodeIfPresent([SystemComponent].self, forKey: .components) ?? []
+        waterSupplyObservations = try container.decodeIfPresent([WaterSupplyObservation].self, forKey: .waterSupplyObservations) ?? []
         sectionStatuses = try container.decodeIfPresent([SystemComponentKind: SectionStatus].self, forKey: .sectionStatuses) ?? [:]
         proposedSectionStatuses = try container.decodeIfPresent([SystemComponentKind: SectionStatus].self, forKey: .proposedSectionStatuses) ?? [:]
     }
@@ -947,6 +952,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         try container.encode(rooms, forKey: .rooms)
         try container.encode(relationships, forKey: .relationships)
         try container.encode(components, forKey: .components)
+        try container.encode(waterSupplyObservations, forKey: .waterSupplyObservations)
         try container.encode(sectionStatuses, forKey: .sectionStatuses)
         try container.encode(proposedSectionStatuses, forKey: .proposedSectionStatuses)
     }

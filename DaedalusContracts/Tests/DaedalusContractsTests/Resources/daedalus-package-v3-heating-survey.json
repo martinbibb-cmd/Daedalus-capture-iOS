@@ -187,6 +187,148 @@
       }
     }
   ],
+  "waterSupplyObservations": [
+    {
+      "id": "water-flow-cup-kitchen",
+      "observedAt": "2026-06-07T09:46:00Z",
+      "observedBy": "engineer-001",
+      "method": "flowCup",
+      "location": "kitchenColdTap",
+      "intent": "usableHouseholdCapacity",
+      "instrument": "calibrated flow cup",
+      "values": [
+        {
+          "name": "flowRate",
+          "value": 16,
+          "unit": "l/min",
+          "confidence": "approximate"
+        }
+      ],
+      "boundaryConditions": {
+        "mainsStopTapFullyOpen": "unknown",
+        "visiblePrvFitted": "unknown",
+        "softenerOrFilterPresent": "unknown",
+        "otherOutletsOpenDuringTest": "false",
+        "restrictorOrAeratorSuspected": "unknown"
+      },
+      "suspectedLimitations": [
+        "restrictedOutlet"
+      ],
+      "confidence": "approximate",
+      "evidenceIDs": [
+        "evidence-thermostat-note"
+      ],
+      "provenance": {
+        "method": "water-supply-test",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:46:00Z"
+      },
+      "notes": "Kitchen cold tap flow cup observation only."
+    },
+    {
+      "id": "water-pressure-flow-pairs",
+      "observedAt": "2026-06-07T09:48:00Z",
+      "observedBy": "engineer-001",
+      "method": "pressureFlowTestKit",
+      "location": "outsideTap",
+      "intent": "incomingMainCapacity",
+      "values": [
+        {
+          "name": "flowAtPressure",
+          "value": 16,
+          "unit": "l/min",
+          "condition": "0 bar residual pressure",
+          "confidence": "observed"
+        },
+        {
+          "name": "flowAtPressure",
+          "value": 14,
+          "unit": "l/min",
+          "condition": "1 bar residual pressure",
+          "confidence": "observed"
+        }
+      ],
+      "boundaryConditions": {
+        "mainsStopTapFullyOpen": "unknown",
+        "visiblePrvFitted": "unknown",
+        "softenerOrFilterPresent": "unknown",
+        "otherOutletsOpenDuringTest": "false",
+        "restrictorOrAeratorSuspected": "false"
+      },
+      "suspectedLimitations": [],
+      "confidence": "observed",
+      "evidenceIDs": [
+        "evidence-thermostat-note"
+      ],
+      "provenance": {
+        "method": "water-supply-test",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:48:00Z"
+      }
+    },
+    {
+      "id": "water-customer-report",
+      "observedAt": "2026-06-07T09:50:00Z",
+      "observedBy": "engineer-001",
+      "method": "customerReported",
+      "location": "showerOutlet",
+      "intent": "customerComplaintContext",
+      "values": [
+        {
+          "name": "qualitativeObservation",
+          "value": "Shower slows when kitchen cold tap runs.",
+          "confidence": "unknown"
+        }
+      ],
+      "boundaryConditions": {
+        "mainsStopTapFullyOpen": "unknown",
+        "visiblePrvFitted": "unknown",
+        "softenerOrFilterPresent": "unknown",
+        "otherOutletsOpenDuringTest": "unknown",
+        "restrictorOrAeratorSuspected": "unknown"
+      },
+      "suspectedLimitations": [
+        "customerReportOnly"
+      ],
+      "confidence": "unknown",
+      "evidenceIDs": [
+        "evidence-thermostat-note"
+      ],
+      "provenance": {
+        "method": "customer-report",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:50:00Z"
+      }
+    },
+    {
+      "id": "water-not-tested",
+      "observedAt": "2026-06-07T09:51:00Z",
+      "observedBy": "engineer-001",
+      "method": "notTested",
+      "location": "unknown",
+      "intent": "notTested",
+      "values": [],
+      "boundaryConditions": {
+        "mainsStopTapFullyOpen": "unknown",
+        "visiblePrvFitted": "unknown",
+        "softenerOrFilterPresent": "unknown",
+        "otherOutletsOpenDuringTest": "unknown",
+        "restrictorOrAeratorSuspected": "unknown"
+      },
+      "suspectedLimitations": [
+        "noSuitableOutlet"
+      ],
+      "absenceReason": "noSuitableOutlet",
+      "confidence": "unknown",
+      "evidenceIDs": [],
+      "provenance": {
+        "method": "water-supply-test",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:51:00Z"
+      },
+      "notes": "No safe full-flow test point found."
+    }
+  ],
   "relationships": [
     {
       "relationship_id": "rel-boiler-contained-kitchen",

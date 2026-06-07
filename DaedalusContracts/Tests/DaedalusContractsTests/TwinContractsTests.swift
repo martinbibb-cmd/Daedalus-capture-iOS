@@ -127,6 +127,14 @@ final class TwinContractsTests: XCTestCase {
         XCTAssertTrue(fixture.observations.contains { $0.confidence == .observed })
         XCTAssertTrue(fixture.observations.contains { $0.confidence == .approximate })
         XCTAssertTrue(fixture.observations.contains { $0.confidence == .unknown })
+        XCTAssertEqual(fixture.waterSupplyObservations.map(\.id), [
+            "water-flow-cup-kitchen",
+            "water-pressure-flow-pairs",
+            "water-customer-report",
+            "water-not-tested",
+        ])
+        XCTAssertTrue(fixture.waterSupplyObservations.contains { $0.method == .customerReported && $0.confidence == .unknown })
+        XCTAssertTrue(fixture.waterSupplyObservations.contains { $0.method == .notTested && $0.absenceReason == .noSuitableOutlet })
     }
 
     func testCaptureExportShapeMatchesSharedHeatingSurveyExpectations() throws {
@@ -149,6 +157,10 @@ final class TwinContractsTests: XCTestCase {
         XCTAssertEqual(package.observations.filter { $0.tag == "controls" }.count, 1)
         XCTAssertEqual(package.observations.filter { $0.tag == "radiator" }.count, 3)
         XCTAssertEqual(package.observations.filter { $0.tag.contains("evidence") }.count, 3)
+        XCTAssertEqual(package.waterSupplyObservations.count, 4)
+        XCTAssertEqual(package.waterSupplyObservations.first?.method, .flowCup)
+        XCTAssertTrue(package.waterSupplyObservations.contains { $0.method == .pressureFlowTestKit })
+        XCTAssertTrue(package.waterSupplyObservations.contains { $0.method == .notTested && $0.absenceReason != nil })
         XCTAssertEqual(package.relationships.map(\.type), fixture.relationships.map(\.type))
         XCTAssertTrue(package.observations.contains { $0.confidence == .observed })
         XCTAssertTrue(package.observations.contains { $0.confidence == .approximate })
@@ -164,6 +176,41 @@ final class TwinContractsTests: XCTestCase {
         XCTAssertTrue(json.contains(#""relationships""#))
         XCTAssertTrue(json.contains(#""evidence_refs""#))
         XCTAssertFalse(json.localizedCaseInsensitiveContains("recommendation"))
+    }
+
+    func testWaterSupplyValidationRejectsMissingEvidenceReference() {
+        var package = samplePackage()
+        package.waterSupplyObservations = [
+            waterObservation(evidenceIDs: ["missing-evidence"])
+        ]
+
+        let issues = validateTwinIntegrity(package)
+
+        XCTAssertTrue(issues.contains { $0.code == "waterSupply.evidence.reference.missing" })
+    }
+
+    func testWaterSupplyValidationRejectsNumericValueWithoutUnit() {
+        var package = samplePackage()
+        package.waterSupplyObservations = [
+            waterObservation(values: [
+                WaterMeasurementValue(name: .flowRate, value: "16", confidence: .approximate)
+            ])
+        ]
+
+        let issues = validateTwinIntegrity(package)
+
+        XCTAssertTrue(issues.contains { $0.code == "waterSupply.value.unitMissing" })
+    }
+
+    func testWaterSupplyValidationRequiresNotTestedReason() {
+        var package = samplePackage()
+        package.waterSupplyObservations = [
+            waterObservation(method: .notTested, intent: .notTested, values: [], absenceReason: nil, confidence: .unknown, notes: nil)
+        ]
+
+        let issues = validateTwinIntegrity(package)
+
+        XCTAssertTrue(issues.contains { $0.code == "waterSupply.notTested.reasonMissing" })
     }
 
     private func samplePackage() -> DaedalusPackage {
@@ -234,6 +281,40 @@ final class TwinContractsTests: XCTestCase {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode(DaedalusPackage.self, from: Data(contentsOf: url))
+    }
+
+    private func waterObservation(
+        method: WaterSupplyMethod = .flowCup,
+        intent: WaterSupplyIntent = .usableHouseholdCapacity,
+        values: [WaterMeasurementValue] = [
+            WaterMeasurementValue(name: .flowRate, value: "16", unit: "l/min", confidence: .approximate)
+        ],
+        absenceReason: WaterAbsenceReason? = nil,
+        confidence: Confidence = .approximate,
+        evidenceIDs: [String] = ["00000000-0000-0000-0000-000000000090"],
+        notes: String? = "Field observation only."
+    ) -> WaterSupplyObservation {
+        let createdAt = Date(timeIntervalSince1970: 1_704_067_200)
+        return WaterSupplyObservation(
+            id: "water-test-001",
+            observedAt: createdAt,
+            observedBy: "surveyor@example.com",
+            method: method,
+            location: method == .notTested ? .unknown : .kitchenColdTap,
+            intent: intent,
+            values: values,
+            boundaryConditions: WaterBoundaryConditions(otherOutletsOpenDuringTest: .false),
+            suspectedLimitations: method == .customerReported ? [.customerReportOnly] : [],
+            absenceReason: absenceReason,
+            confidence: confidence,
+            evidenceIDs: evidenceIDs,
+            provenance: TwinProvenance(
+                source: "water-supply-test",
+                observedAt: createdAt,
+                observedBy: "surveyor@example.com"
+            ),
+            notes: notes
+        )
     }
 
     private func heatingSurveyVisit() -> Visit {
@@ -315,6 +396,69 @@ final class TwinContractsTests: XCTestCase {
             spatialPlacement: SpatialPlacement(captureState: .failed, confidence: .unknown)
         )
 
+        let waterObservations = [
+            WaterSupplyObservation(
+                id: "water-flow-cup-kitchen",
+                observedAt: Self.isoDate("2026-06-07T09:46:00Z")!,
+                observedBy: "engineer-001",
+                method: .flowCup,
+                location: .kitchenColdTap,
+                intent: .usableHouseholdCapacity,
+                instrument: "calibrated flow cup",
+                values: [WaterMeasurementValue(name: .flowRate, value: "16", unit: "l/min", confidence: .approximate)],
+                boundaryConditions: WaterBoundaryConditions(otherOutletsOpenDuringTest: .false),
+                suspectedLimitations: [.restrictedOutlet],
+                confidence: .approximate,
+                evidenceIDs: [thermostatEvidence.id.uuidString],
+                provenance: TwinProvenance(source: "water-supply-test", observedAt: Self.isoDate("2026-06-07T09:46:00Z")!, observedBy: "engineer-001"),
+                notes: "Kitchen cold tap flow cup observation only."
+            ),
+            WaterSupplyObservation(
+                id: "water-pressure-flow-pairs",
+                observedAt: Self.isoDate("2026-06-07T09:48:00Z")!,
+                observedBy: "engineer-001",
+                method: .pressureFlowTestKit,
+                location: .outsideTap,
+                intent: .incomingMainCapacity,
+                values: [
+                    WaterMeasurementValue(name: .flowAtPressure, value: "16", unit: "l/min", condition: "0 bar residual pressure", confidence: .observed),
+                    WaterMeasurementValue(name: .flowAtPressure, value: "14", unit: "l/min", condition: "1 bar residual pressure", confidence: .observed)
+                ],
+                boundaryConditions: WaterBoundaryConditions(otherOutletsOpenDuringTest: .false, restrictorOrAeratorSuspected: .false),
+                confidence: .observed,
+                evidenceIDs: [thermostatEvidence.id.uuidString],
+                provenance: TwinProvenance(source: "water-supply-test", observedAt: Self.isoDate("2026-06-07T09:48:00Z")!, observedBy: "engineer-001")
+            ),
+            WaterSupplyObservation(
+                id: "water-customer-report",
+                observedAt: Self.isoDate("2026-06-07T09:50:00Z")!,
+                observedBy: "engineer-001",
+                method: .customerReported,
+                location: .showerOutlet,
+                intent: .customerComplaintContext,
+                values: [
+                    WaterMeasurementValue(name: .qualitativeObservation, value: "Shower slows when kitchen cold tap runs.", confidence: .unknown)
+                ],
+                suspectedLimitations: [.customerReportOnly],
+                confidence: .unknown,
+                evidenceIDs: [thermostatEvidence.id.uuidString],
+                provenance: TwinProvenance(source: "customer-report", observedAt: Self.isoDate("2026-06-07T09:50:00Z")!, observedBy: "engineer-001")
+            ),
+            WaterSupplyObservation(
+                id: "water-not-tested",
+                observedAt: Self.isoDate("2026-06-07T09:51:00Z")!,
+                observedBy: "engineer-001",
+                method: .notTested,
+                location: .unknown,
+                intent: .notTested,
+                suspectedLimitations: [.noSuitableOutlet],
+                absenceReason: .noSuitableOutlet,
+                confidence: .unknown,
+                provenance: TwinProvenance(source: "water-supply-test", observedAt: Self.isoDate("2026-06-07T09:51:00Z")!, observedBy: "engineer-001"),
+                notes: "No safe full-flow test point found."
+            )
+        ]
+
         return Visit(
             id: UUID(uuidString: "00000000-0000-0000-0000-00000000DAED")!,
             reference: "DAE-SMOKE-HEATING-001",
@@ -331,7 +475,8 @@ final class TwinContractsTests: XCTestCase {
                 SpatialRelationship(sourceComponentID: thermostat.id, relationship: .controls, targetComponentID: hallRadiator.id),
                 SpatialRelationship(sourceComponentID: thermostat.id, relationship: .controls, targetComponentID: livingRoomRadiator.id)
             ],
-            components: [boiler, cylinder, thermostat, kitchenRadiator, hallRadiator, livingRoomRadiator]
+            components: [boiler, cylinder, thermostat, kitchenRadiator, hallRadiator, livingRoomRadiator],
+            waterSupplyObservations: waterObservations
         )
     }
 

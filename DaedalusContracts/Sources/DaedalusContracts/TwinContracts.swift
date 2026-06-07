@@ -224,6 +224,7 @@ public struct DaedalusPackage: Codable, Hashable, Sendable {
     public var createdAt: Date
     public var observations: [DaedalusObservation]
     public var relationships: [DaedalusRelationship]
+    public var waterSupplyObservations: [WaterSupplyObservation]
 
     public init(
         packageVersion: Int = currentPackageVersion,
@@ -232,7 +233,8 @@ public struct DaedalusPackage: Codable, Hashable, Sendable {
         propertyRef: String,
         createdAt: Date = Date(),
         observations: [DaedalusObservation],
-        relationships: [DaedalusRelationship] = []
+        relationships: [DaedalusRelationship] = [],
+        waterSupplyObservations: [WaterSupplyObservation] = []
     ) {
         self.packageVersion = packageVersion
         self.packageID = packageID
@@ -241,6 +243,7 @@ public struct DaedalusPackage: Codable, Hashable, Sendable {
         self.createdAt = createdAt
         self.observations = observations
         self.relationships = relationships
+        self.waterSupplyObservations = waterSupplyObservations
     }
 
     enum CodingKeys: String, CodingKey {
@@ -251,6 +254,268 @@ public struct DaedalusPackage: Codable, Hashable, Sendable {
         case createdAt = "captured_at"
         case observations
         case relationships
+        case waterSupplyObservations
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        packageVersion = try container.decode(Int.self, forKey: .packageVersion)
+        packageID = try container.decode(UUID.self, forKey: .packageID)
+        visitID = try container.decode(UUID.self, forKey: .visitID)
+        propertyRef = try container.decode(String.self, forKey: .propertyRef)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        observations = try container.decode([DaedalusObservation].self, forKey: .observations)
+        relationships = try container.decodeIfPresent([DaedalusRelationship].self, forKey: .relationships) ?? []
+        waterSupplyObservations = try container.decodeIfPresent([WaterSupplyObservation].self, forKey: .waterSupplyObservations) ?? []
+    }
+}
+
+public enum WaterSupplyMethod: String, Codable, CaseIterable, Identifiable, Sendable {
+    case digitalPressureFlowLogger
+    case pressureFlowTestKit
+    case flowCup
+    case pressureGauge
+    case customerReported
+    case notTested
+    case other
+    case unknown
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .digitalPressureFlowLogger: return "Digital logger"
+        case .pressureFlowTestKit: return "Pressure + flow kit"
+        case .flowCup: return "Flow cup"
+        case .pressureGauge: return "Pressure gauge"
+        case .customerReported: return "Customer reported"
+        case .notTested: return "Not tested"
+        case .other: return "Other"
+        case .unknown: return "Unknown"
+        }
+    }
+
+    public var qualityHint: String {
+        switch self {
+        case .digitalPressureFlowLogger: return "Best evidence"
+        case .pressureFlowTestKit: return "Good evidence"
+        case .flowCup: return "Useful but local only"
+        case .pressureGauge: return "Pressure-only evidence"
+        case .customerReported: return "Context only"
+        case .notTested: return "Valid absence"
+        case .other, .unknown: return "Record what was observed"
+        }
+    }
+}
+
+public enum WaterSupplyLocation: String, Codable, CaseIterable, Identifiable, Sendable {
+    case outsideTap
+    case kitchenColdTap
+    case internalStopTap
+    case washingMachineValve
+    case bathroomBasinTap
+    case bathTap
+    case showerOutlet
+    case cylinderCupboard
+    case cylinderColdInlet
+    case loftTankFeed
+    case waterMain
+    case other
+    case unknown
+
+    public var id: String { rawValue }
+}
+
+public enum WaterSupplyIntent: String, Codable, CaseIterable, Identifiable, Sendable {
+    case incomingMainCapacity
+    case usableHouseholdCapacity
+    case hotWaterPlantFeed
+    case servicePointExperience
+    case customerComplaintContext
+    case notTested
+    case unknown
+
+    public var id: String { rawValue }
+}
+
+public enum WaterMeasurementValueName: String, Codable, CaseIterable, Identifiable, Sendable {
+    case staticPressure
+    case dynamicPressure
+    case residualPressure
+    case flowRate
+    case flowAtPressure
+    case waterTemperature
+    case tds
+    case qualitativeObservation
+
+    public var id: String { rawValue }
+}
+
+public enum WaterBoundaryState: String, Codable, CaseIterable, Identifiable, Sendable {
+    case `true`
+    case `false`
+    case unknown
+
+    public var id: String { rawValue }
+}
+
+public enum WaterSuspectedLimitation: String, Codable, CaseIterable, Identifiable, Sendable {
+    case restrictedOutlet
+    case aerator
+    case monoblocTails
+    case isolationValvePartClosed
+    case seizedStopTap
+    case inaccessibleMain
+    case prvSuspected
+    case softenerOrFilter
+    case sharedSupplySuspected
+    case customerReportOnly
+    case noSuitableOutlet
+    case other
+
+    public var id: String { rawValue }
+}
+
+public enum WaterAbsenceReason: String, Codable, CaseIterable, Identifiable, Sendable {
+    case notSafe
+    case noAccess
+    case seizedValve
+    case noSuitableOutlet
+    case customerDeclined
+    case timeConstraint
+    case equipmentUnavailable
+    case other
+
+    public var id: String { rawValue }
+}
+
+public struct WaterMeasurementValue: Codable, Hashable, Identifiable, Sendable {
+    public var id: String { "\(name.rawValue):\(condition ?? "")" }
+    public var name: WaterMeasurementValueName
+    public var value: String
+    public var unit: String?
+    public var condition: String?
+    public var confidence: Confidence?
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case value
+        case unit
+        case condition
+        case confidence
+    }
+
+    public init(
+        name: WaterMeasurementValueName,
+        value: String,
+        unit: String? = nil,
+        condition: String? = nil,
+        confidence: Confidence? = nil
+    ) {
+        self.name = name
+        self.value = value
+        self.unit = unit
+        self.condition = condition
+        self.confidence = confidence
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(WaterMeasurementValueName.self, forKey: .name)
+        if let stringValue = try? container.decode(String.self, forKey: .value) {
+            value = stringValue
+        } else if let doubleValue = try? container.decode(Double.self, forKey: .value) {
+            if doubleValue.rounded() == doubleValue {
+                value = String(Int(doubleValue))
+            } else {
+                value = String(doubleValue)
+            }
+        } else {
+            value = try String(container.decode(Int.self, forKey: .value))
+        }
+        unit = try container.decodeIfPresent(String.self, forKey: .unit)
+        condition = try container.decodeIfPresent(String.self, forKey: .condition)
+        confidence = try container.decodeIfPresent(Confidence.self, forKey: .confidence)
+    }
+}
+
+public struct WaterBoundaryConditions: Codable, Hashable, Sendable {
+    public var mainsStopTapFullyOpen: WaterBoundaryState
+    public var visiblePrvFitted: WaterBoundaryState
+    public var softenerOrFilterPresent: WaterBoundaryState
+    public var otherOutletsOpenDuringTest: WaterBoundaryState
+    public var restrictorOrAeratorSuspected: WaterBoundaryState
+    public var timeOfDay: String?
+    public var notes: String?
+
+    public init(
+        mainsStopTapFullyOpen: WaterBoundaryState = .unknown,
+        visiblePrvFitted: WaterBoundaryState = .unknown,
+        softenerOrFilterPresent: WaterBoundaryState = .unknown,
+        otherOutletsOpenDuringTest: WaterBoundaryState = .unknown,
+        restrictorOrAeratorSuspected: WaterBoundaryState = .unknown,
+        timeOfDay: String? = nil,
+        notes: String? = nil
+    ) {
+        self.mainsStopTapFullyOpen = mainsStopTapFullyOpen
+        self.visiblePrvFitted = visiblePrvFitted
+        self.softenerOrFilterPresent = softenerOrFilterPresent
+        self.otherOutletsOpenDuringTest = otherOutletsOpenDuringTest
+        self.restrictorOrAeratorSuspected = restrictorOrAeratorSuspected
+        self.timeOfDay = timeOfDay
+        self.notes = notes
+    }
+}
+
+public struct WaterSupplyObservation: Codable, Hashable, Identifiable, Sendable {
+    public var id: String
+    public var observedAt: Date
+    public var observedBy: String
+    public var method: WaterSupplyMethod
+    public var location: WaterSupplyLocation
+    public var intent: WaterSupplyIntent
+    public var instrument: String?
+    public var values: [WaterMeasurementValue]
+    public var boundaryConditions: WaterBoundaryConditions
+    public var suspectedLimitations: [WaterSuspectedLimitation]
+    public var absenceReason: WaterAbsenceReason?
+    public var confidence: Confidence
+    public var evidenceIDs: [String]
+    public var provenance: TwinProvenance
+    public var notes: String?
+
+    public init(
+        id: String = UUID().uuidString,
+        observedAt: Date = Date(),
+        observedBy: String,
+        method: WaterSupplyMethod,
+        location: WaterSupplyLocation,
+        intent: WaterSupplyIntent,
+        instrument: String? = nil,
+        values: [WaterMeasurementValue] = [],
+        boundaryConditions: WaterBoundaryConditions = WaterBoundaryConditions(),
+        suspectedLimitations: [WaterSuspectedLimitation] = [],
+        absenceReason: WaterAbsenceReason? = nil,
+        confidence: Confidence,
+        evidenceIDs: [String] = [],
+        provenance: TwinProvenance,
+        notes: String? = nil
+    ) {
+        self.id = id
+        self.observedAt = observedAt
+        self.observedBy = observedBy
+        self.method = method
+        self.location = location
+        self.intent = intent
+        self.instrument = instrument
+        self.values = values
+        self.boundaryConditions = boundaryConditions
+        self.suspectedLimitations = suspectedLimitations
+        self.absenceReason = absenceReason
+        self.confidence = confidence
+        self.evidenceIDs = evidenceIDs
+        self.provenance = provenance
+        self.notes = notes
     }
 }
 
@@ -475,6 +740,63 @@ public func validateTwinIntegrity(_ packageData: DaedalusPackage) -> [PackageVal
             )
         }
     }
+    issues.append(
+        contentsOf: duplicateIDIssues(
+            ids: packageData.waterSupplyObservations.map(\.id),
+            pathPrefix: "waterSupplyObservations",
+            code: "waterSupplyObservation.id.duplicate",
+            message: "Duplicate water supply observation id"
+        )
+    )
+    let evidenceObservationIDs = Set(
+        packageData.observations
+            .filter { $0.tag.localizedCaseInsensitiveContains("evidence") }
+            .map(\.observationID)
+    )
+    for (observationIndex, observation) in packageData.waterSupplyObservations.enumerated() {
+        if observation.method == .notTested,
+           observation.absenceReason == nil,
+           observation.notes?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+            issues.append(
+                PackageValidationIssue(
+                    path: "waterSupplyObservations[\(observationIndex)].absenceReason",
+                    code: "waterSupply.notTested.reasonMissing",
+                    message: "Not tested water observations require an absence reason or notes."
+                )
+            )
+        }
+        if observation.method == .customerReported,
+           observation.notes?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false,
+           !observation.values.contains(where: { $0.name == .qualitativeObservation }) {
+            issues.append(
+                PackageValidationIssue(
+                    path: "waterSupplyObservations[\(observationIndex)].values",
+                    code: "waterSupply.customerReported.contextMissing",
+                    message: "Customer reported water observations require a qualitative observation or notes."
+                )
+            )
+        }
+        for (valueIndex, value) in observation.values.enumerated()
+            where Double(value.value) != nil && value.unit?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+            issues.append(
+                PackageValidationIssue(
+                    path: "waterSupplyObservations[\(observationIndex)].values[\(valueIndex)].unit",
+                    code: "waterSupply.value.unitMissing",
+                    message: "Numeric water measurement values require a unit."
+                )
+            )
+        }
+        for (evidenceIndex, evidenceID) in observation.evidenceIDs.enumerated()
+            where !evidenceObservationIDs.contains(evidenceID) {
+            issues.append(
+                PackageValidationIssue(
+                    path: "waterSupplyObservations[\(observationIndex)].evidenceIDs[\(evidenceIndex)]",
+                    code: "waterSupply.evidence.reference.missing",
+                    message: "Water supply evidence reference does not exist in package observations array: \(evidenceID)"
+                )
+            )
+        }
+    }
     return issues
 }
 
@@ -496,7 +818,8 @@ public enum DaedalusPackageExporter {
             propertyRef: visit.reference,
             createdAt: createdAt,
             observations: observations(from: visit, source: source),
-            relationships: visit.relationships.compactMap { $0.exportedDaedalusRelationship(source: source, visit: visit) }
+            relationships: visit.relationships.compactMap { $0.exportedDaedalusRelationship(source: source, visit: visit) },
+            waterSupplyObservations: visit.waterSupplyObservations.map { $0.exportedDaedalusWaterObservation(source: source, visit: visit) }
         )
     }
 
@@ -686,6 +1009,33 @@ private extension SpatialRelationship {
                 observedAt: visit.createdAt,
                 observedBy: visit.exportedObserver(source: source)
             )
+        )
+    }
+}
+
+private extension WaterSupplyObservation {
+    func exportedDaedalusWaterObservation(source: String, visit: Visit) -> WaterSupplyObservation {
+        WaterSupplyObservation(
+            id: id,
+            observedAt: observedAt,
+            observedBy: observedBy.nilIfEmpty ?? visit.exportedObserver(source: source),
+            method: method,
+            location: location,
+            intent: intent,
+            instrument: instrument,
+            values: values,
+            boundaryConditions: boundaryConditions,
+            suspectedLimitations: suspectedLimitations,
+            absenceReason: absenceReason,
+            confidence: confidence,
+            evidenceIDs: evidenceIDs,
+            provenance: TwinProvenance(
+                source: provenance.source.nilIfEmpty ?? source,
+                observedAt: provenance.observedAt ?? observedAt,
+                observedBy: provenance.observedBy.nilIfEmpty ?? observedBy.nilIfEmpty ?? visit.exportedObserver(source: source),
+                notes: provenance.notes ?? notes
+            ),
+            notes: notes
         )
     }
 }

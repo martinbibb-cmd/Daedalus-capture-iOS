@@ -97,6 +97,7 @@ public enum VisitImportMerger {
             rooms: visit.rooms,
             relationships: visit.relationships,
             components: visit.components,
+            waterSupplyObservations: visit.waterSupplyObservations,
             sectionStatuses: visit.sectionStatuses,
             proposedSectionStatuses: visit.proposedSectionStatuses
         )
