@@ -316,14 +316,17 @@ public final class VisitListViewModel: ObservableObject {
     func addSpatialObject(
         to visitID: UUID,
         kind: SystemComponentKind,
+        subtype: SystemComponentSubtype? = nil,
         areaID: UUID?,
         placement: SpatialPlacement? = nil
     ) -> UUID? {
         guard let visitIndex = indexOfVisit(visitID) else { return nil }
         let captureMode = visits[visitIndex].captureMode
+        let resolvedSubtype = subtype ?? kind.defaultSubtype
         let component = SystemComponent(
-            kind: kind,
+            kind: resolvedSubtype.legacyKind,
             captureMode: captureMode,
+            canonicalSubtype: resolvedSubtype,
             spatialPlacement: placement ?? SpatialPlacement(captureState: .failed, confidence: .unknown)
         )
         visits[visitIndex].components.append(component)
@@ -346,6 +349,7 @@ public final class VisitListViewModel: ObservableObject {
         let component = SystemComponent(
             kind: kind,
             captureMode: captureMode,
+            canonicalSubtype: kind.defaultSubtype,
             spatialPlacement: SpatialPlacement(captureState: .failed, confidence: .unknown)
         )
         visits[visitIndex].components.append(component)
@@ -374,6 +378,13 @@ public final class VisitListViewModel: ObservableObject {
                 )
             }
             visits[visitIndex].components[componentIndex].componentAttributes["location"] = room.name
+            upsertSpatialRelationship(
+                visitIndex: visitIndex,
+                sourceComponentID: componentID,
+                relationship: .containedIn,
+                targetComponentID: nil,
+                targetAreaID: room.id
+            )
         } else {
             if !preserveExistingPlacement {
                 visits[visitIndex].components[componentIndex].spatialPlacement = SpatialPlacement(
@@ -382,7 +393,44 @@ public final class VisitListViewModel: ObservableObject {
                 )
             }
             visits[visitIndex].components[componentIndex].componentAttributes.removeValue(forKey: "location")
+            visits[visitIndex].relationships.removeAll {
+                $0.sourceComponentID == componentID &&
+                    $0.relationship == .containedIn &&
+                    $0.targetAreaID != nil
+            }
         }
+        persistChanges()
+    }
+
+    func relationships(for visitID: UUID, sourceComponentID: UUID) -> [SpatialRelationship] {
+        guard let visit = visit(id: visitID) else { return [] }
+        return visit.relationships.filter { $0.sourceComponentID == sourceComponentID }
+    }
+
+    func addRelationship(
+        visitID: UUID,
+        sourceComponentID: UUID,
+        relationship: SpatialRelationshipType,
+        targetComponentID: UUID?,
+        targetAreaID: UUID?
+    ) {
+        guard let visitIndex = indexOfVisit(visitID),
+              indexOfComponent(sourceComponentID, in: visitIndex) != nil else {
+            return
+        }
+        upsertSpatialRelationship(
+            visitIndex: visitIndex,
+            sourceComponentID: sourceComponentID,
+            relationship: relationship,
+            targetComponentID: targetComponentID,
+            targetAreaID: targetAreaID
+        )
+        persistChanges()
+    }
+
+    func removeRelationship(visitID: UUID, relationshipID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID) else { return }
+        visits[visitIndex].relationships.removeAll { $0.id == relationshipID }
         persistChanges()
     }
 
@@ -616,5 +664,29 @@ public final class VisitListViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func upsertSpatialRelationship(
+        visitIndex: Int,
+        sourceComponentID: UUID,
+        relationship: SpatialRelationshipType,
+        targetComponentID: UUID?,
+        targetAreaID: UUID?
+    ) {
+        if let index = visits[visitIndex].relationships.firstIndex(where: {
+            $0.sourceComponentID == sourceComponentID && $0.relationship == relationship
+        }) {
+            visits[visitIndex].relationships[index].targetComponentID = targetComponentID
+            visits[visitIndex].relationships[index].targetAreaID = targetAreaID
+            return
+        }
+        visits[visitIndex].relationships.append(
+            SpatialRelationship(
+                sourceComponentID: sourceComponentID,
+                relationship: relationship,
+                targetComponentID: targetComponentID,
+                targetAreaID: targetAreaID
+            )
+        )
     }
 }

@@ -120,6 +120,8 @@ public enum SystemAssetType: String, Codable, CaseIterable, Sendable {
 public struct SystemAsset: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public var assetType: SystemAssetType
+    public var canonicalCategory: String
+    public var canonicalSubtype: String
     public var placement: TwinSpatialPlacement
     public var confidence: Confidence
     public var evidenceIDs: [UUID]
@@ -127,25 +129,53 @@ public struct SystemAsset: Codable, Hashable, Identifiable, Sendable {
     public init(
         id: UUID = UUID(),
         assetType: SystemAssetType,
+        canonicalCategory: String = SystemComponentCategory.unknown.rawValue,
+        canonicalSubtype: String = SystemComponentSubtype.unknownInfrastructure.rawValue,
         placement: TwinSpatialPlacement,
         confidence: Confidence,
         evidenceIDs: [UUID]
     ) {
         self.id = id
         self.assetType = assetType
+        self.canonicalCategory = canonicalCategory
+        self.canonicalSubtype = canonicalSubtype
         self.placement = placement
         self.confidence = confidence
         self.evidenceIDs = evidenceIDs
     }
 }
 
+public struct SystemRelationship: Codable, Hashable, Identifiable, Sendable {
+    public let id: UUID
+    public var sourceAssetID: UUID
+    public var relationship: SpatialRelationshipType
+    public var targetAssetID: UUID?
+    public var targetAreaID: UUID?
+
+    public init(
+        id: UUID = UUID(),
+        sourceAssetID: UUID,
+        relationship: SpatialRelationshipType,
+        targetAssetID: UUID? = nil,
+        targetAreaID: UUID? = nil
+    ) {
+        self.id = id
+        self.sourceAssetID = sourceAssetID
+        self.relationship = relationship
+        self.targetAssetID = targetAssetID
+        self.targetAreaID = targetAreaID
+    }
+}
+
 public struct SystemTwin: Codable, Hashable, Sendable {
     public let id: UUID
     public var assets: [SystemAsset]
+    public var relationships: [SystemRelationship]
 
-    public init(id: UUID = UUID(), assets: [SystemAsset]) {
+    public init(id: UUID = UUID(), assets: [SystemAsset], relationships: [SystemRelationship] = []) {
         self.id = id
         self.assets = assets
+        self.relationships = relationships
     }
 }
 
@@ -303,7 +333,10 @@ public enum DaedalusPackageExporter {
     ) -> DaedalusPackage {
         let exportedEvidence = roomEvidence(from: visit, source: source) + componentEvidence(from: visit, source: source)
         let houseTwin = HouseTwin(areas: visit.rooms.map(\.exportedSpatialArea))
-        let systemTwin = SystemTwin(assets: visit.components.map(\.exportedSystemAsset))
+        let systemTwin = SystemTwin(
+            assets: visit.components.map(\.exportedSystemAsset),
+            relationships: visit.relationships.map(\.exportedSystemRelationship)
+        )
         let homeTwin = HomeTwin(
             occupancyDescription: visit.customerName.nilIfEmpty,
             notes: visit.notes.nilIfEmpty
@@ -423,6 +456,8 @@ private extension SystemComponent {
         return SystemAsset(
             id: id,
             assetType: kind.exportedAssetType,
+            canonicalCategory: canonicalCategory.rawValue,
+            canonicalSubtype: canonicalSubtype.rawValue,
             placement: placement,
             confidence: confidence,
             evidenceIDs: evidence.map(\.id)
@@ -452,6 +487,18 @@ private extension SystemComponent {
         case .unresolved:
             return .unresolved
         }
+    }
+}
+
+private extension SpatialRelationship {
+    var exportedSystemRelationship: SystemRelationship {
+        SystemRelationship(
+            id: id,
+            sourceAssetID: sourceComponentID,
+            relationship: relationship,
+            targetAssetID: targetComponentID,
+            targetAreaID: targetAreaID
+        )
     }
 }
 

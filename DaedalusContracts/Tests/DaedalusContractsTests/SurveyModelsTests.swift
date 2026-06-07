@@ -231,10 +231,10 @@ final class SurveyModelsTests: XCTestCase {
         let decoded = try decoder.decode(VisitPackage.self, from: data)
 
         XCTAssertNotNil(decoded.metadata)
-        XCTAssertEqual(decoded.metadata?.schemaVersion, 2)
+        XCTAssertEqual(decoded.metadata?.schemaVersion, 3)
         XCTAssertEqual(decoded.metadata?.source, "Daedalus Scan")
         XCTAssertEqual(decoded.metadata?.exportedByApp, "Daedalus Scan")
-        XCTAssertEqual(decoded.schemaVersion, 2)
+        XCTAssertEqual(decoded.schemaVersion, 3)
         XCTAssertEqual(decoded.exportedAt, decoded.metadata?.createdAt)
     }
 
@@ -360,10 +360,19 @@ final class SurveyModelsTests: XCTestCase {
         let decoder = JSONDecoder()
         let component = try decoder.decode(SystemComponent.self, from: Data(json.utf8))
         XCTAssertEqual(component.kind, .boiler)
+        XCTAssertEqual(component.canonicalSubtype, .unknownHeatSource)
         XCTAssertEqual(component.componentAttributes, [:])
         XCTAssertNil(component.reviewStatus)
         XCTAssertNil(component.reviewNotes)
         XCTAssertEqual(component.spatialPlacement.captureState, .unspecified)
+    }
+
+    func testVisitDecodesLegacyPayloadWithoutRelationships() throws {
+        let json = "[{\"id\":\"00000000-0000-0000-0000-000000000099\",\"reference\":\"VIS-LEGACY-ID\",\"createdAt\":\"2024-01-01T00:00:00Z\",\"twinKind\":\"home\",\"rooms\":[],\"components\":[]}]"
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let visits = try decoder.decode([Visit].self, from: Data(json.utf8))
+        XCTAssertEqual(visits[0].relationships, [])
     }
 
     func testLegacyRoomSurveyAndEvidenceDecodeWithoutReviewFields() throws {

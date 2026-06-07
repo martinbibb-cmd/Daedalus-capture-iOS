@@ -80,10 +80,11 @@ struct LiveCaptureView: View {
                         }
                     }
                     .sheet(isPresented: $isPresentingCaptureObject) {
-                        CaptureObjectSheet(areas: visit.rooms) { kind, areaID in
+                        CaptureObjectSheet(areas: visit.areas) { subtype, areaID in
                             _ = viewModel.addSpatialObject(
                                 to: visitID,
-                                kind: kind,
+                                kind: subtype.legacyKind,
+                                subtype: subtype,
                                 areaID: areaID,
                                 placement: currentPlacementMetadata
                             )
@@ -120,13 +121,13 @@ struct LiveCaptureView: View {
                             .padding(.top, 12)
                             .padding(.bottom, 8)
 
-                        if visit.rooms.isEmpty {
+                        if visit.areas.isEmpty {
                             Text("No areas captured yet.")
                                 .foregroundStyle(.secondary)
                                 .padding(.horizontal, 14)
                                 .padding(.bottom, 12)
                         } else {
-                            ForEach(visit.rooms) { room in
+                            ForEach(visit.areas) { room in
                                 NavigationLink {
                                     RoomDetailView(viewModel: viewModel, visitID: visitID, roomID: room.id)
                                 } label: {
@@ -135,7 +136,7 @@ struct LiveCaptureView: View {
                                         .padding(.vertical, 8)
                                 }
                                 .buttonStyle(.plain)
-                                if room.id != visit.rooms.last?.id {
+                                if room.id != visit.areas.last?.id {
                                     Divider()
                                         .padding(.leading, 14)
                                 }
@@ -154,7 +155,7 @@ struct LiveCaptureView: View {
 
                     let components = visit.components.filter { $0.captureMode == visit.captureMode }
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("Captured Objects")
+                        Text("Captured Components")
                             .font(.subheadline.weight(.semibold))
                             .padding(.horizontal, 14)
                             .padding(.top, 12)
@@ -174,7 +175,7 @@ struct LiveCaptureView: View {
                                         componentID: component.id
                                     )
                                 } label: {
-                                    SpatialObjectRow(component: component, rooms: visit.rooms)
+                                    SpatialObjectRow(component: component)
                                         .padding(.horizontal, 14)
                                         .padding(.vertical, 8)
                                 }
@@ -187,7 +188,7 @@ struct LiveCaptureView: View {
                             .padding(.bottom, 8)
                         }
 
-                        Text("Objects with area: roomAttached  •  Without area: evidenceOnly")
+                        Text("Unknown subtypes remain valid capture.")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 14)
@@ -195,6 +196,9 @@ struct LiveCaptureView: View {
                     }
                     .background(Color(.secondarySystemGroupedBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                    CaptureLedgerCard(visit: visit)
+                    CompletenessOverlayCard(visit: visit)
                 }
             }
             .padding(.horizontal, 16)
@@ -257,7 +261,7 @@ struct LiveCaptureView: View {
             Button {
                 isPresentingCaptureObject = true
             } label: {
-                Label("Capture Object", systemImage: "cube")
+                Label("Capture Component", systemImage: "cube")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
@@ -400,11 +404,10 @@ private struct SpatialAreaRow: View {
 
 private struct SpatialObjectRow: View {
     let component: SystemComponent
-    let rooms: [Room]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(component.kind.title)
+            Text(component.canonicalSubtype.title)
             HStack(spacing: 8) {
                 Label(placementLabel, systemImage: "location")
                     .font(.caption)
@@ -413,6 +416,75 @@ private struct SpatialObjectRow: View {
                     Label("\(component.evidence.count)", systemImage: "paperclip")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+            }
+
+            private struct CaptureLedgerCard: View {
+                let visit: Visit
+
+                private var components: [SystemComponent] {
+                    visit.components.filter { $0.captureMode == visit.captureMode }
+                }
+
+                var body: some View {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Capture Ledger")
+                            .font(.subheadline.weight(.semibold))
+                        ForEach(SystemComponentCategory.allCases.filter { $0 != .unknown }, id: \.id) { category in
+                            let count = components.filter { $0.canonicalCategory == category }.count
+                            HStack {
+                                Text(category.title)
+                                Spacer()
+                                Text(count == 0 ? "?" : count == 1 ? "✓" : "\(count) captured")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .font(.caption)
+                        }
+                        HStack {
+                            Text("Evidence")
+                            Spacer()
+                            Text("\(visit.rooms.reduce(0) { $0 + $1.evidence.count } + components.reduce(0) { $0 + $1.evidence.count }) items")
+                                .foregroundStyle(.secondary)
+                        }
+                        .font(.caption)
+                    }
+                    .padding(14)
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+            }
+
+            private struct CompletenessOverlayCard: View {
+                let visit: Visit
+
+                private var components: [SystemComponent] {
+                    visit.components.filter { $0.captureMode == visit.captureMode }
+                }
+
+                var body: some View {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Observed")
+                            .font(.subheadline.weight(.semibold))
+                        overlayRow("Heat Source", observed: components.contains { $0.canonicalCategory == .heatSource })
+                        overlayRow("Hot Water", observed: components.contains { $0.canonicalCategory == .hotWater })
+                        overlayRow("Controls", observed: components.contains { $0.canonicalCategory == .control })
+                        overlayRow("Emitters", observed: components.contains { $0.canonicalCategory == .emitter })
+                        overlayRow("Meters", observed: components.contains { $0.canonicalSubtype == .gasMeter })
+                    }
+                    .padding(14)
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+
+                @ViewBuilder
+                private func overlayRow(_ label: String, observed: Bool) -> some View {
+                    HStack {
+                        Text(label)
+                        Spacer()
+                        Text(observed ? "✓" : "?")
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.caption)
                 }
             }
         }

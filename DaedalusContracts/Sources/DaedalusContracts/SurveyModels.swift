@@ -220,6 +220,48 @@ public struct SpatialPlacement: Codable, Hashable, Sendable {
     }
 }
 
+public enum SpatialRelationshipType: String, Codable, CaseIterable, Identifiable, Sendable {
+    case containedIn
+    case connectedTo
+    case controls
+    case supplies
+    case serves
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .containedIn: return "Contained In"
+        case .connectedTo: return "Connected To"
+        case .controls: return "Controls"
+        case .supplies: return "Supplies"
+        case .serves: return "Serves"
+        }
+    }
+}
+
+public struct SpatialRelationship: Codable, Hashable, Identifiable, Sendable {
+    public let id: UUID
+    public var sourceComponentID: UUID
+    public var relationship: SpatialRelationshipType
+    public var targetComponentID: UUID?
+    public var targetAreaID: UUID?
+
+    public init(
+        id: UUID = UUID(),
+        sourceComponentID: UUID,
+        relationship: SpatialRelationshipType,
+        targetComponentID: UUID? = nil,
+        targetAreaID: UUID? = nil
+    ) {
+        self.id = id
+        self.sourceComponentID = sourceComponentID
+        self.relationship = relationship
+        self.targetComponentID = targetComponentID
+        self.targetAreaID = targetAreaID
+    }
+}
+
 public struct Room: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public var name: String
@@ -347,6 +389,169 @@ public enum SystemComponentKind: String, Codable, CaseIterable, Identifiable, Se
         .pump,
         .other
     ]
+}
+
+public enum SystemComponentCategory: String, Codable, CaseIterable, Identifiable, Sendable {
+    case heatSource
+    case hotWater
+    case emitter
+    case control
+    case infrastructure
+    case unknown
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .heatSource: return "Heat Source"
+        case .hotWater: return "Hot Water"
+        case .emitter: return "Emitters"
+        case .control: return "Controls"
+        case .infrastructure: return "Infrastructure"
+        case .unknown: return "Unknown"
+        }
+    }
+}
+
+public enum SystemComponentSubtype: String, Codable, CaseIterable, Identifiable, Sendable {
+    case regularBoiler
+    case systemBoiler
+    case combiBoiler
+    case ashp
+    case otherHeatSource
+    case unknownHeatSource
+    case unventedCylinder
+    case ventedCylinder
+    case thermalStore
+    case coldWaterStorage
+    case feedAndExpansion
+    case directCombiDHW
+    case unknownHotWater
+    case radiatorUncontrolled
+    case radiatorTRVControlled
+    case radiatorInRoomStatZone
+    case radiatorTRVControlledInRoomStatZone
+    case towelRail
+    case towelRailTRVControlled
+    case ufhSingleZone
+    case ufhZoned
+    case ufhDedicatedRoomStat
+    case fanConvector
+    case unknownEmitter
+    case programmer
+    case roomThermostat
+    case smartThermostat
+    case trv
+    case zoneValve
+    case weatherCompensation
+    case unknownControl
+    case gasMeter
+    case waterMain
+    case stopTap
+    case flueTerminal
+    case condensateRoute
+    case pump
+    case magneticFilter
+    case otherInfrastructure
+    case unknownInfrastructure
+
+    public var id: String { rawValue }
+
+    public var category: SystemComponentCategory {
+        switch self {
+        case .regularBoiler, .systemBoiler, .combiBoiler, .ashp, .otherHeatSource, .unknownHeatSource:
+            return .heatSource
+        case .unventedCylinder, .ventedCylinder, .thermalStore, .coldWaterStorage, .feedAndExpansion, .directCombiDHW, .unknownHotWater:
+            return .hotWater
+        case .radiatorUncontrolled, .radiatorTRVControlled, .radiatorInRoomStatZone, .radiatorTRVControlledInRoomStatZone, .towelRail, .towelRailTRVControlled, .ufhSingleZone, .ufhZoned, .ufhDedicatedRoomStat, .fanConvector, .unknownEmitter:
+            return .emitter
+        case .programmer, .roomThermostat, .smartThermostat, .trv, .zoneValve, .weatherCompensation, .unknownControl:
+            return .control
+        case .gasMeter, .waterMain, .stopTap, .flueTerminal, .condensateRoute, .pump, .magneticFilter, .otherInfrastructure, .unknownInfrastructure:
+            return .infrastructure
+        }
+    }
+
+    public var title: String {
+        switch self {
+        case .regularBoiler: return "Regular Boiler"
+        case .systemBoiler: return "System Boiler"
+        case .combiBoiler: return "Combi Boiler"
+        case .ashp: return "ASHP"
+        case .otherHeatSource: return "Other Heat Source"
+        case .unknownHeatSource: return "Unknown Heat Source"
+        case .unventedCylinder: return "Unvented Cylinder"
+        case .ventedCylinder: return "Vented Cylinder"
+        case .thermalStore: return "Thermal Store"
+        case .coldWaterStorage: return "Cold Water Storage"
+        case .feedAndExpansion: return "Feed & Expansion"
+        case .directCombiDHW: return "Direct Combi DHW"
+        case .unknownHotWater: return "Unknown Hot Water"
+        case .radiatorUncontrolled: return "Radiator Uncontrolled"
+        case .radiatorTRVControlled: return "Radiator TRV Controlled"
+        case .radiatorInRoomStatZone: return "Radiator In Room Stat Zone"
+        case .radiatorTRVControlledInRoomStatZone: return "Radiator TRV Controlled In Room Stat Zone"
+        case .towelRail: return "Towel Rail"
+        case .towelRailTRVControlled: return "Towel Rail TRV Controlled"
+        case .ufhSingleZone: return "UFH Single Zone"
+        case .ufhZoned: return "UFH Zoned"
+        case .ufhDedicatedRoomStat: return "UFH Dedicated Room Stat"
+        case .fanConvector: return "Fan Convector"
+        case .unknownEmitter: return "Unknown Emitter"
+        case .programmer: return "Programmer"
+        case .roomThermostat: return "Room Thermostat"
+        case .smartThermostat: return "Smart Thermostat"
+        case .trv: return "TRV"
+        case .zoneValve: return "Zone Valve"
+        case .weatherCompensation: return "Weather Compensation"
+        case .unknownControl: return "Unknown Control"
+        case .gasMeter: return "Gas Meter"
+        case .waterMain: return "Water Main"
+        case .stopTap: return "Stop Tap"
+        case .flueTerminal: return "Flue Terminal"
+        case .condensateRoute: return "Condensate Route"
+        case .pump: return "Pump"
+        case .magneticFilter: return "Magnetic Filter"
+        case .otherInfrastructure: return "Other Infrastructure"
+        case .unknownInfrastructure: return "Unknown Infrastructure"
+        }
+    }
+
+    public var legacyKind: SystemComponentKind {
+        switch self {
+        case .regularBoiler, .systemBoiler, .combiBoiler, .ashp, .otherHeatSource, .unknownHeatSource:
+            return .boiler
+        case .unventedCylinder, .ventedCylinder, .thermalStore, .coldWaterStorage, .feedAndExpansion, .directCombiDHW, .unknownHotWater:
+            return .cylinder
+        case .radiatorUncontrolled, .radiatorTRVControlled, .radiatorInRoomStatZone, .radiatorTRVControlledInRoomStatZone, .towelRail, .towelRailTRVControlled, .ufhSingleZone, .ufhZoned, .ufhDedicatedRoomStat, .fanConvector, .unknownEmitter:
+            return .radiator
+        case .programmer, .roomThermostat, .smartThermostat, .trv, .zoneValve, .weatherCompensation, .unknownControl:
+            return .controls
+        case .gasMeter:
+            return .gasMeter
+        case .waterMain, .stopTap, .flueTerminal, .condensateRoute, .magneticFilter, .otherInfrastructure, .unknownInfrastructure:
+            return .other
+        case .pump:
+            return .pump
+        }
+    }
+}
+
+public extension SystemComponentKind {
+    var defaultSubtype: SystemComponentSubtype {
+        switch self {
+        case .boiler: return .unknownHeatSource
+        case .flue: return .flueTerminal
+        case .controls: return .unknownControl
+        case .cylinder: return .unknownHotWater
+        case .feedAndExpansion: return .feedAndExpansion
+        case .gasMeter: return .gasMeter
+        case .radiator: return .radiatorUncontrolled
+        case .pump: return .pump
+        case .pipework: return .otherInfrastructure
+        case .other: return .unknownInfrastructure
+        }
+    }
 }
 
 public enum SectionStatus: String, Codable, CaseIterable, Hashable, Sendable {
@@ -526,9 +731,14 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
     public var notes: String
     public var reviewStatus: ReviewStatus?
     public var reviewNotes: String?
+    public var canonicalSubtype: SystemComponentSubtype
     public var componentAttributes: [String: String]
     public var evidence: [Evidence]
     public var spatialPlacement: SpatialPlacement
+
+    public var canonicalCategory: SystemComponentCategory {
+        canonicalSubtype.category
+    }
 
     public init(
         id: UUID = UUID(),
@@ -540,6 +750,7 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         notes: String = "",
         reviewStatus: ReviewStatus? = nil,
         reviewNotes: String? = nil,
+        canonicalSubtype: SystemComponentSubtype? = nil,
         componentAttributes: [String: String] = [:],
         evidence: [Evidence] = [],
         spatialPlacement: SpatialPlacement = SpatialPlacement()
@@ -553,6 +764,7 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         self.notes = notes
         self.reviewStatus = reviewStatus
         self.reviewNotes = reviewNotes
+        self.canonicalSubtype = canonicalSubtype ?? kind.defaultSubtype
         self.componentAttributes = componentAttributes
         self.evidence = evidence
         self.spatialPlacement = spatialPlacement
@@ -568,6 +780,7 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         case notes
         case reviewStatus
         case reviewNotes
+        case canonicalSubtype
         case componentAttributes
         case evidence
         case spatialPlacement
@@ -584,6 +797,7 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         notes = try container.decode(String.self, forKey: .notes)
         reviewStatus = try container.decodeIfPresent(ReviewStatus.self, forKey: .reviewStatus)
         reviewNotes = try container.decodeIfPresent(String.self, forKey: .reviewNotes)
+        canonicalSubtype = try container.decodeIfPresent(SystemComponentSubtype.self, forKey: .canonicalSubtype) ?? kind.defaultSubtype
         componentAttributes = try container.decodeIfPresent([String: String].self, forKey: .componentAttributes) ?? [:]
         evidence = try container.decodeIfPresent([Evidence].self, forKey: .evidence) ?? []
         spatialPlacement = try container.decodeIfPresent(SpatialPlacement.self, forKey: .spatialPlacement) ?? SpatialPlacement()
@@ -600,6 +814,7 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         try container.encode(notes, forKey: .notes)
         try container.encodeIfPresent(reviewStatus, forKey: .reviewStatus)
         try container.encodeIfPresent(reviewNotes, forKey: .reviewNotes)
+        try container.encode(canonicalSubtype, forKey: .canonicalSubtype)
         try container.encode(componentAttributes, forKey: .componentAttributes)
         try container.encode(evidence, forKey: .evidence)
         try container.encode(spatialPlacement, forKey: .spatialPlacement)
@@ -621,9 +836,15 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
     public var proposedSystemType: HeatingSystemType
     public var captureMode: CaptureMode
     public var rooms: [Room]
+    public var relationships: [SpatialRelationship]
     public var components: [SystemComponent]
     public var sectionStatuses: [SystemComponentKind: SectionStatus]
     public var proposedSectionStatuses: [SystemComponentKind: SectionStatus]
+
+    public var areas: [Room] {
+        get { rooms }
+        set { rooms = newValue }
+    }
 
     public init(
         id: UUID = UUID(),
@@ -640,6 +861,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         proposedSystemType: HeatingSystemType = .unknown,
         captureMode: CaptureMode = .current,
         rooms: [Room] = [],
+        relationships: [SpatialRelationship] = [],
         components: [SystemComponent] = [],
         sectionStatuses: [SystemComponentKind: SectionStatus] = [:],
         proposedSectionStatuses: [SystemComponentKind: SectionStatus] = [:]
@@ -658,6 +880,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         self.proposedSystemType = proposedSystemType
         self.captureMode = captureMode
         self.rooms = rooms
+        self.relationships = relationships
         self.components = components
         self.sectionStatuses = sectionStatuses
         self.proposedSectionStatuses = proposedSectionStatuses
@@ -678,6 +901,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         case proposedSystemType
         case captureMode
         case rooms
+        case relationships
         case components
         case sectionStatuses
         case proposedSectionStatuses
@@ -699,6 +923,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         proposedSystemType = try container.decodeIfPresent(HeatingSystemType.self, forKey: .proposedSystemType) ?? .unknown
         captureMode = try container.decodeIfPresent(CaptureMode.self, forKey: .captureMode) ?? .current
         rooms = try container.decode([Room].self, forKey: .rooms)
+        relationships = try container.decodeIfPresent([SpatialRelationship].self, forKey: .relationships) ?? []
         components = try container.decodeIfPresent([SystemComponent].self, forKey: .components) ?? []
         sectionStatuses = try container.decodeIfPresent([SystemComponentKind: SectionStatus].self, forKey: .sectionStatuses) ?? [:]
         proposedSectionStatuses = try container.decodeIfPresent([SystemComponentKind: SectionStatus].self, forKey: .proposedSectionStatuses) ?? [:]
@@ -720,6 +945,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         try container.encode(proposedSystemType, forKey: .proposedSystemType)
         try container.encode(captureMode, forKey: .captureMode)
         try container.encode(rooms, forKey: .rooms)
+        try container.encode(relationships, forKey: .relationships)
         try container.encode(components, forKey: .components)
         try container.encode(sectionStatuses, forKey: .sectionStatuses)
         try container.encode(proposedSectionStatuses, forKey: .proposedSectionStatuses)
@@ -795,7 +1021,7 @@ public struct VisitPackage: Codable, Hashable, Sendable {
 }
 
 public struct VisitPackageMetadata: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
     public static let canonicalSource = "Daedalus Scan"
 
     public var packageID: UUID

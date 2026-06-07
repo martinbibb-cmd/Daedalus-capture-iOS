@@ -9,6 +9,10 @@ struct ComponentDetailView: View {
     @State private var isPresentingCamera = false
     @State private var isPresentingTextNote = false
     @State private var textNoteContent = ""
+    @State private var relationshipType: SpatialRelationshipType = .connectedTo
+    @State private var relationshipTargetMode: RelationshipTargetMode = .component
+    @State private var targetComponentID: UUID?
+    @State private var targetAreaID: UUID?
 
     var body: some View {
         Group {
@@ -16,7 +20,8 @@ struct ComponentDetailView: View {
                 List {
                     spatialSection(component: component)
                     Section("Component") {
-                        LabeledContent("Type", value: component.kind.title)
+                        LabeledContent("Category", value: component.canonicalCategory.title)
+                        LabeledContent("Type", value: component.canonicalSubtype.title)
                         if !component.name.isEmpty {
                             LabeledContent("Name", value: component.name)
                         }
@@ -64,8 +69,101 @@ struct ComponentDetailView: View {
                                 onChange: { newValue in
                                     viewModel.updateComponentAttribute(newValue, for: field.key, componentID: componentID, visitID: visitID)
                                 }
+
+                                relationshipsSection(component: component)
                             )
                         }
+
+                        @ViewBuilder
+                        private func relationshipsSection(component: SystemComponent) -> some View {
+                            let visit = viewModel.visit(id: visitID)
+                            let relationships = viewModel.relationships(for: visitID, sourceComponentID: componentID)
+
+                            Section("Relationships") {
+                                if relationships.isEmpty {
+                                    Text("No observed relationships yet.")
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    ForEach(relationships) { relationship in
+                                        HStack {
+                                            Text(relationship.relationship.title)
+                                            Spacer()
+                                            Text(relationshipTargetLabel(relationship: relationship, visit: visit))
+                                                .foregroundStyle(.secondary)
+                                            Button(role: .destructive) {
+                                                viewModel.removeRelationship(visitID: visitID, relationshipID: relationship.id)
+                                            } label: {
+                                                Image(systemName: "trash")
+                                            }
+                                            .buttonStyle(.borderless)
+                                        }
+                                    }
+                                }
+
+                                Picker("Type", selection: $relationshipType) {
+                                    ForEach(SpatialRelationshipType.allCases) { relationship in
+                                        Text(relationship.title).tag(relationship)
+                                    }
+                                }
+
+                                Picker("Target", selection: $relationshipTargetMode) {
+                                    Text("Component").tag(RelationshipTargetMode.component)
+                                    Text("Area").tag(RelationshipTargetMode.area)
+                                }
+                                .pickerStyle(.segmented)
+
+                                if relationshipTargetMode == .component {
+                                    let currentCaptureMode = visit?.captureMode
+                                    Picker("Component", selection: $targetComponentID) {
+                                        Text("Select").tag(Optional<UUID>.none)
+                                        ForEach((visit?.components ?? []).filter { candidate in
+                                            candidate.id != componentID && (currentCaptureMode == nil || candidate.captureMode == currentCaptureMode)
+                                        }) { candidate in
+                                            Text(candidate.canonicalSubtype.title).tag(Optional(candidate.id))
+                                        }
+                                    }
+                                } else {
+                                    Picker("Area", selection: $targetAreaID) {
+                                        Text("Select").tag(Optional<UUID>.none)
+                                        ForEach(visit?.areas ?? []) { area in
+                                            Text(area.name).tag(Optional(area.id))
+                                        }
+                                    }
+                                }
+
+                                Button("Add Relationship") {
+                                    viewModel.addRelationship(
+                                        visitID: visitID,
+                                        sourceComponentID: componentID,
+                                        relationship: relationshipType,
+                                        targetComponentID: relationshipTargetMode == .component ? targetComponentID : nil,
+                                        targetAreaID: relationshipTargetMode == .area ? targetAreaID : nil
+                                    )
+                                    targetComponentID = nil
+                                    targetAreaID = nil
+                                }
+                                .disabled(relationshipTargetMode == .component ? targetComponentID == nil : targetAreaID == nil)
+                            } footer: {
+                                Text("Relationships are observed links only; no simulation is inferred.")
+                            }
+                        }
+
+                        private func relationshipTargetLabel(relationship: SpatialRelationship, visit: Visit?) -> String {
+                            if let componentID = relationship.targetComponentID,
+                               let component = visit?.components.first(where: { $0.id == componentID }) {
+                                return component.canonicalSubtype.title
+                            }
+                            if let areaID = relationship.targetAreaID,
+                               let area = visit?.areas.first(where: { $0.id == areaID }) {
+                                return area.name
+                            }
+                            return "Unknown"
+                        }
+                    }
+
+                    private enum RelationshipTargetMode {
+                        case component
+                        case area
                     }
 
                     Section("Evidence") {

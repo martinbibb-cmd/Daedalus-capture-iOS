@@ -211,6 +211,7 @@ public final class VisitRepository {
             proposedSystemType: visit.proposedSystemType,
             captureMode: visit.captureMode,
             rooms: restoredRooms,
+            relationships: visit.relationships,
             components: restoredComponents,
             sectionStatuses: visit.sectionStatuses,
             proposedSectionStatuses: visit.proposedSectionStatuses
