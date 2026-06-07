@@ -24,6 +24,13 @@ public struct TwinProvenance: Codable, Hashable, Sendable {
         self.observedBy = observedBy
         self.notes = notes
     }
+
+    enum CodingKeys: String, CodingKey {
+        case source = "method"
+        case observedAt = "captured_at"
+        case observedBy = "captured_by"
+        case notes
+    }
 }
 
 public struct TwinEvidence: Codable, Hashable, Identifiable, Sendable {
@@ -208,32 +215,179 @@ public struct UnifiedPropertyTwin: Codable, Hashable, Sendable {
 }
 
 public struct DaedalusPackage: Codable, Hashable, Sendable {
-    public static let currentVersion = "1.0.0"
+    public static let currentPackageVersion = 3
 
-    public var version: String
+    public var packageVersion: Int
     public var packageID: UUID
+    public var visitID: UUID
+    public var propertyRef: String
     public var createdAt: Date
-    public var houseTwin: HouseTwin
-    public var systemTwin: SystemTwin
-    public var homeTwin: HomeTwin
-    public var evidence: [TwinEvidence]
+    public var observations: [DaedalusObservation]
+    public var relationships: [DaedalusRelationship]
 
     public init(
-        version: String = currentVersion,
+        packageVersion: Int = currentPackageVersion,
         packageID: UUID = UUID(),
+        visitID: UUID,
+        propertyRef: String,
         createdAt: Date = Date(),
-        houseTwin: HouseTwin,
-        systemTwin: SystemTwin,
-        homeTwin: HomeTwin,
-        evidence: [TwinEvidence]
+        observations: [DaedalusObservation],
+        relationships: [DaedalusRelationship] = []
     ) {
-        self.version = version
+        self.packageVersion = packageVersion
         self.packageID = packageID
+        self.visitID = visitID
+        self.propertyRef = propertyRef
         self.createdAt = createdAt
-        self.houseTwin = houseTwin
-        self.systemTwin = systemTwin
-        self.homeTwin = homeTwin
-        self.evidence = evidence
+        self.observations = observations
+        self.relationships = relationships
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case packageVersion
+        case packageID = "packageId"
+        case visitID = "visitId"
+        case propertyRef
+        case createdAt = "captured_at"
+        case observations
+        case relationships
+    }
+}
+
+public struct DaedalusObservation: Codable, Hashable, Identifiable, Sendable {
+    public var observationID: String
+    public var tag: String
+    public var name: String?
+    public var type: String?
+    public var manufacturer: String?
+    public var model: String?
+    public var notes: String?
+    public var roomRef: String?
+    public var assetRef: String?
+    public var fileRef: String?
+    public var confidence: Confidence?
+    public var captureState: CaptureState?
+    public var position: SpatialPosition?
+    public var evidenceRefs: [String]
+    public var provenance: TwinProvenance
+
+    public var id: String { observationID }
+
+    public init(
+        observationID: String,
+        tag: String,
+        name: String? = nil,
+        type: String? = nil,
+        manufacturer: String? = nil,
+        model: String? = nil,
+        notes: String? = nil,
+        roomRef: String? = nil,
+        assetRef: String? = nil,
+        fileRef: String? = nil,
+        confidence: Confidence? = nil,
+        captureState: CaptureState? = nil,
+        position: SpatialPosition? = nil,
+        evidenceRefs: [String] = [],
+        provenance: TwinProvenance
+    ) {
+        self.observationID = observationID
+        self.tag = tag
+        self.name = name
+        self.type = type
+        self.manufacturer = manufacturer
+        self.model = model
+        self.notes = notes
+        self.roomRef = roomRef
+        self.assetRef = assetRef
+        self.fileRef = fileRef
+        self.confidence = confidence
+        self.captureState = captureState
+        self.position = position
+        self.evidenceRefs = evidenceRefs
+        self.provenance = provenance
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case observationID = "observation_id"
+        case tag
+        case name
+        case type
+        case manufacturer
+        case model
+        case notes
+        case roomRef = "room_ref"
+        case assetRef = "asset_ref"
+        case fileRef = "file_ref"
+        case confidence
+        case captureState = "capture_state"
+        case position
+        case evidenceRefs = "evidence_refs"
+        case provenance
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        observationID = try container.decode(String.self, forKey: .observationID)
+        tag = try container.decode(String.self, forKey: .tag)
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        type = try container.decodeIfPresent(String.self, forKey: .type)
+        manufacturer = try container.decodeIfPresent(String.self, forKey: .manufacturer)
+        model = try container.decodeIfPresent(String.self, forKey: .model)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        roomRef = try container.decodeIfPresent(String.self, forKey: .roomRef)
+        assetRef = try container.decodeIfPresent(String.self, forKey: .assetRef)
+        fileRef = try container.decodeIfPresent(String.self, forKey: .fileRef)
+        confidence = try container.decodeIfPresent(Confidence.self, forKey: .confidence)
+        captureState = try container.decodeIfPresent(CaptureState.self, forKey: .captureState)
+        position = try container.decodeIfPresent(SpatialPosition.self, forKey: .position)
+        evidenceRefs = try container.decodeIfPresent([String].self, forKey: .evidenceRefs) ?? []
+        provenance = try container.decode(TwinProvenance.self, forKey: .provenance)
+    }
+}
+
+public struct DaedalusRelationship: Codable, Hashable, Identifiable, Sendable {
+    public var relationshipID: String
+    public var type: SpatialRelationshipType
+    public var from: String
+    public var to: String
+    public var evidenceRefs: [String]
+    public var provenance: TwinProvenance
+
+    public var id: String { relationshipID }
+
+    public init(
+        relationshipID: String,
+        type: SpatialRelationshipType,
+        from: String,
+        to: String,
+        evidenceRefs: [String] = [],
+        provenance: TwinProvenance
+    ) {
+        self.relationshipID = relationshipID
+        self.type = type
+        self.from = from
+        self.to = to
+        self.evidenceRefs = evidenceRefs
+        self.provenance = provenance
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case relationshipID = "relationship_id"
+        case type
+        case from
+        case to
+        case evidenceRefs = "evidence_refs"
+        case provenance
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        relationshipID = try container.decode(String.self, forKey: .relationshipID)
+        type = try container.decode(SpatialRelationshipType.self, forKey: .type)
+        from = try container.decode(String.self, forKey: .from)
+        to = try container.decode(String.self, forKey: .to)
+        evidenceRefs = try container.decodeIfPresent([String].self, forKey: .evidenceRefs) ?? []
+        provenance = try container.decode(TwinProvenance.self, forKey: .provenance)
     }
 }
 
@@ -272,16 +426,16 @@ public struct PackageValidationResult: Hashable, Sendable {
 }
 
 public func validateEvidenceReferences(_ packageData: DaedalusPackage) -> [PackageValidationIssue] {
-    let evidenceIDs = Set(packageData.evidence.map(\.id))
+    let observationIDs = Set(packageData.observations.map(\.observationID))
     var issues: [PackageValidationIssue] = []
 
-    for (assetIndex, asset) in packageData.systemTwin.assets.enumerated() {
-        for (evidenceIndex, evidenceID) in asset.evidenceIDs.enumerated() where !evidenceIDs.contains(evidenceID) {
+    for (observationIndex, observation) in packageData.observations.enumerated() {
+        for (evidenceIndex, evidenceRef) in observation.evidenceRefs.enumerated() where !observationIDs.contains(evidenceRef) {
             issues.append(
                 PackageValidationIssue(
-                    path: "systemTwin.assets[\(assetIndex)].evidenceIDs[\(evidenceIndex)]",
+                    path: "observations[\(observationIndex)].evidenceRefs[\(evidenceIndex)]",
                     code: "evidence.reference.missing",
-                    message: "Evidence ID does not exist in package evidence array: \(evidenceID.uuidString)"
+                    message: "Evidence reference does not exist in package observations array: \(evidenceRef)"
                 )
             )
         }
@@ -294,28 +448,33 @@ public func validateTwinIntegrity(_ packageData: DaedalusPackage) -> [PackageVal
     var issues: [PackageValidationIssue] = []
     issues.append(
         contentsOf: duplicateIDIssues(
-            ids: packageData.houseTwin.areas.map(\.id),
-            pathPrefix: "houseTwin.areas",
-            code: "spatialArea.id.duplicate",
-            message: "Duplicate SpatialArea.id"
+            ids: packageData.observations.map(\.observationID),
+            pathPrefix: "observations",
+            code: "observation.id.duplicate",
+            message: "Duplicate observation_id"
         )
     )
-    issues.append(
-        contentsOf: duplicateIDIssues(
-            ids: packageData.systemTwin.assets.map(\.id),
-            pathPrefix: "systemTwin.assets",
-            code: "systemAsset.id.duplicate",
-            message: "Duplicate SystemAsset.id"
-        )
-    )
-    issues.append(
-        contentsOf: duplicateIDIssues(
-            ids: packageData.evidence.map(\.id),
-            pathPrefix: "evidence",
-            code: "twinEvidence.id.duplicate",
-            message: "Duplicate TwinEvidence.id"
-        )
-    )
+    let observationIDs = Set(packageData.observations.map(\.observationID))
+    for (relationshipIndex, relationship) in packageData.relationships.enumerated() {
+        if !observationIDs.contains(relationship.from) {
+            issues.append(
+                PackageValidationIssue(
+                    path: "relationships[\(relationshipIndex)].from",
+                    code: "relationship.endpoint.missing",
+                    message: "Relationship source does not exist in package observations array: \(relationship.from)"
+                )
+            )
+        }
+        if !observationIDs.contains(relationship.to) {
+            issues.append(
+                PackageValidationIssue(
+                    path: "relationships[\(relationshipIndex)].to",
+                    code: "relationship.endpoint.missing",
+                    message: "Relationship target does not exist in package observations array: \(relationship.to)"
+                )
+            )
+        }
+    }
     return issues
 }
 
@@ -331,59 +490,37 @@ public enum DaedalusPackageExporter {
         createdAt: Date = Date(),
         source: String = VisitPackageMetadata.canonicalSource
     ) -> DaedalusPackage {
-        let exportedEvidence = roomEvidence(from: visit, source: source) + componentEvidence(from: visit, source: source)
-        let houseTwin = HouseTwin(areas: visit.rooms.map(\.exportedSpatialArea))
-        let systemTwin = SystemTwin(
-            assets: visit.components.map(\.exportedSystemAsset),
-            relationships: visit.relationships.map(\.exportedSystemRelationship)
-        )
-        let homeTwin = HomeTwin(
-            occupancyDescription: visit.customerName.nilIfEmpty,
-            notes: visit.notes.nilIfEmpty
-        )
-
         return DaedalusPackage(
             packageID: packageID,
+            visitID: visit.id,
+            propertyRef: visit.reference,
             createdAt: createdAt,
-            houseTwin: houseTwin,
-            systemTwin: systemTwin,
-            homeTwin: homeTwin,
-            evidence: exportedEvidence
+            observations: observations(from: visit, source: source),
+            relationships: visit.relationships.compactMap { $0.exportedDaedalusRelationship(source: source, visit: visit) }
         )
     }
 
-    private static func roomEvidence(from visit: Visit, source: String) -> [TwinEvidence] {
-        visit.rooms.flatMap { room in
-            room.evidence.map {
-                $0.exportedTwinEvidence(
-                    source: source,
-                    observedBy: visit.engineerName,
-                    contextTitle: room.name
-                )
-            }
+    private static func observations(from visit: Visit, source: String) -> [DaedalusObservation] {
+        let areaObservations = visit.rooms.map { $0.exportedDaedalusObservation(source: source, visit: visit) }
+        let assetObservations = visit.components.map { $0.exportedDaedalusObservation(source: source, visit: visit) }
+        let roomEvidence = visit.rooms.flatMap { room in
+            room.evidence.map { $0.exportedDaedalusEvidence(source: source, visit: visit, assetRef: room.id.uuidString) }
         }
-    }
-
-    private static func componentEvidence(from visit: Visit, source: String) -> [TwinEvidence] {
-        visit.components.flatMap { component in
-            component.evidence.map {
-                $0.exportedTwinEvidence(
-                    source: source,
-                    observedBy: visit.engineerName,
-                    contextTitle: component.exportedContextTitle
-                )
-            }
+        let componentEvidence = visit.components.flatMap { component in
+            component.evidence.map { $0.exportedDaedalusEvidence(source: source, visit: visit, assetRef: component.id.uuidString) }
         }
+        let homeObservation = visit.exportedHomeObservation(source: source)
+        return areaObservations + assetObservations + roomEvidence + componentEvidence + [homeObservation].compactMap { $0 }
     }
 }
 
 private func duplicateIDIssues(
-    ids: [UUID],
+    ids: [String],
     pathPrefix: String,
     code: String,
     message: String
 ) -> [PackageValidationIssue] {
-    var seen = Set<UUID>()
+    var seen = Set<String>()
     var issues: [PackageValidationIssue] = []
 
     for (index, id) in ids.enumerated() {
@@ -392,7 +529,7 @@ private func duplicateIDIssues(
                 PackageValidationIssue(
                     path: "\(pathPrefix)[\(index)].id",
                     code: code,
-                    message: "\(message): \(id.uuidString)"
+                    message: "\(message): \(id)"
                 )
             )
         } else {
@@ -404,6 +541,25 @@ private func duplicateIDIssues(
 }
 
 private extension Room {
+    func exportedDaedalusObservation(source: String, visit: Visit) -> DaedalusObservation {
+        DaedalusObservation(
+            observationID: id.uuidString,
+            tag: "area",
+            name: name,
+            notes: notes.nilIfEmpty,
+            confidence: exportedSpatialArea.confidence,
+            captureState: exportedSpatialArea.placement.captureState,
+            position: spatialPlacement.approximatePosition,
+            evidenceRefs: evidence.map { $0.id.uuidString },
+            provenance: TwinProvenance(
+                source: source,
+                observedAt: visit.createdAt,
+                observedBy: visit.exportedObserver(source: source),
+                notes: reviewNotes
+            )
+        )
+    }
+
     var exportedSpatialArea: SpatialArea {
         let anchored = spatialPlacement.captureState == .anchored && spatialPlacement.anchorID?.isEmpty == false
         let confidence: Confidence = anchored ? spatialPlacement.confidence.exportedConfidence : .approximate
@@ -423,6 +579,30 @@ private extension Room {
 }
 
 private extension SystemComponent {
+    func exportedDaedalusObservation(source: String, visit: Visit) -> DaedalusObservation {
+        let asset = exportedSystemAsset
+        return DaedalusObservation(
+            observationID: id.uuidString,
+            tag: kind.exportedObservationTag,
+            name: exportedContextTitle,
+            type: canonicalSubtype.rawValue,
+            manufacturer: manufacturer.nilIfEmpty,
+            model: model.nilIfEmpty,
+            notes: notes.nilIfEmpty,
+            roomRef: componentAttributes["location"].nilIfEmpty,
+            confidence: asset.confidence,
+            captureState: asset.placement.captureState,
+            position: spatialPlacement.approximatePosition,
+            evidenceRefs: evidence.map { $0.id.uuidString },
+            provenance: TwinProvenance(
+                source: source,
+                observedAt: visit.createdAt,
+                observedBy: visit.exportedObserver(source: source),
+                notes: reviewNotes
+            )
+        )
+    }
+
     var exportedSystemAsset: SystemAsset {
         let hasRoomAssociation = !(componentAttributes["location"]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
         let hasEvidence = !evidence.isEmpty
@@ -491,18 +671,51 @@ private extension SystemComponent {
 }
 
 private extension SpatialRelationship {
-    var exportedSystemRelationship: SystemRelationship {
-        SystemRelationship(
-            id: id,
-            sourceAssetID: sourceComponentID,
-            relationship: relationship,
-            targetAssetID: targetComponentID,
-            targetAreaID: targetAreaID
+    func exportedDaedalusRelationship(source: String, visit: Visit) -> DaedalusRelationship? {
+        guard let targetID = targetComponentID ?? targetAreaID else {
+            return nil
+        }
+
+        return DaedalusRelationship(
+            relationshipID: id.uuidString,
+            type: relationship,
+            from: sourceComponentID.uuidString,
+            to: targetID.uuidString,
+            provenance: TwinProvenance(
+                source: source,
+                observedAt: visit.createdAt,
+                observedBy: visit.exportedObserver(source: source)
+            )
         )
     }
 }
 
 private extension SystemComponentKind {
+    var exportedObservationTag: String {
+        switch self {
+        case .boiler:
+            return "boiler"
+        case .cylinder:
+            return "cylinder"
+        case .radiator:
+            return "radiator"
+        case .controls:
+            return "controls"
+        case .pump:
+            return "pump"
+        case .flue:
+            return "flue"
+        case .gasMeter:
+            return "gas meter"
+        case .feedAndExpansion:
+            return "feed and expansion"
+        case .pipework:
+            return "pipework"
+        case .other:
+            return "unknown"
+        }
+    }
+
     var exportedAssetType: SystemAssetType {
         switch self {
         case .boiler:
@@ -539,27 +752,40 @@ private extension SpatialConfidence {
 }
 
 private extension Evidence {
-    func exportedTwinEvidence(
+    func exportedDaedalusEvidence(
         source: String,
-        observedBy: String?,
-        contextTitle: String
-    ) -> TwinEvidence {
-        TwinEvidence(
-            id: id,
-            title: "\(contextTitle) \(kind.exportedTitle)",
-            description: localFileName.nilIfEmpty,
+        visit: Visit,
+        assetRef: String
+    ) -> DaedalusObservation {
+        DaedalusObservation(
+            observationID: id.uuidString,
+            tag: kind.exportedObservationTag,
+            name: kind.exportedTitle,
+            assetRef: assetRef,
+            fileRef: localFileName.nilIfEmpty,
+            confidence: kind == .photo || kind == .voiceNote ? .observed : .approximate,
             provenance: TwinProvenance(
                 source: source,
                 observedAt: createdAt,
-                observedBy: observedBy,
+                observedBy: visit.exportedObserver(source: source),
                 notes: reviewNotes
-            ),
-            confidence: kind == .photo || kind == .voiceNote ? .observed : .approximate
+            )
         )
     }
 }
 
 private extension EvidenceKind {
+    var exportedObservationTag: String {
+        switch self {
+        case .photo:
+            return "photo evidence"
+        case .voiceNote:
+            return "voice evidence"
+        case .textNote:
+            return "text evidence"
+        }
+    }
+
     var exportedTitle: String {
         switch self {
         case .photo:
@@ -576,5 +802,46 @@ private extension String {
     var nilIfEmpty: String? {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+private extension Optional where Wrapped == String {
+    var nilIfEmpty: String? {
+        switch self {
+        case let .some(value):
+            return value.nilIfEmpty
+        case .none:
+            return nil
+        }
+    }
+}
+
+private extension Visit {
+    func exportedHomeObservation(source: String) -> DaedalusObservation? {
+        let parts = [
+            customerName.nilIfEmpty,
+            addressLine.nilIfEmpty,
+            postcode.nilIfEmpty,
+            notes.nilIfEmpty
+        ].compactMap { $0 }
+        guard !parts.isEmpty else {
+            return nil
+        }
+
+        return DaedalusObservation(
+            observationID: "\(id.uuidString)-home-context",
+            tag: "surveyor note",
+            name: customerName.nilIfEmpty,
+            notes: parts.joined(separator: "\n"),
+            provenance: TwinProvenance(
+                source: source,
+                observedAt: createdAt,
+                observedBy: exportedObserver(source: source)
+            )
+        )
+    }
+
+    func exportedObserver(source: String) -> String {
+        engineerName.nilIfEmpty ?? source
     }
 }

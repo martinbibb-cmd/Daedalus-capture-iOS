@@ -10,44 +10,28 @@ final class TwinContractsTests: XCTestCase {
 
     func testDaedalusPackageValidationFailsWhenEvidenceReferenceIsMissing() {
         var package = samplePackage()
-        package.systemTwin.assets[0].evidenceIDs = [UUID(uuidString: "00000000-0000-0000-0000-000000000999")!]
+        package.observations[1].evidenceRefs = ["missing-evidence"]
 
         let issues = validateEvidenceReferences(package)
         XCTAssertEqual(issues.count, 1)
-        XCTAssertEqual(issues[0].path, "systemTwin.assets[0].evidenceIDs[0]")
+        XCTAssertEqual(issues[0].path, "observations[1].evidenceRefs[0]")
         XCTAssertEqual(issues[0].code, "evidence.reference.missing")
     }
 
-    func testDaedalusPackageValidationFailsWhenAssetIDsAreDuplicated() {
+    func testDaedalusPackageValidationFailsWhenObservationIDsAreDuplicated() {
         var package = samplePackage()
-        package.systemTwin.assets = [
-            package.systemTwin.assets[0],
-            SystemAsset(
-                id: package.systemTwin.assets[0].id,
-                assetType: .cylinder,
-                placement: TwinSpatialPlacement(confidence: .observed, captureState: .roomAttached),
-                confidence: .observed,
-                evidenceIDs: []
-            )
-        ]
+        package.observations.append(package.observations[0])
 
         let issues = validateTwinIntegrity(package)
-        XCTAssertTrue(issues.contains { $0.code == "systemAsset.id.duplicate" })
+        XCTAssertTrue(issues.contains { $0.code == "observation.id.duplicate" })
     }
 
-    func testDaedalusPackageValidationFailsWhenEvidenceIDsAreDuplicated() {
+    func testDaedalusPackageValidationFailsWhenRelationshipEndpointIsMissing() {
         var package = samplePackage()
-        package.evidence.append(
-            TwinEvidence(
-                id: package.evidence[0].id,
-                title: "Duplicate",
-                provenance: TwinProvenance(source: "Daedalus Scan"),
-                confidence: .observed
-            )
-        )
+        package.relationships[0].to = "missing-target"
 
         let issues = validateTwinIntegrity(package)
-        XCTAssertTrue(issues.contains { $0.code == "twinEvidence.id.duplicate" })
+        XCTAssertTrue(issues.contains { $0.code == "relationship.endpoint.missing" })
     }
 
     func testVisitExportsToMinimumValidDaedalusPackage() throws {
@@ -97,20 +81,23 @@ final class TwinContractsTests: XCTestCase {
 
         let validation = validateDaedalusPackage(package)
         XCTAssertTrue(validation.valid)
-        XCTAssertEqual(package.version, "1.0.0")
-        XCTAssertEqual(package.houseTwin.areas.map(\.name), ["Airing Cupboard"])
-        XCTAssertEqual(package.houseTwin.areas[0].placement.captureState, .approximate)
-        XCTAssertEqual(package.houseTwin.areas[0].confidence, .approximate)
-        XCTAssertEqual(package.systemTwin.assets.count, 1)
-        XCTAssertEqual(package.systemTwin.assets[0].assetType, .boiler)
-        XCTAssertEqual(package.systemTwin.assets[0].canonicalCategory, SystemComponentCategory.heatSource.rawValue)
-        XCTAssertEqual(package.systemTwin.assets[0].canonicalSubtype, SystemComponentSubtype.unknownHeatSource.rawValue)
-        XCTAssertEqual(package.systemTwin.assets[0].placement.captureState, .roomAttached)
-        XCTAssertEqual(package.systemTwin.assets[0].evidenceIDs, [evidenceID])
-        XCTAssertEqual(package.systemTwin.relationships.count, 1)
-        XCTAssertEqual(package.systemTwin.relationships[0].relationship, .containedIn)
-        XCTAssertEqual(package.systemTwin.relationships[0].targetAreaID, room.id)
-        XCTAssertEqual(package.evidence.map(\.id), [evidenceID])
+        XCTAssertEqual(package.packageVersion, 3)
+        XCTAssertEqual(package.visitID, visit.id)
+        XCTAssertEqual(package.propertyRef, "VIS-DAEDALUS-001")
+        XCTAssertEqual(package.observations.map(\.tag), ["area", "boiler", "photo evidence", "surveyor note"])
+        XCTAssertEqual(package.observations[0].name, "Airing Cupboard")
+        XCTAssertEqual(package.observations[0].confidence, .approximate)
+        XCTAssertEqual(package.observations[1].observationID, component.id.uuidString)
+        XCTAssertEqual(package.observations[1].tag, "boiler")
+        XCTAssertEqual(package.observations[1].type, SystemComponentSubtype.unknownHeatSource.rawValue)
+        XCTAssertEqual(package.observations[1].captureState, .roomAttached)
+        XCTAssertEqual(package.observations[1].evidenceRefs, [evidenceID.uuidString])
+        XCTAssertEqual(package.observations[2].observationID, evidenceID.uuidString)
+        XCTAssertEqual(package.observations[2].assetRef, component.id.uuidString)
+        XCTAssertEqual(package.relationships.count, 1)
+        XCTAssertEqual(package.relationships[0].type, .containedIn)
+        XCTAssertEqual(package.relationships[0].from, component.id.uuidString)
+        XCTAssertEqual(package.relationships[0].to, room.id.uuidString)
 
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -118,9 +105,65 @@ final class TwinContractsTests: XCTestCase {
         let data = try encoder.encode(package)
         let json = try XCTUnwrap(String(data: data, encoding: .utf8))
 
+        XCTAssertTrue(json.contains(#""packageVersion":3"#))
+        XCTAssertTrue(json.contains(#""observations""#))
+        XCTAssertTrue(json.contains(#""relationship_id""#))
+        XCTAssertTrue(json.contains(#""captured_by""#))
         ["recommendation", "simulation", "price", "score", "suitability"].forEach {
             XCTAssertFalse(json.contains($0))
         }
+    }
+
+    func testSharedHeatingSurveyFixtureValidates() throws {
+        let fixture = try loadSharedHeatingSurveyFixture()
+        let validation = validateDaedalusPackage(fixture)
+
+        XCTAssertTrue(validation.valid)
+        XCTAssertEqual(fixture.packageVersion, 3)
+        XCTAssertEqual(fixture.propertyRef, "DAE-SMOKE-HEATING-001")
+        XCTAssertEqual(fixture.observations.filter { $0.tag == "area" }.map(\.name), ["Kitchen", "Airing Cupboard", "Hall"])
+        XCTAssertEqual(fixture.observations.filter { $0.tag == "radiator" }.count, 3)
+        XCTAssertEqual(Set(fixture.relationships.map(\.type)), [.containedIn, .connectedTo, .controls])
+        XCTAssertTrue(fixture.observations.contains { $0.confidence == .observed })
+        XCTAssertTrue(fixture.observations.contains { $0.confidence == .approximate })
+        XCTAssertTrue(fixture.observations.contains { $0.confidence == .unknown })
+    }
+
+    func testCaptureExportShapeMatchesSharedHeatingSurveyExpectations() throws {
+        let fixture = try loadSharedHeatingSurveyFixture()
+        let visit = heatingSurveyVisit()
+
+        let package = DaedalusPackageExporter.makePackage(
+            from: visit,
+            packageID: UUID(uuidString: "00000000-0000-0000-0000-00000000D003")!,
+            createdAt: try XCTUnwrap(Self.isoDate("2026-06-07T09:30:00Z"))
+        )
+        let validation = validateDaedalusPackage(package)
+
+        XCTAssertTrue(validation.valid)
+        XCTAssertEqual(package.packageVersion, fixture.packageVersion)
+        XCTAssertEqual(package.propertyRef, fixture.propertyRef)
+        XCTAssertEqual(package.observations.filter { $0.tag == "area" }.compactMap(\.name), ["Kitchen", "Airing Cupboard", "Hall"])
+        XCTAssertEqual(package.observations.filter { $0.tag == "boiler" }.count, 1)
+        XCTAssertEqual(package.observations.filter { $0.tag == "cylinder" }.count, 1)
+        XCTAssertEqual(package.observations.filter { $0.tag == "controls" }.count, 1)
+        XCTAssertEqual(package.observations.filter { $0.tag == "radiator" }.count, 3)
+        XCTAssertEqual(package.observations.filter { $0.tag.contains("evidence") }.count, 3)
+        XCTAssertEqual(package.relationships.map(\.type), fixture.relationships.map(\.type))
+        XCTAssertTrue(package.observations.contains { $0.confidence == .observed })
+        XCTAssertTrue(package.observations.contains { $0.confidence == .approximate })
+        XCTAssertTrue(package.observations.contains { $0.confidence == .unknown })
+        XCTAssertTrue(package.relationships.allSatisfy { !$0.from.isEmpty && !$0.to.isEmpty })
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        let json = try XCTUnwrap(String(data: try encoder.encode(package), encoding: .utf8))
+        XCTAssertTrue(json.contains(#""packageVersion":3"#))
+        XCTAssertTrue(json.contains(#""observations""#))
+        XCTAssertTrue(json.contains(#""relationships""#))
+        XCTAssertTrue(json.contains(#""evidence_refs""#))
+        XCTAssertFalse(json.localizedCaseInsensitiveContains("recommendation"))
     }
 
     private func samplePackage() -> DaedalusPackage {
@@ -129,53 +172,170 @@ final class TwinContractsTests: XCTestCase {
 
         return DaedalusPackage(
             packageID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            visitID: UUID(uuidString: "00000000-0000-0000-0000-000000000005")!,
+            propertyRef: "VIS-DAEDALUS-001",
             createdAt: createdAt,
-            houseTwin: HouseTwin(
-                id: UUID(uuidString: "00000000-0000-0000-0000-000000000010")!,
-                areas: [
-                    SpatialArea(
-                        id: UUID(uuidString: "00000000-0000-0000-0000-000000000020")!,
-                        name: "Airing Cupboard",
-                        placement: TwinSpatialPlacement(
-                            confidence: .approximate,
-                            captureState: .roomAttached
-                        ),
-                        confidence: .approximate
+            observations: [
+                DaedalusObservation(
+                    observationID: "00000000-0000-0000-0000-000000000020",
+                    tag: "area",
+                    name: "Airing Cupboard",
+                    confidence: .approximate,
+                    provenance: TwinProvenance(
+                        source: "Daedalus Scan",
+                        observedAt: createdAt,
+                        observedBy: "surveyor@example.com"
                     )
-                ]
-            ),
-            systemTwin: SystemTwin(
-                id: UUID(uuidString: "00000000-0000-0000-0000-000000000030")!,
-                assets: [
-                    SystemAsset(
-                        id: UUID(uuidString: "00000000-0000-0000-0000-000000000040")!,
-                        assetType: .boiler,
-                        placement: TwinSpatialPlacement(
-                            confidence: .observed,
-                            captureState: .evidenceOnly
-                        ),
-                        confidence: .observed,
-                        evidenceIDs: [evidenceID]
+                ),
+                DaedalusObservation(
+                    observationID: "00000000-0000-0000-0000-000000000040",
+                    tag: "boiler",
+                    name: "Boiler",
+                    evidenceRefs: [evidenceID.uuidString],
+                    provenance: TwinProvenance(
+                        source: "Daedalus Scan",
+                        observedAt: createdAt,
+                        observedBy: "surveyor@example.com"
                     )
-                ]
-            ),
-            homeTwin: HomeTwin(
-                id: UUID(uuidString: "00000000-0000-0000-0000-000000000070")!,
-                occupancyDescription: "Family of four"
-            ),
-            evidence: [
-                TwinEvidence(
-                    id: evidenceID,
-                    title: "Boiler Photo",
-                    description: "boiler-photo.jpg",
+                ),
+                DaedalusObservation(
+                    observationID: evidenceID.uuidString,
+                    tag: "photo evidence",
+                    fileRef: "boiler-photo.jpg",
+                    confidence: .observed,
                     provenance: TwinProvenance(
                         source: "Daedalus Scan",
                         observedAt: createdAt,
                         observedBy: "surveyor@example.com"
                     ),
-                    confidence: .observed
+                )
+            ],
+            relationships: [
+                DaedalusRelationship(
+                    relationshipID: "rel-contained-in",
+                    type: .containedIn,
+                    from: "00000000-0000-0000-0000-000000000040",
+                    to: "00000000-0000-0000-0000-000000000020",
+                    provenance: TwinProvenance(
+                        source: "Daedalus Scan",
+                        observedAt: createdAt,
+                        observedBy: "surveyor@example.com"
+                    )
                 )
             ]
         )
+    }
+
+    private func loadSharedHeatingSurveyFixture() throws -> DaedalusPackage {
+        let url = try XCTUnwrap(Bundle.module.url(
+            forResource: "daedalus-package-v3-heating-survey",
+            withExtension: "json"
+        ))
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(DaedalusPackage.self, from: Data(contentsOf: url))
+    }
+
+    private func heatingSurveyVisit() -> Visit {
+        let kitchen = Room(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000101")!,
+            name: "Kitchen",
+            spatialPlacement: SpatialPlacement(captureState: .anchored, confidence: .high)
+        )
+        let airingCupboard = Room(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000102")!,
+            name: "Airing Cupboard",
+            spatialPlacement: SpatialPlacement(captureState: .anchored, confidence: .high)
+        )
+        let hall = Room(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000103")!,
+            name: "Hall",
+            spatialPlacement: SpatialPlacement(captureState: .anchored, confidence: .high)
+        )
+        let boilerEvidence = Evidence(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000201")!,
+            kind: .photo,
+            localFileName: "boiler-kitchen.jpg",
+            createdAt: Self.isoDate("2026-06-07T09:32:30Z")!
+        )
+        let cylinderEvidence = Evidence(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000202")!,
+            kind: .photo,
+            localFileName: "cylinder-airing-cupboard.jpg",
+            createdAt: Self.isoDate("2026-06-07T09:35:30Z")!
+        )
+        let thermostatEvidence = Evidence(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000203")!,
+            kind: .textNote,
+            localFileName: "thermostat-note.txt",
+            createdAt: Self.isoDate("2026-06-07T09:39:30Z")!
+        )
+        let boiler = SystemComponent(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000301")!,
+            kind: .boiler,
+            name: "System boiler",
+            componentAttributes: ["location": kitchen.id.uuidString],
+            evidence: [boilerEvidence],
+            spatialPlacement: SpatialPlacement(captureState: .areaReferenceOnly, confidence: .medium)
+        )
+        let cylinder = SystemComponent(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000302")!,
+            kind: .cylinder,
+            name: "Unvented cylinder",
+            componentAttributes: ["location": airingCupboard.id.uuidString],
+            evidence: [cylinderEvidence],
+            spatialPlacement: SpatialPlacement(captureState: .areaReferenceOnly, confidence: .medium)
+        )
+        let thermostat = SystemComponent(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000303")!,
+            kind: .controls,
+            name: "Room thermostat",
+            componentAttributes: ["location": hall.id.uuidString],
+            evidence: [thermostatEvidence],
+            spatialPlacement: SpatialPlacement(captureState: .areaReferenceOnly, confidence: .medium)
+        )
+        let kitchenRadiator = SystemComponent(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000401")!,
+            kind: .radiator,
+            name: "Kitchen radiator",
+            componentAttributes: ["location": kitchen.id.uuidString],
+            spatialPlacement: SpatialPlacement(captureState: .areaReferenceOnly, confidence: .medium)
+        )
+        let hallRadiator = SystemComponent(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000402")!,
+            kind: .radiator,
+            name: "Hall radiator",
+            componentAttributes: ["location": hall.id.uuidString],
+            spatialPlacement: SpatialPlacement(captureState: .approximate, confidence: .low)
+        )
+        let livingRoomRadiator = SystemComponent(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000403")!,
+            kind: .radiator,
+            name: "Living room radiator",
+            spatialPlacement: SpatialPlacement(captureState: .failed, confidence: .unknown)
+        )
+
+        return Visit(
+            id: UUID(uuidString: "00000000-0000-0000-0000-00000000DAED")!,
+            reference: "DAE-SMOKE-HEATING-001",
+            createdAt: Self.isoDate("2026-06-07T09:30:00Z")!,
+            twinKind: .system,
+            engineerName: "engineer-001",
+            rooms: [kitchen, airingCupboard, hall],
+            relationships: [
+                SpatialRelationship(sourceComponentID: boiler.id, relationship: .containedIn, targetAreaID: kitchen.id),
+                SpatialRelationship(sourceComponentID: cylinder.id, relationship: .containedIn, targetAreaID: airingCupboard.id),
+                SpatialRelationship(sourceComponentID: thermostat.id, relationship: .containedIn, targetAreaID: hall.id),
+                SpatialRelationship(sourceComponentID: boiler.id, relationship: .connectedTo, targetComponentID: cylinder.id),
+                SpatialRelationship(sourceComponentID: thermostat.id, relationship: .controls, targetComponentID: kitchenRadiator.id),
+                SpatialRelationship(sourceComponentID: thermostat.id, relationship: .controls, targetComponentID: hallRadiator.id),
+                SpatialRelationship(sourceComponentID: thermostat.id, relationship: .controls, targetComponentID: livingRoomRadiator.id)
+            ],
+            components: [boiler, cylinder, thermostat, kitchenRadiator, hallRadiator, livingRoomRadiator]
+        )
+    }
+
+    private static func isoDate(_ value: String) -> Date? {
+        ISO8601DateFormatter().date(from: value)
     }
 }

@@ -1,0 +1,280 @@
+{
+  "packageVersion": 3,
+  "packageId": "00000000-0000-0000-0000-00000000d003",
+  "visitId": "00000000-0000-0000-0000-00000000daed",
+  "propertyRef": "DAE-SMOKE-HEATING-001",
+  "captured_at": "2026-06-07T09:30:00Z",
+  "observations": [
+    {
+      "observation_id": "area-kitchen",
+      "tag": "area",
+      "name": "Kitchen",
+      "confidence": "observed",
+      "provenance": {
+        "method": "surveyor-observation",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:31:00Z"
+      }
+    },
+    {
+      "observation_id": "area-airing-cupboard",
+      "tag": "area",
+      "name": "Airing Cupboard",
+      "confidence": "observed",
+      "provenance": {
+        "method": "surveyor-observation",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:34:00Z"
+      }
+    },
+    {
+      "observation_id": "area-hall",
+      "tag": "area",
+      "name": "Hall",
+      "confidence": "observed",
+      "provenance": {
+        "method": "surveyor-observation",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:38:00Z"
+      }
+    },
+    {
+      "observation_id": "boiler-kitchen",
+      "tag": "boiler",
+      "name": "System boiler",
+      "type": "system boiler",
+      "manufacturer": null,
+      "model": null,
+      "room_ref": "area-kitchen",
+      "identity_resolved": false,
+      "confidence": "observed",
+      "install_year": {
+        "value": 2014,
+        "state": "approximate"
+      },
+      "evidence_refs": [
+        "evidence-boiler-photo"
+      ],
+      "provenance": {
+        "method": "surveyor-observation",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:32:00Z"
+      }
+    },
+    {
+      "observation_id": "cylinder-airing-cupboard",
+      "tag": "cylinder",
+      "name": "Unvented cylinder",
+      "type": "unvented cylinder",
+      "manufacturer": null,
+      "model": null,
+      "room_ref": "area-airing-cupboard",
+      "confidence": "observed",
+      "capacity_litres": {
+        "value": 210,
+        "state": "approximate"
+      },
+      "evidence_refs": [
+        "evidence-cylinder-photo"
+      ],
+      "provenance": {
+        "method": "surveyor-observation",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:35:00Z"
+      }
+    },
+    {
+      "observation_id": "thermostat-hall",
+      "tag": "controls",
+      "name": "Room thermostat",
+      "type": "room thermostat",
+      "room_ref": "area-hall",
+      "confidence": "observed",
+      "resolution_status": "unresolved",
+      "evidence_refs": [
+        "evidence-thermostat-note"
+      ],
+      "provenance": {
+        "method": "surveyor-observation",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:39:00Z"
+      }
+    },
+    {
+      "observation_id": "radiator-kitchen",
+      "tag": "radiator",
+      "name": "Kitchen radiator",
+      "room_ref": "area-kitchen",
+      "confidence": "observed",
+      "output_state": {
+        "state": "unknown"
+      },
+      "provenance": {
+        "method": "surveyor-observation",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:41:00Z"
+      }
+    },
+    {
+      "observation_id": "radiator-hall",
+      "tag": "radiator",
+      "name": "Hall radiator",
+      "room_ref": "area-hall",
+      "confidence": "approximate",
+      "output_watts": {
+        "value": 900,
+        "state": "approximate"
+      },
+      "provenance": {
+        "method": "surveyor-observation",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:42:00Z"
+      }
+    },
+    {
+      "observation_id": "radiator-living-room",
+      "tag": "radiator",
+      "name": "Living room radiator",
+      "room_ref": "area-hall",
+      "confidence": "unknown",
+      "output_state": {
+        "state": "unknown"
+      },
+      "provenance": {
+        "method": "surveyor-observation",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:43:00Z"
+      }
+    },
+    {
+      "observation_id": "evidence-boiler-photo",
+      "tag": "photo evidence",
+      "name": "Boiler photo evidence",
+      "asset_ref": "boiler-kitchen",
+      "file_ref": "boiler-kitchen.jpg",
+      "confidence": "observed",
+      "provenance": {
+        "method": "device-camera",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:32:30Z"
+      }
+    },
+    {
+      "observation_id": "evidence-cylinder-photo",
+      "tag": "photo evidence",
+      "name": "Cylinder photo evidence",
+      "asset_ref": "cylinder-airing-cupboard",
+      "file_ref": "cylinder-airing-cupboard.jpg",
+      "confidence": "observed",
+      "provenance": {
+        "method": "device-camera",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:35:30Z"
+      }
+    },
+    {
+      "observation_id": "evidence-thermostat-note",
+      "tag": "text evidence",
+      "name": "Thermostat note evidence",
+      "asset_ref": "thermostat-hall",
+      "file_ref": "thermostat-note.txt",
+      "observed_value": "Room thermostat in hall; exact controlled zone to be confirmed.",
+      "confidence": "approximate",
+      "provenance": {
+        "method": "surveyor-note",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:39:30Z"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "relationship_id": "rel-boiler-contained-kitchen",
+      "type": "containedIn",
+      "from": "boiler-kitchen",
+      "to": "area-kitchen",
+      "evidence_refs": [
+        "evidence-boiler-photo"
+      ],
+      "provenance": {
+        "method": "surveyor-observation",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:33:00Z"
+      }
+    },
+    {
+      "relationship_id": "rel-cylinder-contained-airing-cupboard",
+      "type": "containedIn",
+      "from": "cylinder-airing-cupboard",
+      "to": "area-airing-cupboard",
+      "evidence_refs": [
+        "evidence-cylinder-photo"
+      ],
+      "provenance": {
+        "method": "surveyor-observation",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:36:00Z"
+      }
+    },
+    {
+      "relationship_id": "rel-thermostat-contained-hall",
+      "type": "containedIn",
+      "from": "thermostat-hall",
+      "to": "area-hall",
+      "evidence_refs": [
+        "evidence-thermostat-note"
+      ],
+      "provenance": {
+        "method": "surveyor-observation",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:40:00Z"
+      }
+    },
+    {
+      "relationship_id": "rel-boiler-connected-cylinder",
+      "type": "connectedTo",
+      "from": "boiler-kitchen",
+      "to": "cylinder-airing-cupboard",
+      "provenance": {
+        "method": "surveyor-observation",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:37:00Z"
+      }
+    },
+    {
+      "relationship_id": "rel-thermostat-controls-kitchen-radiator",
+      "type": "controls",
+      "from": "thermostat-hall",
+      "to": "radiator-kitchen",
+      "provenance": {
+        "method": "surveyor-observation",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:44:00Z"
+      }
+    },
+    {
+      "relationship_id": "rel-thermostat-controls-hall-radiator",
+      "type": "controls",
+      "from": "thermostat-hall",
+      "to": "radiator-hall",
+      "confidence_state": "approximate",
+      "provenance": {
+        "method": "surveyor-observation",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:44:30Z"
+      }
+    },
+    {
+      "relationship_id": "rel-thermostat-controls-living-room-radiator",
+      "type": "controls",
+      "from": "thermostat-hall",
+      "to": "radiator-living-room",
+      "confidence_state": "unknown",
+      "provenance": {
+        "method": "surveyor-observation",
+        "captured_by": "engineer-001",
+        "captured_at": "2026-06-07T09:45:00Z"
+      }
+    }
+  ]
+}

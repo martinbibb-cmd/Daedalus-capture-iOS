@@ -17,7 +17,10 @@ let package = Package(
         .target(name: "DaedalusContracts"),
         .testTarget(
             name: "DaedalusContractsTests",
-            dependencies: ["DaedalusContracts"]
+            dependencies: ["DaedalusContracts"],
+            resources: [
+                .process("Resources")
+            ]
         )
     ]
 )
