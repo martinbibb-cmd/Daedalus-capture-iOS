@@ -33,7 +33,7 @@ public struct VisitListView: View {
                     ContentUnavailableView(
                         "No Visits",
                         systemImage: "tray",
-                        description: Text("Create a visit to start capturing survey data and evidence.")
+                        description: Text("Create a visit to go straight into live capture.")
                     )
                 } else if filteredVisits.isEmpty {
                     ContentUnavailableView.search(text: searchText)
@@ -53,7 +53,7 @@ public struct VisitListView: View {
             .searchable(text: $searchText, prompt: "Search reference, customer, postcode")
             .navigationTitle("Visits")
             .navigationDestination(for: UUID.self) { visitID in
-                VisitDetailView(viewModel: viewModel, visitID: visitID)
+                LiveCaptureView(viewModel: viewModel, visitID: visitID)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

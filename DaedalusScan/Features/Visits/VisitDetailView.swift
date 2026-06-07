@@ -4,42 +4,83 @@ struct VisitDetailView: View {
     @ObservedObject var viewModel: VisitListViewModel
     let visitID: UUID
 
-    @State private var isPresentingRoomAlert = false
-    @State private var isPresentingSummary = false
     @State private var isPresentingShareSheet = false
     @State private var isPresentingContext = false
-    @State private var isPresentingRooms = false
 
     @State private var shareURL: URL?
-    @State private var roomName = ""
 
     var body: some View {
         if let visit = viewModel.visit(id: visitID) {
-            SurveySectionCaptureView(
-                viewModel: viewModel,
-                visitID: visitID
-            )
-            .navigationTitle(visit.reference)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button("Visit Context") { isPresentingContext = true }
-                        Button("Captured Areas (Fallback)") { isPresentingRooms = true }
-                        Button("Capture Summary") { isPresentingSummary = true }
-                        Button("Share / Save .daedalusscan") {
-                            if let url = viewModel.makeExportTempURL(for: visitID) {
-                                shareURL = url
-                                isPresentingShareSheet = true
-                            }
+            List {
+                Section("Review") {
+                    NavigationLink {
+                        VisitSummaryView(visit: visit)
+                    } label: {
+                        Label("Capture Summary", systemImage: "checklist")
+                    }
+
+                    Button {
+                        isPresentingContext = true
+                    } label: {
+                        Label("Visit Context", systemImage: "slider.horizontal.3")
+                    }
+
+                    Button {
+                        if let url = viewModel.makeExportTempURL(for: visitID) {
+                            shareURL = url
+                            isPresentingShareSheet = true
                         }
                     } label: {
-                        Label("Capture Tools", systemImage: "ellipsis.circle")
+                        Label("Export Package", systemImage: "square.and.arrow.up")
+                    }
+                }
+
+                Section("Captured Areas") {
+                    if visit.rooms.isEmpty {
+                        Text("No areas captured yet.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(visit.rooms) { room in
+                            NavigationLink(room.name) {
+                                RoomDetailView(viewModel: viewModel, visitID: visitID, roomID: room.id)
+                            }
+                        }
+                    }
+
+                    Button("Add Area") {
+                        viewModel.addRoom(to: visitID, named: "Scanned Area \(visit.rooms.count + 1)")
+                    }
+                } footer: {
+                    Text("Manual area management is a secondary fallback/admin surface.")
+                }
+
+                Section("Captured Objects") {
+                    let components = visit.components.filter { $0.captureMode == visit.captureMode }
+                    if components.isEmpty {
+                        Text("No objects captured yet.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(components) { component in
+                            NavigationLink {
+                                ComponentDetailView(
+                                    viewModel: viewModel,
+                                    visitID: visitID,
+                                    componentID: component.id
+                                )
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(component.kind.title)
+                                    Text(component.spatialPlacement.confidence.title)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
                     }
                 }
             }
-            .navigationDestination(isPresented: $isPresentingSummary) {
-                VisitSummaryView(visit: visit)
-            }
+            .navigationTitle("Review Capture")
+            .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $isPresentingShareSheet) {
                 if let url = shareURL {
                     ActivityView(url: url)
@@ -47,25 +88,6 @@ struct VisitDetailView: View {
             }
             .sheet(isPresented: $isPresentingContext) {
                 VisitContextSheet(viewModel: viewModel, visitID: visitID)
-            }
-            .sheet(isPresented: $isPresentingRooms) {
-                VisitRoomsSheet(
-                    viewModel: viewModel,
-                    visitID: visitID,
-                    onAddRoom: {
-                        roomName = ""
-                        isPresentingRoomAlert = true
-                    }
-                )
-            }
-            .alert("Add Area", isPresented: $isPresentingRoomAlert) {
-                TextField("Area name", text: $roomName)
-                Button("Cancel", role: .cancel) {}
-                Button("Add") {
-                    viewModel.addRoom(to: visitID, named: roomName)
-                }
-            } message: {
-                Text("Manual area management is a secondary fallback; live capture remains the main journey.")
             }
         } else {
             Text("Visit not found")
@@ -124,45 +146,6 @@ private struct VisitContextSheet: View {
                 }
                 .navigationTitle("Context")
                 .navigationBarTitleDisplayMode(.inline)
-            } else {
-                ContentUnavailableView("Visit not found", systemImage: "exclamationmark.triangle")
-            }
-        }
-    }
-}
-
-private struct VisitRoomsSheet: View {
-    @ObservedObject var viewModel: VisitListViewModel
-    let visitID: UUID
-    let onAddRoom: () -> Void
-
-    private var visit: Visit? {
-        viewModel.visit(id: visitID)
-    }
-
-    var body: some View {
-        NavigationStack {
-            if let visit {
-                List {
-                    if visit.rooms.isEmpty {
-                        Text("No scanned areas captured")
-                            .foregroundStyle(.secondary)
-                    }
-                    ForEach(visit.rooms) { room in
-                        NavigationLink(room.name) {
-                            RoomDetailView(viewModel: viewModel, visitID: visitID, roomID: room.id)
-                        }
-                    }
-                }
-                .navigationTitle("Captured Areas")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Add Area") {
-                            onAddRoom()
-                        }
-                    }
-                }
             } else {
                 ContentUnavailableView("Visit not found", systemImage: "exclamationmark.triangle")
             }
