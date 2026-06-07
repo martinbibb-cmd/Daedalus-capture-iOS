@@ -96,7 +96,7 @@ struct VisitDetailView: View {
     }
 }
 
-private struct VisitContextSheet: View {
+struct VisitContextSheet: View {
     @ObservedObject var viewModel: VisitListViewModel
     let visitID: UUID
 

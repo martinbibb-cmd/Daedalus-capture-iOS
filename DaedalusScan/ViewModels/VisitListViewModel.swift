@@ -313,6 +313,20 @@ public final class VisitListViewModel: ObservableObject {
         persistChanges()
     }
 
+    func addSpatialObject(to visitID: UUID, kind: SystemComponentKind, areaID: UUID?) -> UUID? {
+        guard let visitIndex = indexOfVisit(visitID) else { return nil }
+        let captureMode = visits[visitIndex].captureMode
+        let component = SystemComponent(
+            kind: kind,
+            captureMode: captureMode,
+            spatialPlacement: SpatialPlacement(captureState: .failed, confidence: .unknown)
+        )
+        visits[visitIndex].components.append(component)
+        persistChanges()
+        applyAreaReference(toComponent: component.id, roomID: areaID, visitID: visitID)
+        return component.id
+    }
+
     func ensureComponent(for kind: SystemComponentKind, visitID: UUID) -> UUID? {
         guard let visitIndex = indexOfVisit(visitID) else { return nil }
         let captureMode = visits[visitIndex].captureMode
