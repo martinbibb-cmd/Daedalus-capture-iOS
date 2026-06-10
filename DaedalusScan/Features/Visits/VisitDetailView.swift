@@ -12,7 +12,7 @@ struct VisitDetailView: View {
     var body: some View {
         if let visit = viewModel.visit(id: visitID) {
             List {
-                Section("Review") {
+                Section {
                     NavigationLink {
                         VisitSummaryView(visit: visit)
                     } label: {
@@ -22,7 +22,7 @@ struct VisitDetailView: View {
                     Button {
                         isPresentingContext = true
                     } label: {
-                        Label("Visit Context", systemImage: "slider.horizontal.3")
+                        Label("Property Twin Context", systemImage: "slider.horizontal.3")
                     }
 
                     Button {
@@ -31,11 +31,13 @@ struct VisitDetailView: View {
                             isPresentingShareSheet = true
                         }
                     } label: {
-                        Label("Export Package", systemImage: "square.and.arrow.up")
+                        Label("Export Twin Package", systemImage: "square.and.arrow.up")
                     }
+                } header: {
+                    Text("Review")
                 }
 
-                Section("Captured Areas") {
+                Section {
                     if visit.rooms.isEmpty {
                         Text("No areas captured yet.")
                             .foregroundStyle(.secondary)
@@ -50,11 +52,13 @@ struct VisitDetailView: View {
                     Button("Add Area") {
                         viewModel.addRoom(to: visitID, named: "Scanned Area \(visit.rooms.count + 1)")
                     }
+                } header: {
+                    Text("Captured Areas")
                 } footer: {
                     Text("Manual area management is a secondary fallback/admin surface.")
                 }
 
-                Section("Captured Objects") {
+                Section {
                     let components = visit.components.filter { $0.captureMode == visit.captureMode }
                     if components.isEmpty {
                         Text("No objects captured yet.")
@@ -77,6 +81,8 @@ struct VisitDetailView: View {
                             }
                         }
                     }
+                } header: {
+                    Text("Captured Objects")
                 }
             }
             .navigationTitle("Review Capture")
@@ -90,7 +96,7 @@ struct VisitDetailView: View {
                 VisitContextSheet(viewModel: viewModel, visitID: visitID)
             }
         } else {
-            Text("Visit not found")
+            Text("Property Twin not found")
                 .foregroundStyle(.secondary)
         }
     }
@@ -109,7 +115,7 @@ struct VisitContextSheet: View {
             if let visit {
                 List {
                     Picker(
-                        "Capture mode",
+                        "Lifecycle",
                         selection: Binding(
                             get: { visit.captureMode },
                             set: { viewModel.setCaptureMode($0, for: visitID) }
@@ -121,22 +127,10 @@ struct VisitContextSheet: View {
                     }
 
                     Picker(
-                        "Current system",
+                        "Existing reality",
                         selection: Binding(
                             get: { visit.currentSystemType },
                             set: { viewModel.setCurrentSystemType($0, for: visitID) }
-                        )
-                    ) {
-                        ForEach(HeatingSystemType.allCases, id: \.self) { system in
-                            Text(system.title).tag(system)
-                        }
-                    }
-
-                    Picker(
-                        "Proposed system",
-                        selection: Binding(
-                            get: { visit.proposedSystemType },
-                            set: { viewModel.setProposedSystemType($0, for: visitID) }
                         )
                     ) {
                         ForEach(HeatingSystemType.allCases, id: \.self) { system in
@@ -147,7 +141,7 @@ struct VisitContextSheet: View {
                 .navigationTitle("Context")
                 .navigationBarTitleDisplayMode(.inline)
             } else {
-                ContentUnavailableView("Visit not found", systemImage: "exclamationmark.triangle")
+                ContentUnavailableView("Property Twin not found", systemImage: "exclamationmark.triangle")
             }
         }
     }

@@ -13,6 +13,7 @@ public final class VisitListViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var statusMessage: String?
     @Published private(set) var pendingImportConflict: PendingImportConflict?
+    @Published private(set) var pendingWorkingTwinWarning: PendingWorkingTwinWarning?
 
     private let repository: VisitRepository
 
@@ -38,8 +39,7 @@ public final class VisitListViewModel: ObservableObject {
         appointmentDate: Date? = nil,
         notes: String = "",
         currentSystemType: HeatingSystemType = .unknown,
-        proposedSystemType: HeatingSystemType = .unknown,
-        captureMode: CaptureMode = .current
+        captureMode: CaptureMode = .create
     ) -> UUID? {
         let trimmedReference = reference.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedReference.isEmpty else {
@@ -57,8 +57,9 @@ public final class VisitListViewModel: ObservableObject {
             appointmentDate: appointmentDate,
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
             currentSystemType: currentSystemType,
-            proposedSystemType: proposedSystemType,
-            captureMode: captureMode
+            captureMode: captureMode,
+            repositoryState: .localWorkingCopy,
+            lifecycleStage: .capture
         )
         visits.insert(
             visit,
@@ -81,6 +82,7 @@ public final class VisitListViewModel: ObservableObject {
                 spatialPlacement: placement ?? SpatialPlacement(captureState: .approximate, confidence: .low)
             )
         )
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
@@ -92,6 +94,7 @@ public final class VisitListViewModel: ObservableObject {
             spatialPlacement: SpatialPlacement(captureState: .approximate, confidence: .low)
         )
         visits[visitIndex].rooms.append(room)
+        markLocalChanges(at: visitIndex)
         persistChanges()
         return room.id
     }
@@ -118,6 +121,7 @@ public final class VisitListViewModel: ObservableObject {
         }
 
         visits[visitIndex].rooms[roomIndex].survey[questionKey] = response
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
@@ -126,6 +130,7 @@ public final class VisitListViewModel: ObservableObject {
             return
         }
         visits[visitIndex].rooms[roomIndex].reviewStatus = status
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
@@ -134,6 +139,7 @@ public final class VisitListViewModel: ObservableObject {
             return
         }
         visits[visitIndex].rooms[roomIndex].reviewNotes = normalizedOptionalString(notes)
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
@@ -142,37 +148,124 @@ public final class VisitListViewModel: ObservableObject {
             return
         }
         visits[visitIndex].rooms[roomIndex].notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
     func setCaptureMode(_ mode: CaptureMode, for visitID: UUID) {
         guard let visitIndex = indexOfVisit(visitID) else { return }
         visits[visitIndex].captureMode = mode
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
     func setCurrentSystemType(_ type: HeatingSystemType, for visitID: UUID) {
         guard let visitIndex = indexOfVisit(visitID) else { return }
         visits[visitIndex].currentSystemType = type
-        persistChanges()
-    }
-
-    func setProposedSystemType(_ type: HeatingSystemType, for visitID: UUID) {
-        guard let visitIndex = indexOfVisit(visitID) else { return }
-        visits[visitIndex].proposedSystemType = type
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
     func setVisitNotes(_ notes: String, for visitID: UUID) {
         guard let visitIndex = indexOfVisit(visitID) else { return }
         visits[visitIndex].notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        markLocalChanges(at: visitIndex)
+        persistChanges()
+    }
+
+    func advanceLifecycle(_ stage: TwinLifecycleStage, for visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID) else { return }
+        let previousStage = visits[visitIndex].lifecycleStage
+        visits[visitIndex].lifecycleStage = stage
+        visits[visitIndex].repositoryState = repositoryState(for: stage)
+        if stage == .merge, previousStage != .merge {
+            visits[visitIndex].twinVersion += 1
+            visits[visitIndex].lastMergedAt = Date()
+        }
+        persistChanges()
+    }
+
+    func requestPullTwin(for visitID: UUID) {
+        guard let visit = visit(id: visitID) else { return }
+        guard visit.shouldWarnBeforePullingTwin else {
+            advanceLifecycle(.pull, for: visitID)
+            return
+        }
+        pendingWorkingTwinWarning = PendingWorkingTwinWarning(
+            visitID: visitID,
+            kind: .pullWouldReplaceLocalChanges,
+            action: .pull
+        )
+    }
+
+    func requestLeaveWorkingTwin(for visitID: UUID) -> Bool {
+        guard let visit = visit(id: visitID) else { return true }
+        guard visit.shouldWarnBeforeLeavingWorkingTwin else {
+            return true
+        }
+        pendingWorkingTwinWarning = PendingWorkingTwinWarning(
+            visitID: visitID,
+            kind: .leaveWithUncommittedEvidence,
+            action: .leave
+        )
+        return false
+    }
+
+    func requestMergeTwin(for visitID: UUID) {
+        guard let visit = visit(id: visitID) else { return }
+        guard visit.shouldWarnBeforeMerge else {
+            advanceLifecycle(.merge, for: visitID)
+            return
+        }
+        pendingWorkingTwinWarning = PendingWorkingTwinWarning(
+            visitID: visitID,
+            kind: .mergeWithUnreviewedEvidence,
+            action: .merge
+        )
+    }
+
+    func confirmPendingWorkingTwinWarning() {
+        guard let warning = pendingWorkingTwinWarning else { return }
+        pendingWorkingTwinWarning = nil
+        switch warning.action {
+        case .leave:
+            break
+        case .pull:
+            advanceLifecycle(.pull, for: warning.visitID)
+        case .merge:
+            advanceLifecycle(.merge, for: warning.visitID)
+        }
+    }
+
+    func cancelPendingWorkingTwinWarning() {
+        pendingWorkingTwinWarning = nil
+    }
+
+    func confirmCapturedEvidence(for visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID) else { return }
+
+        for roomIndex in visits[visitIndex].rooms.indices {
+            for evidenceIndex in visits[visitIndex].rooms[roomIndex].evidence.indices
+                where visits[visitIndex].rooms[roomIndex].evidence[evidenceIndex].reviewStatus == .needsReview {
+                visits[visitIndex].rooms[roomIndex].evidence[evidenceIndex].reviewStatus = .confirmed
+            }
+        }
+
+        for componentIndex in visits[visitIndex].components.indices {
+            for evidenceIndex in visits[visitIndex].components[componentIndex].evidence.indices
+                where visits[visitIndex].components[componentIndex].evidence[evidenceIndex].reviewStatus == .needsReview {
+                visits[visitIndex].components[componentIndex].evidence[evidenceIndex].reviewStatus = .confirmed
+            }
+        }
+
+        visits[visitIndex].lifecycleStage = .confirm
+        visits[visitIndex].repositoryState = .readyToMerge
         persistChanges()
     }
 
     func sectionList(for visitID: UUID) -> [CaptureSection] {
         guard let visit = visit(id: visitID) else { return [] }
-        let systemType = visit.captureMode == .current ? visit.currentSystemType : visit.proposedSystemType
-        return SystemComponentKind.captureSections(for: systemType)
+        return SystemComponentKind.captureSections(for: visit.currentSystemType)
     }
 
     func setSurveyResponseReviewStatus(
@@ -189,6 +282,7 @@ public final class VisitListViewModel: ObservableObject {
         }
         response.reviewStatus = status
         visits[visitIndex].rooms[roomIndex].survey[questionKey] = response
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
@@ -206,6 +300,7 @@ public final class VisitListViewModel: ObservableObject {
         }
         response.reviewNotes = normalizedOptionalString(notes)
         visits[visitIndex].rooms[roomIndex].survey[questionKey] = response
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
@@ -230,6 +325,7 @@ public final class VisitListViewModel: ObservableObject {
                 notes: notes.trimmingCharacters(in: .whitespacesAndNewlines)
             )
         )
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
@@ -279,6 +375,46 @@ public final class VisitListViewModel: ObservableObject {
         appendEvidence(Evidence(kind: .voiceNote, localFileName: url.lastPathComponent), toComponent: componentID, in: visitID)
     }
 
+    func attachQuickEvidencePhoto(data: Data, toComponent componentID: UUID, in visitID: UUID) {
+        do {
+            let url = try repository.makeEvidenceFileURL(fileExtension: "jpg", visitID: visitID, componentID: componentID)
+            try data.write(to: url, options: .atomic)
+            appendEvidence(
+                Evidence(
+                    kind: .photo,
+                    localFileName: url.lastPathComponent,
+                    reviewStatus: .needsReview,
+                    reviewNotes: "Picture captured from AR Capture."
+                ),
+                toComponent: componentID,
+                in: visitID
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func attachVoiceTranscriptNote(_ transcript: String, toComponent componentID: UUID, in visitID: UUID) {
+        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do {
+            let url = try repository.makeEvidenceFileURL(fileExtension: "txt", visitID: visitID, componentID: componentID)
+            try Data(trimmed.utf8).write(to: url, options: .atomic)
+            appendEvidence(
+                Evidence(
+                    kind: .voiceNote,
+                    localFileName: url.lastPathComponent,
+                    reviewStatus: .needsReview,
+                    reviewNotes: "Voice Note transcript captured from AR Capture."
+                ),
+                toComponent: componentID,
+                in: visitID
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func attachTextNote(text: String, to roomID: UUID, in visitID: UUID) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -291,13 +427,205 @@ public final class VisitListViewModel: ObservableObject {
         }
     }
 
-    func attachTextNoteToComponent(text: String, to componentID: UUID, in visitID: UUID) {
+    func addAREvidenceCapture(
+        to visitID: UUID,
+        subtype: SystemComponentSubtype,
+        areaID: UUID?,
+        placement: SpatialPlacement?,
+        photoData: Data?,
+        voiceNoteText: String,
+        includeGeometry: Bool,
+        floorLevel: String,
+        geometryID: String?,
+        approximatePositionLabel: String?
+    ) -> UUID? {
+        guard let componentID = addSpatialObject(
+            to: visitID,
+            kind: subtype.legacyKind,
+            subtype: subtype,
+            areaID: areaID,
+            placement: placement
+        ) else {
+            return nil
+        }
+
+        if let photoData {
+            attachQuickEvidencePhoto(data: photoData, toComponent: componentID, in: visitID)
+        }
+        attachVoiceTranscriptNote(voiceNoteText, toComponent: componentID, in: visitID)
+
+        if let visitIndex = indexOfVisit(visitID),
+           let componentIndex = indexOfComponent(componentID, in: visitIndex) {
+            visits[visitIndex].components[componentIndex].componentAttributes["componentTypeEvidence"] = subtype.title
+            visits[visitIndex].components[componentIndex].componentAttributes["voiceNoteTranscript"] = normalizedOptionalString(voiceNoteText) ?? ""
+            if photoData != nil {
+                visits[visitIndex].components[componentIndex].componentAttributes["photoEvidenceLabel"] = "Picture captured from AR Capture."
+            }
+            let areaLabel: String
+            if let areaID,
+               let area = visits[visitIndex].areas.first(where: { $0.id == areaID }) {
+                areaLabel = area.name
+            } else {
+                areaLabel = "Spatial capture"
+            }
+            visits[visitIndex].components[componentIndex].componentAttributes["areaEvidence"] = areaLabel
+            visits[visitIndex].components[componentIndex].spatialContext = SpatialEvidenceContext(
+                floorLevel: floorLevel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unknown level" : floorLevel.trimmingCharacters(in: .whitespacesAndNewlines),
+                areaLabel: areaLabel,
+                geometryID: normalizedOptionalString(geometryID ?? ""),
+                approximatePositionLabel: normalizedOptionalString(approximatePositionLabel ?? "")
+            )
+            persistChanges()
+        }
+
+        if includeGeometry {
+            if let visitIndex = indexOfVisit(visitID),
+               let componentIndex = indexOfComponent(componentID, in: visitIndex) {
+                visits[visitIndex].components[componentIndex].componentAttributes["geometryEvidence"] = "Selected geometry captured in AR Capture."
+                persistChanges()
+            }
+            attachTextNoteToComponent(
+                text: "Selected geometry captured in AR Capture. Confirm dimensions and anchor before merge.",
+                to: componentID,
+                in: visitID,
+                reviewStatus: .needsReview,
+                reviewNotes: "Geometry reference captured from AR Capture."
+            )
+        }
+        return componentID
+    }
+
+    func addCaptureLiteEvidenceCapture(
+        to visitID: UUID,
+        subtype: SystemComponentSubtype,
+        areaID: UUID?,
+        photoData: Data?,
+        voiceNoteText: String,
+        photoEvidenceLabel: String
+    ) -> UUID? {
+        let componentID = addAREvidenceCapture(
+            to: visitID,
+            subtype: subtype,
+            areaID: areaID,
+            placement: SpatialPlacement(captureState: .areaReferenceOnly, confidence: .low),
+            photoData: photoData,
+            voiceNoteText: voiceNoteText,
+            includeGeometry: false,
+            floorLevel: "Unknown level",
+            geometryID: nil,
+            approximatePositionLabel: nil
+        )
+
+        if let componentID,
+           let visitIndex = indexOfVisit(visitID),
+           let componentIndex = indexOfComponent(componentID, in: visitIndex) {
+            visits[visitIndex].components[componentIndex].componentAttributes["captureSource"] = "Capture Lite"
+            if !photoEvidenceLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                visits[visitIndex].components[componentIndex].componentAttributes["photoEvidenceLabel"] = photoEvidenceLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            persistChanges()
+        }
+
+        return componentID
+    }
+
+    func updateEvidenceBundle(
+        componentID: UUID,
+        visitID: UUID,
+        subtype: SystemComponentSubtype,
+        areaID: UUID?,
+        geometryID: String,
+        approximatePositionLabel: String,
+        voiceNoteTranscript: String,
+        photoEvidenceLabel: String
+    ) {
+        guard let visitIndex = indexOfVisit(visitID),
+              let componentIndex = indexOfComponent(componentID, in: visitIndex) else {
+            return
+        }
+
+        visits[visitIndex].components[componentIndex].kind = subtype.legacyKind
+        visits[visitIndex].components[componentIndex].canonicalSubtype = subtype
+        visits[visitIndex].components[componentIndex].componentAttributes["componentTypeEvidence"] = subtype.title
+        visits[visitIndex].components[componentIndex].componentAttributes["voiceNoteTranscript"] = normalizedOptionalString(voiceNoteTranscript) ?? ""
+        visits[visitIndex].components[componentIndex].componentAttributes["photoEvidenceLabel"] = normalizedOptionalString(photoEvidenceLabel) ?? ""
+
+        let areaLabel: String
+        if let areaID,
+           let area = visits[visitIndex].areas.first(where: { $0.id == areaID }) {
+            areaLabel = area.name
+            applyAreaReference(toComponent: componentID, roomID: areaID, visitID: visitID, preserveExistingPlacement: true)
+        } else {
+            areaLabel = "Spatial capture"
+            applyAreaReference(toComponent: componentID, roomID: nil, visitID: visitID, preserveExistingPlacement: true)
+        }
+
+        guard let refreshedVisitIndex = indexOfVisit(visitID),
+              let refreshedComponentIndex = indexOfComponent(componentID, in: refreshedVisitIndex) else {
+            return
+        }
+
+        visits[refreshedVisitIndex].components[refreshedComponentIndex].componentAttributes["areaEvidence"] = areaLabel
+        let floorLevel = visits[refreshedVisitIndex].components[refreshedComponentIndex].spatialContext?.floorLevel ?? "Unknown level"
+        visits[refreshedVisitIndex].components[refreshedComponentIndex].spatialContext = SpatialEvidenceContext(
+            floorLevel: floorLevel,
+            areaLabel: areaLabel,
+            geometryID: normalizedOptionalString(geometryID),
+            approximatePositionLabel: normalizedOptionalString(approximatePositionLabel)
+        )
+
+        if normalizedOptionalString(geometryID) != nil || normalizedOptionalString(approximatePositionLabel) != nil {
+            visits[refreshedVisitIndex].components[refreshedComponentIndex].componentAttributes["geometryEvidence"] = "Selected geometry captured in AR Capture."
+        } else {
+            visits[refreshedVisitIndex].components[refreshedComponentIndex].componentAttributes.removeValue(forKey: "geometryEvidence")
+        }
+
+        markEvidenceBundleNeedsReview(componentIndex: refreshedComponentIndex, visitIndex: refreshedVisitIndex)
+        incrementChangeSetCounter("editedEvidence", by: max(1, visits[refreshedVisitIndex].components[refreshedComponentIndex].evidence.count), visitIndex: refreshedVisitIndex)
+        markLocalChanges(at: refreshedVisitIndex)
+        persistChanges()
+    }
+
+    func deleteEvidenceBundle(componentID: UUID, visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID),
+              let componentIndex = indexOfComponent(componentID, in: visitIndex) else {
+            return
+        }
+        let component = visits[visitIndex].components[componentIndex]
+        incrementChangeSetCounter("deletedEvidence", by: max(1, component.evidence.count), visitIndex: visitIndex)
+        for evidence in component.evidence where !evidence.localFileName.isEmpty {
+            repository.deleteEvidenceFile(named: evidence.localFileName)
+        }
+        visits[visitIndex].components.remove(at: componentIndex)
+        visits[visitIndex].relationships.removeAll {
+            $0.sourceComponentID == componentID || $0.targetComponentID == componentID
+        }
+        markLocalChanges(at: visitIndex)
+        persistChanges()
+    }
+
+    func attachTextNoteToComponent(
+        text: String,
+        to componentID: UUID,
+        in visitID: UUID,
+        reviewStatus: ReviewStatus? = nil,
+        reviewNotes: String? = nil
+    ) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         do {
             let url = try repository.makeEvidenceFileURL(fileExtension: "txt", visitID: visitID, componentID: componentID)
             try Data(trimmed.utf8).write(to: url, options: .atomic)
-            appendEvidence(Evidence(kind: .textNote, localFileName: url.lastPathComponent), toComponent: componentID, in: visitID)
+            appendEvidence(
+                Evidence(
+                    kind: .textNote,
+                    localFileName: url.lastPathComponent,
+                    reviewStatus: reviewStatus,
+                    reviewNotes: reviewNotes
+                ),
+                toComponent: componentID,
+                in: visitID
+            )
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -305,11 +633,8 @@ public final class VisitListViewModel: ObservableObject {
 
     func setSectionStatus(_ status: SectionStatus, for kind: SystemComponentKind, visitID: UUID) {
         guard let visitIndex = indexOfVisit(visitID) else { return }
-        if visits[visitIndex].captureMode == .current {
-            visits[visitIndex].sectionStatuses[kind] = status
-        } else {
-            visits[visitIndex].proposedSectionStatuses[kind] = status
-        }
+        visits[visitIndex].sectionStatuses[kind] = status
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
@@ -330,6 +655,7 @@ public final class VisitListViewModel: ObservableObject {
             spatialPlacement: placement ?? SpatialPlacement(captureState: .failed, confidence: .unknown)
         )
         visits[visitIndex].components.append(component)
+        markLocalChanges(at: visitIndex)
         persistChanges()
         applyAreaReference(
             toComponent: component.id,
@@ -353,6 +679,7 @@ public final class VisitListViewModel: ObservableObject {
             spatialPlacement: SpatialPlacement(captureState: .failed, confidence: .unknown)
         )
         visits[visitIndex].components.append(component)
+        markLocalChanges(at: visitIndex)
         persistChanges()
         return component.id
     }
@@ -399,6 +726,7 @@ public final class VisitListViewModel: ObservableObject {
                     $0.targetAreaID != nil
             }
         }
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
@@ -425,24 +753,28 @@ public final class VisitListViewModel: ObservableObject {
             targetComponentID: targetComponentID,
             targetAreaID: targetAreaID
         )
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
     func addWaterSupplyObservation(to visitID: UUID, observation: WaterSupplyObservation) {
         guard let visitIndex = indexOfVisit(visitID) else { return }
         visits[visitIndex].waterSupplyObservations.insert(observation, at: 0)
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
     func addServicePointObservation(to visitID: UUID, observation: ServicePointObservation) {
         guard let visitIndex = indexOfVisit(visitID) else { return }
         visits[visitIndex].servicePointObservations.insert(observation, at: 0)
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
     func removeRelationship(visitID: UUID, relationshipID: UUID) {
         guard let visitIndex = indexOfVisit(visitID) else { return }
         visits[visitIndex].relationships.removeAll { $0.id == relationshipID }
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
@@ -464,6 +796,7 @@ public final class VisitListViewModel: ObservableObject {
             }
         }
         if didChange {
+            markLocalChanges(at: visitIndex)
             persistChanges()
         }
     }
@@ -474,6 +807,7 @@ public final class VisitListViewModel: ObservableObject {
             return
         }
         visits[visitIndex].components[componentIndex].reviewStatus = status
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
@@ -483,6 +817,7 @@ public final class VisitListViewModel: ObservableObject {
             return
         }
         visits[visitIndex].components[componentIndex].reviewNotes = normalizedOptionalString(notes)
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
@@ -503,6 +838,7 @@ public final class VisitListViewModel: ObservableObject {
         } else {
             visits[visitIndex].components[componentIndex].componentAttributes[key] = trimmed
         }
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
@@ -577,6 +913,7 @@ public final class VisitListViewModel: ObservableObject {
         }
 
         visits[visitIndex].rooms[roomIndex].evidence.insert(evidence, at: 0)
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
@@ -587,7 +924,19 @@ public final class VisitListViewModel: ObservableObject {
         }
 
         visits[visitIndex].components[componentIndex].evidence.insert(evidence, at: 0)
+        markLocalChanges(at: visitIndex)
         persistChanges()
+    }
+
+    private func markEvidenceBundleNeedsReview(componentIndex: Int, visitIndex: Int) {
+        for evidenceIndex in visits[visitIndex].components[componentIndex].evidence.indices {
+            visits[visitIndex].components[componentIndex].evidence[evidenceIndex].reviewStatus = .needsReview
+        }
+    }
+
+    private func incrementChangeSetCounter(_ key: String, by amount: Int, visitIndex: Int) {
+        guard amount > 0 else { return }
+        visits[visitIndex].changeSetCounters[key, default: 0] += amount
     }
 
     func setRoomEvidenceReviewStatus(_ status: ReviewStatus?, evidenceID: UUID, roomID: UUID, visitID: UUID) {
@@ -598,6 +947,7 @@ public final class VisitListViewModel: ObservableObject {
             return
         }
         visits[visitIndex].rooms[roomIndex].evidence[evidenceIndex].reviewStatus = status
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
@@ -609,6 +959,7 @@ public final class VisitListViewModel: ObservableObject {
             return
         }
         visits[visitIndex].rooms[roomIndex].evidence[evidenceIndex].reviewNotes = normalizedOptionalString(notes)
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
@@ -621,6 +972,7 @@ public final class VisitListViewModel: ObservableObject {
             return
         }
         visits[visitIndex].components[componentIndex].evidence[evidenceIndex].reviewStatus = status
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
@@ -633,6 +985,7 @@ public final class VisitListViewModel: ObservableObject {
             return
         }
         visits[visitIndex].components[componentIndex].evidence[evidenceIndex].reviewNotes = normalizedOptionalString(notes)
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
@@ -653,6 +1006,39 @@ public final class VisitListViewModel: ObservableObject {
             try repository.save(visits: visits)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func markLocalChanges(at visitIndex: Int) {
+        guard visits.indices.contains(visitIndex) else { return }
+        switch visits[visitIndex].lifecycleStage {
+        case .stage, .clarify, .confirm, .merge:
+            break
+        case .pull, .capture, .commit, .recapture:
+            visits[visitIndex].lifecycleStage = .capture
+        }
+
+        if visits[visitIndex].repositoryState != .stagedForReview &&
+            visits[visitIndex].repositoryState != .awaitingClarification &&
+            visits[visitIndex].repositoryState != .readyToMerge {
+            visits[visitIndex].repositoryState = .hasLocalChanges
+        }
+    }
+
+    private func repositoryState(for stage: TwinLifecycleStage) -> TwinRepositoryState {
+        switch stage {
+        case .pull:
+            return .localWorkingCopy
+        case .capture, .commit, .recapture:
+            return .hasLocalChanges
+        case .stage:
+            return .stagedForReview
+        case .clarify:
+            return .awaitingClarification
+        case .confirm:
+            return .readyToMerge
+        case .merge:
+            return .merged
         }
     }
 

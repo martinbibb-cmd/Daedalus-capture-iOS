@@ -264,7 +264,7 @@ final class TwinContractsTests: XCTestCase {
                     name: "Airing Cupboard",
                     confidence: .approximate,
                     provenance: TwinProvenance(
-                        source: "Daedalus Scan",
+                        source: "Daedalus Capture",
                         observedAt: createdAt,
                         observedBy: "surveyor@example.com"
                     )
@@ -275,7 +275,7 @@ final class TwinContractsTests: XCTestCase {
                     name: "Boiler",
                     evidenceRefs: [evidenceID.uuidString],
                     provenance: TwinProvenance(
-                        source: "Daedalus Scan",
+                        source: "Daedalus Capture",
                         observedAt: createdAt,
                         observedBy: "surveyor@example.com"
                     )
@@ -286,7 +286,7 @@ final class TwinContractsTests: XCTestCase {
                     fileRef: "boiler-photo.jpg",
                     confidence: .observed,
                     provenance: TwinProvenance(
-                        source: "Daedalus Scan",
+                        source: "Daedalus Capture",
                         observedAt: createdAt,
                         observedBy: "surveyor@example.com"
                     ),
@@ -299,7 +299,7 @@ final class TwinContractsTests: XCTestCase {
                     from: "00000000-0000-0000-0000-000000000040",
                     to: "00000000-0000-0000-0000-000000000020",
                     provenance: TwinProvenance(
-                        source: "Daedalus Scan",
+                        source: "Daedalus Capture",
                         observedAt: createdAt,
                         observedBy: "surveyor@example.com"
                     )

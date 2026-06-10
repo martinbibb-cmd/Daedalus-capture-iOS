@@ -232,8 +232,8 @@ final class SurveyModelsTests: XCTestCase {
 
         XCTAssertNotNil(decoded.metadata)
         XCTAssertEqual(decoded.metadata?.schemaVersion, 3)
-        XCTAssertEqual(decoded.metadata?.source, "Daedalus Scan")
-        XCTAssertEqual(decoded.metadata?.exportedByApp, "Daedalus Scan")
+        XCTAssertEqual(decoded.metadata?.source, "Daedalus Capture")
+        XCTAssertEqual(decoded.metadata?.exportedByApp, "Daedalus Capture")
         XCTAssertEqual(decoded.schemaVersion, 3)
         XCTAssertEqual(decoded.exportedAt, decoded.metadata?.createdAt)
     }
@@ -295,6 +295,111 @@ final class SurveyModelsTests: XCTestCase {
         decoder.dateDecodingStrategy = .iso8601
         let visits = try decoder.decode([Visit].self, from: Data(json.utf8))
         XCTAssertEqual(visits[0].sectionStatuses, [:])
+    }
+
+    func testCaptureModeUsesTwinLifecycleLanguage() {
+        XCTAssertEqual(CaptureMode.allCases, [.create, .verify, .update])
+        XCTAssertEqual(CaptureMode.allCases.map(\.title), ["Create Twin", "Verify Twin", "Update Twin"])
+    }
+
+    func testCaptureModeDecodesLegacySurveyValues() throws {
+        let current = try JSONDecoder().decode(CaptureMode.self, from: Data(#""current""#.utf8))
+        let proposed = try JSONDecoder().decode(CaptureMode.self, from: Data(#""proposed""#.utf8))
+
+        XCTAssertEqual(current, .create)
+        XCTAssertEqual(proposed, .update)
+    }
+
+    func testTwinLifecycleFieldsDefaultOnLegacyDecode() throws {
+        let json = "[{\"id\":\"00000000-0000-0000-0000-000000000099\",\"reference\":\"VIS-LEGACY-ID\",\"createdAt\":\"2024-01-01T00:00:00Z\",\"twinKind\":\"home\",\"rooms\":[],\"components\":[]}]"
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let visits = try decoder.decode([Visit].self, from: Data(json.utf8))
+        XCTAssertEqual(visits[0].repositoryState, .localWorkingCopy)
+        XCTAssertEqual(visits[0].lifecycleStage, .capture)
+        XCTAssertEqual(visits[0].twinVersion, 1)
+        XCTAssertNil(visits[0].lastMergedAt)
+    }
+
+    func testTwinVersionAndLastMergedRoundTrip() throws {
+        let mergedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let visit = Visit(
+            reference: "VIS-VERSION",
+            twinKind: .system,
+            repositoryState: .merged,
+            lifecycleStage: .merge,
+            twinVersion: 27,
+            lastMergedAt: mergedAt
+        )
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(VisitPackage(visits: [visit]))
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(VisitPackage.self, from: data)
+
+        XCTAssertEqual(decoded.visits[0].twinVersion, 27)
+        XCTAssertEqual(decoded.visits[0].lastMergedAt, mergedAt)
+        XCTAssertEqual(decoded.visits[0].repositoryState, .merged)
+        XCTAssertEqual(decoded.visits[0].lifecycleStage, .merge)
+    }
+
+    func testSpatialEvidenceContextRoundTrip() throws {
+        let component = SystemComponent(
+            kind: .boiler,
+            canonicalSubtype: .combiBoiler,
+            spatialContext: SpatialEvidenceContext(
+                floorLevel: "Ground floor",
+                areaLabel: "Utility",
+                geometryID: "wall-east-01",
+                approximatePositionLabel: "Left of cylinder"
+            )
+        )
+        let visit = Visit(reference: "VIS-SPATIAL-CONTEXT", twinKind: .system, components: [component])
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(VisitPackage(visits: [visit]))
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(VisitPackage.self, from: data)
+
+        let context = decoded.visits[0].components[0].spatialContext
+        XCTAssertEqual(context?.floorLevel, "Ground floor")
+        XCTAssertEqual(context?.areaLabel, "Utility")
+        XCTAssertEqual(context?.geometryID, "wall-east-01")
+        XCTAssertEqual(context?.approximatePositionLabel, "Left of cylinder")
+    }
+
+    func testEvidenceTrustDefaultsFromEvidenceKind() throws {
+        XCTAssertEqual(Evidence(kind: .photo, localFileName: "photo.jpg").trustLevel, .photos)
+        XCTAssertEqual(Evidence(kind: .voiceNote, localFileName: "note.m4a").trustLevel, .humanObservations)
+        XCTAssertEqual(Evidence(kind: .textNote, localFileName: "note.txt").trustLevel, .humanObservations)
+    }
+
+    func testVisitEncodingQuarantinesLegacyProposedSystemFields() throws {
+        let visit = Visit(
+            reference: "VIS-LIFECYCLE",
+            twinKind: .system,
+            currentSystemType: .combi,
+            legacySystemType: .regularSealed,
+            captureMode: .verify,
+            sectionStatuses: [.boiler: .present],
+            legacySectionStatuses: [.cylinder: .notPresent]
+        )
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(VisitPackage(visits: [visit]))
+        let encodedJSON = try XCTUnwrap(String(data: data, encoding: .utf8))
+
+        XCTAssertTrue(encodedJSON.contains(#""captureMode":"verify""#))
+        XCTAssertTrue(encodedJSON.contains(#""currentSystemType":"combi""#))
+        XCTAssertFalse(encodedJSON.contains("proposedSystemType"))
+        XCTAssertFalse(encodedJSON.contains("proposedSectionStatuses"))
     }
 
     func testComponentAttributesRoundTripForMultipleKinds() throws {

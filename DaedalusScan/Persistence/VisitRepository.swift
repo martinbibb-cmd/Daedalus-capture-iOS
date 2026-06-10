@@ -12,25 +12,25 @@ enum VisitPackageImportError: LocalizedError {
         case let .unsupportedSchemaVersion(version):
             return "This package was created with an unsupported schema version (\(version))."
         case .conflictResolutionRequired:
-            return "This package conflicts with existing visits. Choose how to continue import."
+            return "This package conflicts with existing Property Twins. Choose how to continue import."
         }
     }
+}
 
-    enum VisitPackageExportError: LocalizedError {
-        case singleVisitRequired
-        case validationFailed([PackageValidationIssue])
+enum VisitPackageExportError: LocalizedError {
+    case singleVisitRequired
+    case validationFailed([PackageValidationIssue])
 
-        var errorDescription: String? {
-            switch self {
-            case .singleVisitRequired:
-                return "Daedalus package export currently supports one visit at a time. Open a visit and export it from the capture screen."
-            case let .validationFailed(issues):
-                let details = issues.prefix(5).map { issue in
-                    "\(issue.path): \(issue.message)"
-                }
-                let suffix = issues.count > details.count ? "\n…\(issues.count - details.count) more issue(s)" : ""
-                return "Export blocked by contract validation.\n" + details.joined(separator: "\n") + suffix
+    var errorDescription: String? {
+        switch self {
+        case .singleVisitRequired:
+            return "Daedalus package export currently supports one visit at a time. Open a visit and export it from the capture screen."
+        case let .validationFailed(issues):
+            let details = issues.prefix(5).map { issue in
+                "\(issue.path): \(issue.message)"
             }
+            let suffix = issues.count > details.count ? "\n…\(issues.count - details.count) more issue(s)" : ""
+            return "Export blocked by contract validation.\n" + details.joined(separator: "\n") + suffix
         }
     }
 }
@@ -52,9 +52,11 @@ public final class VisitRepository {
     private let fileManager: FileManager
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
+    private let storageDirectoryOverride: URL?
 
-    public init(fileManager: FileManager = .default) {
+    public init(fileManager: FileManager = .default, storageDirectory: URL? = nil) {
         self.fileManager = fileManager
+        self.storageDirectoryOverride = storageDirectory
 
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -174,7 +176,8 @@ public final class VisitRepository {
                 notes: room.notes,
                 survey: room.survey,
                 evidence: restoredEvidence,
-                spatialPlacement: room.spatialPlacement
+                spatialPlacement: room.spatialPlacement,
+                factState: room.factState
             )
         }
 
@@ -190,9 +193,12 @@ public final class VisitRepository {
                 notes: component.notes,
                 reviewStatus: component.reviewStatus,
                 reviewNotes: component.reviewNotes,
+                canonicalSubtype: component.canonicalSubtype,
                 componentAttributes: component.componentAttributes,
                 evidence: restoredEvidence,
-                spatialPlacement: component.spatialPlacement
+                spatialPlacement: component.spatialPlacement,
+                factState: component.factState,
+                spatialContext: component.spatialContext
             )
         }
 
@@ -208,7 +214,6 @@ public final class VisitRepository {
             appointmentDate: visit.appointmentDate,
             notes: visit.notes,
             currentSystemType: visit.currentSystemType,
-            proposedSystemType: visit.proposedSystemType,
             captureMode: visit.captureMode,
             rooms: restoredRooms,
             relationships: visit.relationships,
@@ -216,7 +221,11 @@ public final class VisitRepository {
             waterSupplyObservations: visit.waterSupplyObservations,
             servicePointObservations: visit.servicePointObservations,
             sectionStatuses: visit.sectionStatuses,
-            proposedSectionStatuses: visit.proposedSectionStatuses
+            repositoryState: visit.repositoryState,
+            lifecycleStage: visit.lifecycleStage,
+            twinVersion: visit.twinVersion,
+            lastMergedAt: visit.lastMergedAt,
+            changeSetCounters: visit.changeSetCounters
         )
     }
 
@@ -257,14 +266,25 @@ public final class VisitRepository {
         guard let dir = try? evidenceDirectoryURL() else { return }
         for room in visit.rooms {
             for evidence in room.evidence where !evidence.localFileName.isEmpty {
-                try? fileManager.removeItem(at: dir.appendingPathComponent(evidence.localFileName))
+                deleteEvidenceFile(named: evidence.localFileName, in: dir)
             }
         }
         for component in visit.components {
             for evidence in component.evidence where !evidence.localFileName.isEmpty {
-                try? fileManager.removeItem(at: dir.appendingPathComponent(evidence.localFileName))
+                deleteEvidenceFile(named: evidence.localFileName, in: dir)
             }
         }
+    }
+
+    func deleteEvidenceFile(named fileName: String) {
+        guard let dir = try? evidenceDirectoryURL() else { return }
+        deleteEvidenceFile(named: fileName, in: dir)
+    }
+
+    private func deleteEvidenceFile(named fileName: String, in directory: URL) {
+        let safeName = URL(fileURLWithPath: fileName).lastPathComponent
+        guard !safeName.isEmpty else { return }
+        try? fileManager.removeItem(at: directory.appendingPathComponent(safeName))
     }
 
     func makeEvidenceFileURL(fileExtension: String, visitID: UUID, roomID: UUID) throws -> URL {
@@ -295,6 +315,13 @@ public final class VisitRepository {
     }
 
     private func storageDirectoryURL() throws -> URL {
+        if let storageDirectoryOverride {
+            if !fileManager.fileExists(atPath: storageDirectoryOverride.path) {
+                try fileManager.createDirectory(at: storageDirectoryOverride, withIntermediateDirectories: true)
+            }
+            return storageDirectoryOverride
+        }
+
         let baseDirectory = try fileManager.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,

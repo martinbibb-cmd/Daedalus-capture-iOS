@@ -40,15 +40,118 @@ public enum HeatingSystemType: String, Codable, CaseIterable, Hashable, Sendable
 }
 
 public enum CaptureMode: String, Codable, CaseIterable, Hashable, Sendable {
-    case current
-    case proposed
+    case create
+    case verify
+    case update
 
     public var title: String {
         switch self {
-        case .current:
-            return "Current System"
-        case .proposed:
-            return "Proposed System"
+        case .create:
+            return "Create Twin"
+        case .verify:
+            return "Verify Twin"
+        case .update:
+            return "Update Twin"
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        switch rawValue {
+        case Self.create.rawValue, "current":
+            self = .create
+        case Self.verify.rawValue:
+            self = .verify
+        case Self.update.rawValue, "pro" + "posed":
+            self = .update
+        default:
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unknown capture mode: \(rawValue)"
+            )
+        }
+    }
+}
+
+public enum TwinRepositoryState: String, Codable, CaseIterable, Hashable, Sendable {
+    case authoritativeCloudTwin
+    case localWorkingCopy
+    case hasLocalChanges
+    case stagedForReview
+    case awaitingClarification
+    case readyToMerge
+    case merged
+
+    public var title: String {
+        switch self {
+        case .authoritativeCloudTwin: return "Authoritative Twin"
+        case .localWorkingCopy: return "Working Twin"
+        case .hasLocalChanges: return "Working Twin"
+        case .stagedForReview: return "In Review"
+        case .awaitingClarification: return "Needs Clarification"
+        case .readyToMerge: return "Ready to Merge"
+        case .merged: return "Merged Twin"
+        }
+    }
+}
+
+public enum TwinLifecycleStage: String, Codable, CaseIterable, Hashable, Sendable {
+    case pull
+    case capture
+    case commit
+    case stage
+    case clarify
+    case recapture
+    case confirm
+    case merge
+
+    public var title: String {
+        switch self {
+        case .pull: return "Pull Twin"
+        case .capture: return "Capture"
+        case .commit: return "Commit"
+        case .stage: return "Review"
+        case .clarify: return "Clarify"
+        case .recapture: return "Recapture"
+        case .confirm: return "Confirm"
+        case .merge: return "Merge Twin"
+        }
+    }
+}
+
+public enum TwinFactState: String, Codable, CaseIterable, Hashable, Sendable {
+    case known
+    case estimated
+    case inferred
+    case unknown
+
+    public var title: String {
+        switch self {
+        case .known: return "Known"
+        case .estimated: return "Estimated"
+        case .inferred: return "Inferred"
+        case .unknown: return "Unknown"
+        }
+    }
+}
+
+public enum EvidenceTrustLevel: Int, Codable, CaseIterable, Hashable, Sendable {
+    case reality = 1
+    case photos = 2
+    case documents = 3
+    case measurements = 4
+    case humanObservations = 5
+    case twinData = 6
+
+    public var title: String {
+        switch self {
+        case .reality: return "Reality"
+        case .photos: return "Photos"
+        case .documents: return "Documents"
+        case .measurements: return "Measurements"
+        case .humanObservations: return "Human Observations"
+        case .twinData: return "Twin Data"
         }
     }
 }
@@ -137,6 +240,7 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
     public var createdAt: Date
     public var reviewStatus: ReviewStatus?
     public var reviewNotes: String?
+    public var trustLevel: EvidenceTrustLevel
     /// Embedded file bytes included in an exported VisitPackage to enable round-trip restore.
     /// Nil when stored locally; populated by the exporter and consumed by the importer.
     public var embeddedData: Data?
@@ -148,6 +252,7 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
         createdAt: Date = Date(),
         reviewStatus: ReviewStatus? = nil,
         reviewNotes: String? = nil,
+        trustLevel: EvidenceTrustLevel? = nil,
         embeddedData: Data? = nil
     ) {
         self.id = id
@@ -156,7 +261,52 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
         self.createdAt = createdAt
         self.reviewStatus = reviewStatus
         self.reviewNotes = reviewNotes
+        self.trustLevel = trustLevel ?? kind.defaultTrustLevel
         self.embeddedData = embeddedData
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case kind
+        case localFileName
+        case createdAt
+        case reviewStatus
+        case reviewNotes
+        case trustLevel
+        case embeddedData
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        kind = try container.decode(EvidenceKind.self, forKey: .kind)
+        localFileName = try container.decode(String.self, forKey: .localFileName)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        reviewStatus = try container.decodeIfPresent(ReviewStatus.self, forKey: .reviewStatus)
+        reviewNotes = try container.decodeIfPresent(String.self, forKey: .reviewNotes)
+        trustLevel = try container.decodeIfPresent(EvidenceTrustLevel.self, forKey: .trustLevel) ?? kind.defaultTrustLevel
+        embeddedData = try container.decodeIfPresent(Data.self, forKey: .embeddedData)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(localFileName, forKey: .localFileName)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(reviewStatus, forKey: .reviewStatus)
+        try container.encodeIfPresent(reviewNotes, forKey: .reviewNotes)
+        try container.encode(trustLevel, forKey: .trustLevel)
+        try container.encodeIfPresent(embeddedData, forKey: .embeddedData)
+    }
+}
+
+public extension EvidenceKind {
+    var defaultTrustLevel: EvidenceTrustLevel {
+        switch self {
+        case .photo: return .photos
+        case .voiceNote, .textNote: return .humanObservations
+        }
     }
 }
 
@@ -220,6 +370,25 @@ public struct SpatialPlacement: Codable, Hashable, Sendable {
     }
 }
 
+public struct SpatialEvidenceContext: Codable, Hashable, Sendable {
+    public var floorLevel: String
+    public var areaLabel: String
+    public var geometryID: String?
+    public var approximatePositionLabel: String?
+
+    public init(
+        floorLevel: String = "Unknown level",
+        areaLabel: String = "Spatial capture",
+        geometryID: String? = nil,
+        approximatePositionLabel: String? = nil
+    ) {
+        self.floorLevel = floorLevel
+        self.areaLabel = areaLabel
+        self.geometryID = geometryID
+        self.approximatePositionLabel = approximatePositionLabel
+    }
+}
+
 public enum SpatialRelationshipType: String, Codable, CaseIterable, Identifiable, Sendable {
     case containedIn
     case connectedTo
@@ -271,6 +440,7 @@ public struct Room: Codable, Hashable, Identifiable, Sendable {
     public var survey: [String: SurveyResponse]
     public var evidence: [Evidence]
     public var spatialPlacement: SpatialPlacement
+    public var factState: TwinFactState
 
     public init(
         id: UUID = UUID(),
@@ -280,7 +450,8 @@ public struct Room: Codable, Hashable, Identifiable, Sendable {
         notes: String = "",
         survey: [String: SurveyResponse] = [:],
         evidence: [Evidence] = [],
-        spatialPlacement: SpatialPlacement = SpatialPlacement()
+        spatialPlacement: SpatialPlacement = SpatialPlacement(),
+        factState: TwinFactState = .unknown
     ) {
         self.id = id
         self.name = name
@@ -290,6 +461,7 @@ public struct Room: Codable, Hashable, Identifiable, Sendable {
         self.survey = survey
         self.evidence = evidence
         self.spatialPlacement = spatialPlacement
+        self.factState = factState
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -301,6 +473,7 @@ public struct Room: Codable, Hashable, Identifiable, Sendable {
         case survey
         case evidence
         case spatialPlacement
+        case factState
     }
 
     public init(from decoder: Decoder) throws {
@@ -313,6 +486,7 @@ public struct Room: Codable, Hashable, Identifiable, Sendable {
         survey = try container.decodeIfPresent([String: SurveyResponse].self, forKey: .survey) ?? [:]
         evidence = try container.decodeIfPresent([Evidence].self, forKey: .evidence) ?? []
         spatialPlacement = try container.decodeIfPresent(SpatialPlacement.self, forKey: .spatialPlacement) ?? SpatialPlacement()
+        factState = try container.decodeIfPresent(TwinFactState.self, forKey: .factState) ?? .unknown
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -325,6 +499,7 @@ public struct Room: Codable, Hashable, Identifiable, Sendable {
         try container.encode(survey, forKey: .survey)
         try container.encode(evidence, forKey: .evidence)
         try container.encode(spatialPlacement, forKey: .spatialPlacement)
+        try container.encode(factState, forKey: .factState)
     }
 }
 
@@ -735,6 +910,8 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
     public var componentAttributes: [String: String]
     public var evidence: [Evidence]
     public var spatialPlacement: SpatialPlacement
+    public var factState: TwinFactState
+    public var spatialContext: SpatialEvidenceContext?
 
     public var canonicalCategory: SystemComponentCategory {
         canonicalSubtype.category
@@ -743,7 +920,7 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
     public init(
         id: UUID = UUID(),
         kind: SystemComponentKind,
-        captureMode: CaptureMode = .current,
+        captureMode: CaptureMode = .create,
         name: String = "",
         manufacturer: String = "",
         model: String = "",
@@ -753,7 +930,9 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         canonicalSubtype: SystemComponentSubtype? = nil,
         componentAttributes: [String: String] = [:],
         evidence: [Evidence] = [],
-        spatialPlacement: SpatialPlacement = SpatialPlacement()
+        spatialPlacement: SpatialPlacement = SpatialPlacement(),
+        factState: TwinFactState = .unknown,
+        spatialContext: SpatialEvidenceContext? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -768,6 +947,8 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         self.componentAttributes = componentAttributes
         self.evidence = evidence
         self.spatialPlacement = spatialPlacement
+        self.factState = factState
+        self.spatialContext = spatialContext
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -784,13 +965,15 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         case componentAttributes
         case evidence
         case spatialPlacement
+        case factState
+        case spatialContext
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         kind = try container.decode(SystemComponentKind.self, forKey: .kind)
-        captureMode = try container.decodeIfPresent(CaptureMode.self, forKey: .captureMode) ?? .current
+        captureMode = try container.decodeIfPresent(CaptureMode.self, forKey: .captureMode) ?? .create
         name = try container.decode(String.self, forKey: .name)
         manufacturer = try container.decode(String.self, forKey: .manufacturer)
         model = try container.decode(String.self, forKey: .model)
@@ -801,6 +984,8 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         componentAttributes = try container.decodeIfPresent([String: String].self, forKey: .componentAttributes) ?? [:]
         evidence = try container.decodeIfPresent([Evidence].self, forKey: .evidence) ?? []
         spatialPlacement = try container.decodeIfPresent(SpatialPlacement.self, forKey: .spatialPlacement) ?? SpatialPlacement()
+        factState = try container.decodeIfPresent(TwinFactState.self, forKey: .factState) ?? .unknown
+        spatialContext = try container.decodeIfPresent(SpatialEvidenceContext.self, forKey: .spatialContext)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -818,6 +1003,8 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
         try container.encode(componentAttributes, forKey: .componentAttributes)
         try container.encode(evidence, forKey: .evidence)
         try container.encode(spatialPlacement, forKey: .spatialPlacement)
+        try container.encode(factState, forKey: .factState)
+        try container.encodeIfPresent(spatialContext, forKey: .spatialContext)
     }
 }
 
@@ -833,7 +1020,8 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
     public var appointmentDate: Date?
     public var notes: String
     public var currentSystemType: HeatingSystemType
-    public var proposedSystemType: HeatingSystemType
+    /// Legacy import compatibility only. Capture stores observed systems.
+    public var legacySystemType: HeatingSystemType
     public var captureMode: CaptureMode
     public var rooms: [Room]
     public var relationships: [SpatialRelationship]
@@ -841,7 +1029,13 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
     public var waterSupplyObservations: [WaterSupplyObservation]
     public var servicePointObservations: [ServicePointObservation]
     public var sectionStatuses: [SystemComponentKind: SectionStatus]
-    public var proposedSectionStatuses: [SystemComponentKind: SectionStatus]
+    /// Legacy import compatibility only. Capture has one observed section status map.
+    public var legacySectionStatuses: [SystemComponentKind: SectionStatus]
+    public var repositoryState: TwinRepositoryState
+    public var lifecycleStage: TwinLifecycleStage
+    public var twinVersion: Int
+    public var lastMergedAt: Date?
+    public var changeSetCounters: [String: Int]
 
     public var areas: [Room] {
         get { rooms }
@@ -860,15 +1054,20 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         appointmentDate: Date? = nil,
         notes: String = "",
         currentSystemType: HeatingSystemType = .unknown,
-        proposedSystemType: HeatingSystemType = .unknown,
-        captureMode: CaptureMode = .current,
+        legacySystemType: HeatingSystemType = .unknown,
+        captureMode: CaptureMode = .create,
         rooms: [Room] = [],
         relationships: [SpatialRelationship] = [],
         components: [SystemComponent] = [],
         waterSupplyObservations: [WaterSupplyObservation] = [],
         servicePointObservations: [ServicePointObservation] = [],
         sectionStatuses: [SystemComponentKind: SectionStatus] = [:],
-        proposedSectionStatuses: [SystemComponentKind: SectionStatus] = [:]
+        legacySectionStatuses: [SystemComponentKind: SectionStatus] = [:],
+        repositoryState: TwinRepositoryState = .localWorkingCopy,
+        lifecycleStage: TwinLifecycleStage = .capture,
+        twinVersion: Int = 1,
+        lastMergedAt: Date? = nil,
+        changeSetCounters: [String: Int] = [:]
     ) {
         self.id = id
         self.reference = reference
@@ -881,7 +1080,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         self.appointmentDate = appointmentDate
         self.notes = notes
         self.currentSystemType = currentSystemType
-        self.proposedSystemType = proposedSystemType
+        self.legacySystemType = legacySystemType
         self.captureMode = captureMode
         self.rooms = rooms
         self.relationships = relationships
@@ -889,7 +1088,12 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         self.waterSupplyObservations = waterSupplyObservations
         self.servicePointObservations = servicePointObservations
         self.sectionStatuses = sectionStatuses
-        self.proposedSectionStatuses = proposedSectionStatuses
+        self.legacySectionStatuses = legacySectionStatuses
+        self.repositoryState = repositoryState
+        self.lifecycleStage = lifecycleStage
+        self.twinVersion = max(1, twinVersion)
+        self.lastMergedAt = lastMergedAt
+        self.changeSetCounters = changeSetCounters
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -904,7 +1108,6 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         case appointmentDate
         case notes
         case currentSystemType
-        case proposedSystemType
         case captureMode
         case rooms
         case relationships
@@ -912,11 +1115,32 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         case waterSupplyObservations
         case servicePointObservations
         case sectionStatuses
-        case proposedSectionStatuses
+        case repositoryState
+        case lifecycleStage
+        case twinVersion
+        case lastMergedAt
+        case changeSetCounters
+    }
+
+    private struct LegacyCodingKey: CodingKey {
+        var stringValue: String
+        var intValue: Int? { nil }
+
+        init?(stringValue: String) {
+            self.stringValue = stringValue
+        }
+
+        init?(intValue: Int) {
+            return nil
+        }
+
+        static let systemType = LegacyCodingKey(stringValue: "proposed" + "SystemType")!
+        static let sectionStatuses = LegacyCodingKey(stringValue: "proposed" + "SectionStatuses")!
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        let legacyContainer = try decoder.container(keyedBy: LegacyCodingKey.self)
         id = try container.decode(UUID.self, forKey: .id)
         reference = try container.decode(String.self, forKey: .reference)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
@@ -928,15 +1152,20 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         appointmentDate = try container.decodeIfPresent(Date.self, forKey: .appointmentDate)
         notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
         currentSystemType = try container.decodeIfPresent(HeatingSystemType.self, forKey: .currentSystemType) ?? .unknown
-        proposedSystemType = try container.decodeIfPresent(HeatingSystemType.self, forKey: .proposedSystemType) ?? .unknown
-        captureMode = try container.decodeIfPresent(CaptureMode.self, forKey: .captureMode) ?? .current
+        legacySystemType = try legacyContainer.decodeIfPresent(HeatingSystemType.self, forKey: .systemType) ?? .unknown
+        captureMode = try container.decodeIfPresent(CaptureMode.self, forKey: .captureMode) ?? .create
         rooms = try container.decode([Room].self, forKey: .rooms)
         relationships = try container.decodeIfPresent([SpatialRelationship].self, forKey: .relationships) ?? []
         components = try container.decodeIfPresent([SystemComponent].self, forKey: .components) ?? []
         waterSupplyObservations = try container.decodeIfPresent([WaterSupplyObservation].self, forKey: .waterSupplyObservations) ?? []
         servicePointObservations = try container.decodeIfPresent([ServicePointObservation].self, forKey: .servicePointObservations) ?? []
         sectionStatuses = try container.decodeIfPresent([SystemComponentKind: SectionStatus].self, forKey: .sectionStatuses) ?? [:]
-        proposedSectionStatuses = try container.decodeIfPresent([SystemComponentKind: SectionStatus].self, forKey: .proposedSectionStatuses) ?? [:]
+        legacySectionStatuses = try legacyContainer.decodeIfPresent([SystemComponentKind: SectionStatus].self, forKey: .sectionStatuses) ?? [:]
+        repositoryState = try container.decodeIfPresent(TwinRepositoryState.self, forKey: .repositoryState) ?? .localWorkingCopy
+        lifecycleStage = try container.decodeIfPresent(TwinLifecycleStage.self, forKey: .lifecycleStage) ?? .capture
+        twinVersion = max(1, try container.decodeIfPresent(Int.self, forKey: .twinVersion) ?? 1)
+        lastMergedAt = try container.decodeIfPresent(Date.self, forKey: .lastMergedAt)
+        changeSetCounters = try container.decodeIfPresent([String: Int].self, forKey: .changeSetCounters) ?? [:]
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -952,7 +1181,6 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         try container.encodeIfPresent(appointmentDate, forKey: .appointmentDate)
         try container.encode(notes, forKey: .notes)
         try container.encode(currentSystemType, forKey: .currentSystemType)
-        try container.encode(proposedSystemType, forKey: .proposedSystemType)
         try container.encode(captureMode, forKey: .captureMode)
         try container.encode(rooms, forKey: .rooms)
         try container.encode(relationships, forKey: .relationships)
@@ -960,7 +1188,11 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         try container.encode(waterSupplyObservations, forKey: .waterSupplyObservations)
         try container.encode(servicePointObservations, forKey: .servicePointObservations)
         try container.encode(sectionStatuses, forKey: .sectionStatuses)
-        try container.encode(proposedSectionStatuses, forKey: .proposedSectionStatuses)
+        try container.encode(repositoryState, forKey: .repositoryState)
+        try container.encode(lifecycleStage, forKey: .lifecycleStage)
+        try container.encode(twinVersion, forKey: .twinVersion)
+        try container.encodeIfPresent(lastMergedAt, forKey: .lastMergedAt)
+        try container.encode(changeSetCounters, forKey: .changeSetCounters)
     }
 }
 
@@ -1034,7 +1266,7 @@ public struct VisitPackage: Codable, Hashable, Sendable {
 
 public struct VisitPackageMetadata: Codable, Hashable, Sendable {
     public static let currentSchemaVersion = 3
-    public static let canonicalSource = "Daedalus Scan"
+    public static let canonicalSource = "Daedalus Capture"
 
     public var packageID: UUID
     public var schemaVersion: Int

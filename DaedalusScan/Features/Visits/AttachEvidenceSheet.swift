@@ -56,7 +56,7 @@ struct AttachEvidenceSheet: View {
                         }
                     }
                 } else {
-                    ContentUnavailableView("Visit not found", systemImage: "exclamationmark.triangle")
+                    ContentUnavailableView("Property Twin not found", systemImage: "exclamationmark.triangle")
                 }
             }
             .navigationTitle("Attach Evidence")

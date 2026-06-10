@@ -92,7 +92,6 @@ public enum VisitImportMerger {
             appointmentDate: visit.appointmentDate,
             notes: visit.notes,
             currentSystemType: visit.currentSystemType,
-            proposedSystemType: visit.proposedSystemType,
             captureMode: visit.captureMode,
             rooms: visit.rooms,
             relationships: visit.relationships,
@@ -100,7 +99,11 @@ public enum VisitImportMerger {
             waterSupplyObservations: visit.waterSupplyObservations,
             servicePointObservations: visit.servicePointObservations,
             sectionStatuses: visit.sectionStatuses,
-            proposedSectionStatuses: visit.proposedSectionStatuses
+            repositoryState: visit.repositoryState,
+            lifecycleStage: visit.lifecycleStage,
+            twinVersion: visit.twinVersion,
+            lastMergedAt: visit.lastMergedAt,
+            changeSetCounters: visit.changeSetCounters
         )
     }
 }

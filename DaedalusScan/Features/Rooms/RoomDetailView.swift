@@ -62,16 +62,18 @@ struct RoomDetailView: View {
     @ViewBuilder
     private var spatialSection: some View {
         if let room {
-            Section("Spatial Capture") {
+            Section {
                 LabeledContent("State", value: room.spatialPlacement.captureState.title)
                 LabeledContent("Confidence", value: room.spatialPlacement.confidence.title)
                 LabeledContent("Anchor", value: room.spatialPlacement.anchorID ?? "None")
                 if let position = room.spatialPlacement.approximatePosition {
                     LabeledContent(
                         "Approximate position",
-                        value: "\(position.x, specifier: "%.2f"), \(position.y, specifier: "%.2f"), \(position.z, specifier: "%.2f")"
+                        value: String(format: "%.2f, %.2f, %.2f", position.x, position.y, position.z)
                     )
                 }
+            } header: {
+                Text("Spatial Capture")
             } footer: {
                 Text("Spatial metadata is exported with the visit package, including fallback states when anchoring is unavailable.")
             }

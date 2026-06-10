@@ -6,6 +6,9 @@ struct LiveCaptureView: View {
 
     @State private var isPresentingReview = false
     @State private var isPresentingSummary = false
+    @State private var isPresentingOverview = false
+    @State private var isPresentingStage = false
+    @State private var isPresentingMerge = false
     @State private var isPresentingShareSheet = false
     @State private var isPresentingContext = false
     @State private var isPresentingCameraMode = false
@@ -16,6 +19,9 @@ struct LiveCaptureView: View {
     @State private var isPresentingAttachEvidence = false
     @State private var isPresentingWaterTest = false
     @State private var isPresentingServicePoint = false
+    @State private var isPresentingQuickEvidence = false
+    @State private var capturedEvidenceComponentID: UUID?
+    @State private var isShowingCapturedEvidence = false
     @State private var spatialSession = SpatialCaptureSession()
     @State private var livePlacementState = LivePlacementState.unavailable
 
@@ -31,9 +37,9 @@ struct LiveCaptureView: View {
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) {
                             Button {
-                                isPresentingReview = true
+                                isPresentingOverview = true
                             } label: {
-                                Label("Review Capture", systemImage: "list.bullet.rectangle")
+                                Label("Twin Overview", systemImage: "map")
                             }
                         }
                         ToolbarItem(placement: .topBarTrailing) {
@@ -45,10 +51,16 @@ struct LiveCaptureView: View {
                         }
                         ToolbarItem(placement: .topBarTrailing) {
                             Menu {
-                                Button("Visit Context") { isPresentingContext = true }
+                                Button("Property Twin Context") { isPresentingContext = true }
+                                Button("Review Capture") { isPresentingReview = true }
                                 Button("Capture Summary") { isPresentingSummary = true }
+                                Button("Review Changes") {
+                                    viewModel.advanceLifecycle(.stage, for: visitID)
+                                    isPresentingStage = true
+                                }
+                                Button("Merge Twin") { isPresentingMerge = true }
                                 Divider()
-                                Button("Export Package") {
+                                Button("Export Twin Package") {
                                     if let url = viewModel.makeExportTempURL(for: visitID) {
                                         shareURL = url
                                         isPresentingShareSheet = true
@@ -62,11 +74,31 @@ struct LiveCaptureView: View {
                     .navigationDestination(isPresented: $isPresentingReview) {
                         VisitDetailView(viewModel: viewModel, visitID: visitID)
                     }
+                    .navigationDestination(isPresented: $isPresentingOverview) {
+                        TwinOverviewView(viewModel: viewModel, visitID: visitID)
+                    }
                     .navigationDestination(isPresented: $isPresentingSummary) {
                         VisitSummaryView(visit: visit)
                     }
+                    .navigationDestination(isPresented: $isPresentingStage) {
+                        StageModeView(viewModel: viewModel, visitID: visitID)
+                    }
+                    .navigationDestination(isPresented: $isPresentingMerge) {
+                        MergeModeView(viewModel: viewModel, visitID: visitID)
+                    }
                     .navigationDestination(isPresented: $isPresentingCameraMode) {
                         SurveySectionCaptureView(viewModel: viewModel, visitID: visitID)
+                    }
+                    .navigationDestination(isPresented: $isShowingCapturedEvidence) {
+                        if let capturedEvidenceComponentID {
+                            ComponentDetailView(
+                                viewModel: viewModel,
+                                visitID: visitID,
+                                componentID: capturedEvidenceComponentID
+                            )
+                        } else {
+                            ContentUnavailableView("Component not found", systemImage: "exclamationmark.triangle")
+                        }
                     }
                     .sheet(isPresented: $isPresentingShareSheet) {
                         if let url = shareURL {
@@ -92,6 +124,23 @@ struct LiveCaptureView: View {
                             )
                         }
                     }
+                    .sheet(isPresented: $isPresentingQuickEvidence) {
+                        ARQuickEvidenceSheet(areas: visit.areas) { request in
+                            capturedEvidenceComponentID = viewModel.addAREvidenceCapture(
+                                to: visitID,
+                                subtype: request.subtype,
+                                areaID: request.areaID,
+                                placement: currentPlacementMetadata,
+                                photoData: request.photoData,
+                                voiceNoteText: request.voiceNoteText,
+                                includeGeometry: request.includeGeometry,
+                                floorLevel: request.floorLevel,
+                                geometryID: request.geometryID,
+                                approximatePositionLabel: request.approximatePositionLabel
+                            )
+                            isShowingCapturedEvidence = capturedEvidenceComponentID != nil
+                        }
+                    }
                     .sheet(isPresented: $isPresentingAttachEvidence) {
                         AttachEvidenceSheet(viewModel: viewModel, visitID: visitID)
                     }
@@ -102,7 +151,7 @@ struct LiveCaptureView: View {
                         ServicePointSheet(viewModel: viewModel, visitID: visitID, visit: visit)
                     }
             } else {
-                ContentUnavailableView("Visit not found", systemImage: "exclamationmark.triangle")
+                ContentUnavailableView("Property Twin not found", systemImage: "exclamationmark.triangle")
             }
         }
     }
@@ -117,13 +166,15 @@ struct LiveCaptureView: View {
                     }
 
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("Captured so far")
+                    TwinLifecycleStrip(visit: visit)
+
+                    Text("Captured reality")
                         .font(.headline)
                         .padding(.horizontal, 14)
                         .padding(.top, 14)
 
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("Captured Areas")
+                        Text("House Twin")
                             .font(.subheadline.weight(.semibold))
                             .padding(.horizontal, 14)
                             .padding(.top, 12)
@@ -152,7 +203,7 @@ struct LiveCaptureView: View {
                             .padding(.bottom, 8)
                         }
 
-                        Text("captureState: approximate  •  confidence: approximate")
+                        Text("Rooms are labels. Geometry is truth.")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 14)
@@ -163,14 +214,14 @@ struct LiveCaptureView: View {
 
                     let components = visit.components.filter { $0.captureMode == visit.captureMode }
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("Captured Components")
+                        Text("System Twin")
                             .font(.subheadline.weight(.semibold))
                             .padding(.horizontal, 14)
                             .padding(.top, 12)
                             .padding(.bottom, 8)
 
                         if components.isEmpty {
-                            Text("No objects captured yet.")
+                            Text("No components captured yet.")
                                 .foregroundStyle(.secondary)
                                 .padding(.horizontal, 14)
                                 .padding(.bottom, 12)
@@ -196,7 +247,7 @@ struct LiveCaptureView: View {
                             .padding(.bottom, 8)
                         }
 
-                        Text("Unknown subtypes remain valid capture.")
+                        Text("Incomplete systems remain valid capture.")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 14)
@@ -234,6 +285,9 @@ struct LiveCaptureView: View {
                     Text("Live capture")
                         .font(.headline)
                         .foregroundStyle(.white)
+                    Text("Capture records reality. Main explains reality.")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.9))
                     Label("Spatial session: \(spatialSession.status.title)", systemImage: "dot.radiowaves.left.and.right")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(sessionStatusColor)
@@ -261,12 +315,20 @@ struct LiveCaptureView: View {
     private var primaryActions: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
             Button {
+                isPresentingQuickEvidence = true
+            } label: {
+                Label("Quick Evidence", systemImage: "scope")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+
+            Button {
                 isPresentingCaptureArea = true
             } label: {
                 Label("Capture Area", systemImage: "square.dashed")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.bordered)
 
             Button {
                 isPresentingCaptureObject = true
@@ -349,7 +411,7 @@ struct LiveCaptureView: View {
         if livePlacementState.hasAnchor {
             return "Placement anchor available"
         }
-        return "No anchor — fallback active"
+        return "No anchor - fallback active"
     }
 
     private var sessionStatusColor: Color {
@@ -594,5 +656,196 @@ private struct CompletenessOverlayCard: View {
                 .foregroundStyle(.secondary)
         }
         .font(.caption)
+    }
+}
+
+private struct ARQuickEvidenceRequest {
+    var subtype: SystemComponentSubtype
+    var areaID: UUID?
+    var photoData: Data?
+    var voiceNoteText: String
+    var includeGeometry: Bool
+    var floorLevel: String
+    var geometryID: String
+    var approximatePositionLabel: String
+}
+
+private struct ARQuickEvidenceSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let areas: [Room]
+    let onCapture: (ARQuickEvidenceRequest) -> Void
+
+    @State private var subtype: SystemComponentSubtype = .unknownHeatSource
+    @State private var selectedAreaID: UUID?
+    @State private var photoData: Data?
+    @State private var isPresentingCamera = false
+    @State private var voiceNoteText = ""
+    @State private var includeGeometry = true
+    @State private var floorLevel = "Ground floor"
+    @State private var geometryID = ""
+    @State private var approximatePositionLabel = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("Component", selection: $subtype) {
+                        ForEach(SystemComponentCategory.allCases.filter { $0 != .unknown }, id: \.id) { category in
+                            Section(category.title) {
+                                ForEach(SystemComponentSubtype.allCases.filter { $0.category == category }) { option in
+                                    Text(option.title).tag(option)
+                                }
+                            }
+                        }
+                    }
+                    .pickerStyle(.navigationLink)
+                } header: {
+                    Text("What was observed")
+                }
+
+                Section {
+                    EvidenceCardView(
+                        title: "Component Type",
+                        systemImage: "cube",
+                        detail: subtype.title,
+                        reviewStatus: .needsReview,
+                        capturedAt: nil
+                    )
+
+                    EvidenceCardView(
+                        title: "Area / Location",
+                        systemImage: "location",
+                        detail: areaDetail,
+                        reviewStatus: .needsReview,
+                        capturedAt: nil,
+                        spatialContext: spatialContextDetail
+                    )
+
+                    Button {
+                        isPresentingCamera = true
+                    } label: {
+                        EvidenceCardView(
+                            title: "Picture",
+                            systemImage: "photo",
+                            detail: photoData == nil ? "Tap to capture picture evidence." : "Picture captured.",
+                            reviewStatus: photoData == nil ? nil : .needsReview,
+                            capturedAt: photoData == nil ? nil : Date()
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        EvidenceCardView(
+                            title: "Voice Note",
+                            systemImage: "waveform",
+                            detail: voiceNoteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                ? "Speak naturally when transcription is available. Type fallback here for now."
+                                : voiceNoteText,
+                            reviewStatus: voiceNoteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : .needsReview,
+                            capturedAt: voiceNoteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : Date()
+                        )
+                        TextField("Voice Note fallback", text: $voiceNoteText, axis: .vertical)
+                            .lineLimit(2...4)
+                    }
+
+                    Toggle(isOn: $includeGeometry) {
+                        EvidenceCardView(
+                            title: "Geometry",
+                            systemImage: "scope",
+                            detail: includeGeometry ? geometryDetail : "No geometry selected.",
+                            reviewStatus: includeGeometry ? .needsReview : nil,
+                            capturedAt: includeGeometry ? Date() : nil,
+                            spatialContext: spatialContextDetail
+                        )
+                    }
+                } header: {
+                    Text("Evidence")
+                } footer: {
+                    Text("Capture evidence first. Typed Voice Note is a fallback until live transcription is available.")
+                }
+
+                Section {
+                    TextField("Floor / level", text: $floorLevel)
+                        .textInputAutocapitalization(.words)
+
+                    if areas.isEmpty {
+                        Text("No areas captured yet. Evidence will remain spatial until an area is added.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Picker("Area", selection: $selectedAreaID) {
+                            Text("None").tag(Optional<UUID>.none)
+                            ForEach(areas) { area in
+                                Text(area.name).tag(Optional(area.id))
+                            }
+                        }
+                    }
+
+                    TextField("Geometry ID (optional)", text: $geometryID)
+                        .textInputAutocapitalization(.characters)
+                    TextField("Approximate position (optional)", text: $approximatePositionLabel)
+                        .textInputAutocapitalization(.sentences)
+                } header: {
+                    Text("Spatial Context")
+                }
+            }
+            .navigationTitle("Quick Evidence")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Capture") {
+                        onCapture(
+                            ARQuickEvidenceRequest(
+                                subtype: subtype,
+                                areaID: selectedAreaID,
+                                photoData: photoData,
+                                voiceNoteText: voiceNoteText,
+                                includeGeometry: includeGeometry,
+                                floorLevel: floorLevel,
+                                geometryID: geometryID,
+                                approximatePositionLabel: approximatePositionLabel
+                            )
+                        )
+                        dismiss()
+                    }
+                    .disabled(photoData == nil && voiceNoteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !includeGeometry)
+                }
+            }
+            .sheet(isPresented: $isPresentingCamera) {
+                CameraCaptureView { data in
+                    photoData = data
+                }
+            }
+        }
+    }
+
+    private var areaDetail: String {
+        guard let selectedAreaID,
+              let area = areas.first(where: { $0.id == selectedAreaID }) else {
+            return "Spatial capture"
+        }
+        return area.name
+    }
+
+    private var geometryDetail: String {
+        let trimmedGeometry = geometryID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedGeometry.isEmpty else {
+            return "Selected geometry captured."
+        }
+        return "Geometry \(trimmedGeometry)"
+    }
+
+    private var spatialContextDetail: String {
+        [
+            floorLevel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unknown level" : floorLevel,
+            areaDetail,
+            approximatePositionLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        ]
+        .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        .joined(separator: " / ")
     }
 }

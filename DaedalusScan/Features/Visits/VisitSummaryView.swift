@@ -15,14 +15,16 @@ struct VisitSummaryView: View {
 
     var body: some View {
         List {
-            Section("Capture Overview") {
+            Section {
                 LabeledContent("Captured areas", value: "\(visit.areas.count)")
                 LabeledContent("Captured components", value: "\(components.count)")
                 LabeledContent("Relationships", value: "\(visit.relationships.count)")
                 LabeledContent("Evidence items", value: "\(totalEvidence)")
+            } header: {
+                Text("Capture Overview")
             }
 
-            Section("Capture Ledger") {
+            Section {
                 ForEach(SystemComponentCategory.allCases.filter { $0 != .unknown }, id: \.id) { category in
                     let count = components.filter { $0.canonicalCategory == category }.count
                     HStack {
@@ -32,14 +34,18 @@ struct VisitSummaryView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+            } header: {
+                Text("Capture Ledger")
             }
 
-            Section("Observed Completeness") {
+            Section {
                 completenessRow("Heat Source", observed: components.contains { $0.canonicalCategory == .heatSource })
                 completenessRow("Hot Water", observed: components.contains { $0.canonicalCategory == .hotWater })
                 completenessRow("Controls", observed: components.contains { $0.canonicalCategory == .control })
                 completenessRow("Emitters", observed: components.contains { $0.canonicalCategory == .emitter })
                 completenessRow("Meters", observed: components.contains { $0.canonicalSubtype == .gasMeter })
+            } header: {
+                Text("Observed Completeness")
             } footer: {
                 Text("Unknown remains valid and exportable.")
             }

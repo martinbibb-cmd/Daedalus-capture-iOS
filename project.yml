@@ -30,22 +30,22 @@ targets:
     info:
       path: DaedalusScan/App/Info.plist
       properties:
-        CFBundleDisplayName: Daedalus Scan
+        CFBundleDisplayName: Daedalus Capture
         LSRequiresIPhoneOS: true
-        NSCameraUsageDescription: Daedalus Scan captures room evidence photos.
-        NSPhotoLibraryUsageDescription: Daedalus Scan stores captured visit evidence.
-        NSMicrophoneUsageDescription: Daedalus Scan records voice note evidence.
+        NSCameraUsageDescription: Daedalus Capture captures property twin evidence photos.
+        NSPhotoLibraryUsageDescription: Daedalus Capture stores captured twin evidence.
+        NSMicrophoneUsageDescription: Daedalus Capture records voice note evidence.
         LSSupportsOpeningDocumentsInPlace: false
         UILaunchScreen: {}
         CFBundleDocumentTypes:
-          - CFBundleTypeName: Daedalus Scan Package
+          - CFBundleTypeName: Daedalus Capture Package
             CFBundleTypeRole: Editor
             LSHandlerRank: Owner
             LSItemContentTypes:
               - com.daedalus.scan.package
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: com.daedalus.scan.package
-            UTTypeDescription: Daedalus Scan Package
+            UTTypeDescription: Daedalus Capture Package
             UTTypeConformsTo:
               - public.json
             UTTypeTagSpecification:
@@ -56,14 +56,29 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.martinbibb.daedalus.scan
-        PRODUCT_NAME: Daedalus Scan
+        PRODUCT_NAME: Daedalus Capture
         SUPPORTS_MACCATALYST: NO
         TARGETED_DEVICE_FAMILY: 1
+  DaedalusScanTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: DaedalusScanTests
+    dependencies:
+      - target: DaedalusScanCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.martinbibb.daedalus.scan.tests
 schemes:
   DaedalusScanApp:
     build:
       targets:
         DaedalusScanCore: all
         DaedalusScanApp: all
+        DaedalusScanTests: [test]
+    test:
+      targets:
+        - DaedalusScanTests
     run:
       config: Debug

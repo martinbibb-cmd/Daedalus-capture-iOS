@@ -31,9 +31,9 @@ public struct VisitListView: View {
             List {
                 if viewModel.visits.isEmpty {
                     ContentUnavailableView(
-                        "No Visits",
+                        "No Property Twins",
                         systemImage: "tray",
-                        description: Text("Create a visit to go straight into live capture.")
+                        description: Text("Create or pull a Property Twin to begin capture.")
                     )
                 } else if filteredVisits.isEmpty {
                     ContentUnavailableView.search(text: searchText)
@@ -50,22 +50,30 @@ public struct VisitListView: View {
                     }
                 }
             }
-            .searchable(text: $searchText, prompt: "Search reference, customer, postcode")
-            .navigationTitle("Visits")
+            .searchable(text: $searchText, prompt: "Search property, customer, postcode")
+            .navigationTitle("Property Twins")
             .navigationDestination(for: UUID.self) { visitID in
-                LiveCaptureView(viewModel: viewModel, visitID: visitID)
+                PropertyTwinHomeView(
+                    viewModel: viewModel,
+                    visitID: visitID,
+                    onRequestLeave: {
+                        if viewModel.requestLeaveWorkingTwin(for: visitID) {
+                            navigationPath.removeAll { $0 == visitID }
+                        }
+                    }
+                )
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Menu("Package") {
-                        Button("Export Visit Package") {
+                    Menu("Property Twin") {
+                        Button("Export Twin Package") {
                             if let url = viewModel.makeExportTempURL() {
                                 shareURL = url
                                 isPresentingShareSheet = true
                             }
                         }
 
-                        Button("Import Visit Package") {
+                        Button("Import Twin Package") {
                             isPresentingImport = true
                         }
                     }
@@ -75,13 +83,13 @@ public struct VisitListView: View {
                     Button {
                         isPresentingCreateVisit = true
                     } label: {
-                        Label("Create Visit", systemImage: "plus")
+                        Label("New Property Twin", systemImage: "plus")
                     }
                 }
             }
         }
         .sheet(isPresented: $isPresentingCreateVisit) {
-            CreateVisitView { reference, customerName, addressLine, postcode, engineerName, appointmentDate, notes, currentSystemType, proposedSystemType, captureMode in
+            CreateVisitView { reference, customerName, addressLine, postcode, engineerName, appointmentDate, notes, currentSystemType, captureMode in
                 if let visitID = viewModel.createVisit(
                     reference: reference,
                     customerName: customerName,
@@ -91,7 +99,6 @@ public struct VisitListView: View {
                     appointmentDate: appointmentDate,
                     notes: notes,
                     currentSystemType: currentSystemType,
-                    proposedSystemType: proposedSystemType,
                     captureMode: captureMode
                 ) {
                     navigationPath = [visitID]
@@ -117,6 +124,30 @@ public struct VisitListView: View {
             viewModel.importPackage(from: url)
         }
         .confirmationDialog(
+            viewModel.pendingWorkingTwinWarning?.kind.title ?? "Working Twin warning",
+            isPresented: Binding(
+                get: { viewModel.pendingWorkingTwinWarning != nil },
+                set: { if !$0 { viewModel.cancelPendingWorkingTwinWarning() } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let warning = viewModel.pendingWorkingTwinWarning {
+                Button(warning.kind.confirmTitle) {
+                    let action = warning.action
+                    let visitID = warning.visitID
+                    viewModel.confirmPendingWorkingTwinWarning()
+                    if action == .leave {
+                        navigationPath.removeAll { $0 == visitID }
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                viewModel.cancelPendingWorkingTwinWarning()
+            }
+        } message: {
+            Text(viewModel.pendingWorkingTwinWarning?.kind.message ?? "")
+        }
+        .confirmationDialog(
             "Import conflict",
             isPresented: Binding(
                 get: { viewModel.pendingImportConflict != nil },
@@ -124,7 +155,7 @@ public struct VisitListView: View {
             ),
             titleVisibility: .visible
         ) {
-            Button("Replace existing visit") {
+            Button("Replace existing Property Twin") {
                 viewModel.replaceExistingVisitForPendingImport()
             }
             Button("Keep both") {
@@ -136,14 +167,14 @@ public struct VisitListView: View {
         } message: {
             if let conflict = viewModel.pendingImportConflict {
                 if conflict.conflictCount == 1 {
-                    Text("Imported visit \"\(conflict.sampleReference)\" already exists locally.")
+                    Text("Imported Property Twin \"\(conflict.sampleReference)\" already exists locally.")
                 } else {
-                    Text("\(conflict.conflictCount) imported visits already exist locally.")
+                    Text("\(conflict.conflictCount) imported Property Twins already exist locally.")
                 }
             }
         }
         .alert(
-            "Daedalus Scan",
+            "Daedalus Capture",
             isPresented: Binding(
                 get: { viewModel.statusMessage != nil },
                 set: { if !$0 { viewModel.statusMessage = nil } }
@@ -154,7 +185,7 @@ public struct VisitListView: View {
             Text(viewModel.statusMessage ?? "")
         }
         .alert(
-            "Daedalus Scan",
+            "Daedalus Capture",
             isPresented: Binding(
                 get: { viewModel.errorMessage != nil },
                 set: { if !$0 { viewModel.errorMessage = nil } }
@@ -195,9 +226,21 @@ public struct VisitListView: View {
             }
 
             HStack(spacing: 12) {
+                Label("Version \(visit.twinVersion)", systemImage: "number")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
                 Label("System · House · Home", systemImage: "building.2")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+
+                Label(visit.repositoryState.title, systemImage: "arrow.triangle.branch")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                Label(visit.captureSessionStatus.title, systemImage: visit.captureSessionStatus.systemImage)
+                    .font(.caption2)
+                    .foregroundStyle(visit.hasUnreviewedEvidence ? .orange : .secondary)
 
                 let reviewCount = reviewNeedsCount(for: visit)
                 if reviewCount > 0 {
@@ -213,6 +256,12 @@ public struct VisitListView: View {
     private func reviewNeedsCount(for visit: Visit) -> Int {
         let roomCount = visit.rooms.filter { $0.reviewStatus == .needsReview }.count
         let componentCount = visit.components.filter { $0.reviewStatus == .needsReview }.count
-        return roomCount + componentCount
+        let roomEvidenceCount = visit.rooms.reduce(0) { count, room in
+            count + room.evidence.filter { $0.reviewStatus == .needsReview }.count
+        }
+        let componentEvidenceCount = visit.components.reduce(0) { count, component in
+            count + component.evidence.filter { $0.reviewStatus == .needsReview }.count
+        }
+        return roomCount + componentCount + roomEvidenceCount + componentEvidenceCount
     }
 }

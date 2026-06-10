@@ -146,7 +146,7 @@ struct ServicePointSheet: View {
 
     private func save() {
         let now = Date()
-        let observedBy = viewModel.visit(id: visitID)?.engineerName.nilIfEmpty ?? "Daedalus Scan"
+        let observedBy = viewModel.visit(id: visitID)?.engineerName.nilIfEmpty ?? "Daedalus Capture"
         let observation = ServicePointObservation(
             areaID: selectedAreaID,
             servicePointType: servicePointType,

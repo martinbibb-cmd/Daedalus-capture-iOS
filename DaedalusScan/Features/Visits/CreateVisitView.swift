@@ -12,19 +12,18 @@ struct CreateVisitView: View {
     @State private var appointmentDate = Date()
     @State private var notes = ""
     @State private var currentSystemType: HeatingSystemType = .unknown
-    @State private var proposedSystemType: HeatingSystemType = .unknown
-    @State private var captureMode: CaptureMode = .current
+    @State private var captureMode: CaptureMode = .create
 
-    let onCreate: (String, String, String, String, String?, Date?, String, HeatingSystemType, HeatingSystemType, CaptureMode) -> Void
+    let onCreate: (String, String, String, String, String?, Date?, String, HeatingSystemType, CaptureMode) -> Void
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Minimal Visit Metadata") {
-                    TextField("Visit reference (required)", text: $reference)
+                Section("Property Twin") {
+                    TextField("Property reference (required)", text: $reference)
                         .textInputAutocapitalization(.characters)
                     LabeledContent("Twin Layers", value: "System · House · Home")
-                    Text("Enter what you have now, then continue directly into live capture.")
+                    Text("Enter what is known now, then continue directly into capture.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -60,25 +59,20 @@ struct CreateVisitView: View {
                         .lineLimit(3...6)
                 }
 
-                Section("System Context") {
-                    Picker("Capture mode", selection: $captureMode) {
+                Section("Twin Context") {
+                    Picker("Lifecycle", selection: $captureMode) {
                         ForEach(CaptureMode.allCases, id: \.self) { mode in
                             Text(mode.title).tag(mode)
                         }
                     }
-                    Picker("Current system", selection: $currentSystemType) {
-                        ForEach(HeatingSystemType.allCases, id: \.self) { type in
-                            Text(type.title).tag(type)
-                        }
-                    }
-                    Picker("Proposed system", selection: $proposedSystemType) {
+                    Picker("Existing reality", selection: $currentSystemType) {
                         ForEach(HeatingSystemType.allCases, id: \.self) { type in
                             Text(type.title).tag(type)
                         }
                     }
                 }
             }
-            .navigationTitle("Create Visit")
+            .navigationTitle("New Property Twin")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -97,7 +91,6 @@ struct CreateVisitView: View {
                             hasAppointmentDate ? appointmentDate : nil,
                             notes,
                             currentSystemType,
-                            proposedSystemType,
                             captureMode
                         )
                         dismiss()
