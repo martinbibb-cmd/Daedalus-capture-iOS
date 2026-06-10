@@ -288,6 +288,58 @@ final class SurveyModelsTests: XCTestCase {
         XCTAssertNil(decoded.visits[0].sectionStatuses[.boiler])
     }
 
+    func testVisitPackageRoundTripPreservesWaterTestsAndServicePointCounts() throws {
+        let createdAt = Date(timeIntervalSince1970: 1_704_067_200)
+        let areaID = "00000000-0000-0000-0000-000000000020"
+        let assetID = "00000000-0000-0000-0000-000000000040"
+        let evidenceID = "00000000-0000-0000-0000-000000000090"
+        let visit = Visit(
+            reference: "VIS-WATER-LEDGER",
+            twinKind: .system,
+            rooms: [
+                Room(id: UUID(uuidString: areaID)!, name: "Bathroom")
+            ],
+            components: [
+                SystemComponent(id: UUID(uuidString: assetID)!, kind: .cylinder)
+            ],
+            waterSupplyObservations: [
+                WaterSupplyObservation(
+                    id: "water-test-001",
+                    observedAt: createdAt,
+                    observedBy: "surveyor@example.com",
+                    method: .flowCup,
+                    location: .bathTap,
+                    intent: .servicePointExperience,
+                    values: [WaterMeasurementValue(name: .flowRate, value: "12", unit: "l/min")],
+                    confidence: .approximate,
+                    evidenceIDs: [evidenceID],
+                    provenance: TwinProvenance(source: "water-supply-test", observedAt: createdAt, observedBy: "surveyor@example.com")
+                )
+            ],
+            servicePointObservations: [
+                ServicePointObservation(
+                    id: "service-point-bath-tap",
+                    areaID: areaID,
+                    servicePointType: .bathTap,
+                    supplyType: .mainsHot,
+                    intendedPressureType: .mainsPressure,
+                    servedByAssetIDs: [assetID],
+                    evidenceIDs: [evidenceID],
+                    confidence: .approximate,
+                    provenance: TwinProvenance(source: "service-point-capture", observedAt: createdAt, observedBy: "surveyor@example.com")
+                )
+            ]
+        )
+
+        let encoded = try JSONEncoder.iso8601Encoded.encode(VisitPackage(visits: [visit]))
+        let decoded = try JSONDecoder.iso8601Decoded.decode(VisitPackage.self, from: encoded)
+
+        XCTAssertEqual(decoded.visits[0].waterSupplyObservations.count, 1)
+        XCTAssertEqual(decoded.visits[0].servicePointObservations.count, 1)
+        XCTAssertEqual(decoded.visits[0].waterSupplyObservations[0].id, "water-test-001")
+        XCTAssertEqual(decoded.visits[0].servicePointObservations[0].id, "service-point-bath-tap")
+    }
+
     func testSectionStatusDecodesFromLegacyVisitWithNoSectionStatuses() throws {
         // Simulate a Visit encoded without sectionStatuses (legacy format)
         let json = "[{\"id\":\"00000000-0000-0000-0000-000000000001\",\"reference\":\"VIS-LEGACY\",\"createdAt\":\"2024-01-01T00:00:00Z\",\"twinKind\":\"system\",\"rooms\":[],\"components\":[]}]"

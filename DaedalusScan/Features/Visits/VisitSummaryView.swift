@@ -20,6 +20,8 @@ struct VisitSummaryView: View {
                 LabeledContent("Captured components", value: "\(components.count)")
                 LabeledContent("Relationships", value: "\(visit.relationships.count)")
                 LabeledContent("Evidence items", value: "\(totalEvidence)")
+                LabeledContent("Water tests", value: "\(visit.waterSupplyObservations.count)")
+                LabeledContent("Service points", value: "\(visit.servicePointObservations.count)")
             } header: {
                 Text("Capture Overview")
             }
@@ -30,9 +32,21 @@ struct VisitSummaryView: View {
                     HStack {
                         Text(category.title)
                         Spacer()
-                        Text(count == 0 ? "?" : count == 1 ? "✓" : "\(count) captured")
+                        Text(count == 0 ? "?" : count == 1 ? "1 captured" : "\(count) captured")
                             .foregroundStyle(.secondary)
                     }
+                }
+                HStack {
+                    Text("Water tests")
+                    Spacer()
+                    Text(visit.waterSupplyObservations.isEmpty ? "?" : "\(visit.waterSupplyObservations.count) captured")
+                        .foregroundStyle(.secondary)
+                }
+                HStack {
+                    Text("Service points")
+                    Spacer()
+                    Text(visit.servicePointObservations.isEmpty ? "?" : "\(visit.servicePointObservations.count) captured")
+                        .foregroundStyle(.secondary)
                 }
             } header: {
                 Text("Capture Ledger")
@@ -59,7 +73,7 @@ struct VisitSummaryView: View {
         HStack {
             Text(label)
             Spacer()
-            Text(observed ? "✓" : "?")
+            Text(observed ? "1 captured" : "?")
                 .foregroundStyle(.secondary)
         }
     }
