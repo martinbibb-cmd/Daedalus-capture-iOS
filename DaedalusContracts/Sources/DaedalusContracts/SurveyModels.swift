@@ -233,6 +233,22 @@ public enum EvidenceKind: String, Codable, CaseIterable, Sendable {
     case textNote
 }
 
+public struct EvidenceTranscriptReference: Codable, Hashable, Sendable {
+    public var transcriptID: UUID
+    public var chunkID: UUID?
+    public var sourceRecordingID: UUID?
+
+    public init(
+        transcriptID: UUID,
+        chunkID: UUID? = nil,
+        sourceRecordingID: UUID? = nil
+    ) {
+        self.transcriptID = transcriptID
+        self.chunkID = chunkID
+        self.sourceRecordingID = sourceRecordingID
+    }
+}
+
 public struct Evidence: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public var kind: EvidenceKind
@@ -241,6 +257,7 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
     public var reviewStatus: ReviewStatus?
     public var reviewNotes: String?
     public var trustLevel: EvidenceTrustLevel
+    public var transcriptReferences: [EvidenceTranscriptReference]
     /// Embedded file bytes included in an exported VisitPackage to enable round-trip restore.
     /// Nil when stored locally; populated by the exporter and consumed by the importer.
     public var embeddedData: Data?
@@ -253,6 +270,7 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
         reviewStatus: ReviewStatus? = nil,
         reviewNotes: String? = nil,
         trustLevel: EvidenceTrustLevel? = nil,
+        transcriptReferences: [EvidenceTranscriptReference] = [],
         embeddedData: Data? = nil
     ) {
         self.id = id
@@ -262,6 +280,7 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
         self.reviewStatus = reviewStatus
         self.reviewNotes = reviewNotes
         self.trustLevel = trustLevel ?? kind.defaultTrustLevel
+        self.transcriptReferences = transcriptReferences
         self.embeddedData = embeddedData
     }
 
@@ -273,6 +292,7 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
         case reviewStatus
         case reviewNotes
         case trustLevel
+        case transcriptReferences
         case embeddedData
     }
 
@@ -285,6 +305,7 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
         reviewStatus = try container.decodeIfPresent(ReviewStatus.self, forKey: .reviewStatus)
         reviewNotes = try container.decodeIfPresent(String.self, forKey: .reviewNotes)
         trustLevel = try container.decodeIfPresent(EvidenceTrustLevel.self, forKey: .trustLevel) ?? kind.defaultTrustLevel
+        transcriptReferences = try container.decodeIfPresent([EvidenceTranscriptReference].self, forKey: .transcriptReferences) ?? []
         embeddedData = try container.decodeIfPresent(Data.self, forKey: .embeddedData)
     }
 
@@ -297,6 +318,7 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
         try container.encodeIfPresent(reviewStatus, forKey: .reviewStatus)
         try container.encodeIfPresent(reviewNotes, forKey: .reviewNotes)
         try container.encode(trustLevel, forKey: .trustLevel)
+        try container.encode(transcriptReferences, forKey: .transcriptReferences)
         try container.encodeIfPresent(embeddedData, forKey: .embeddedData)
     }
 }
@@ -307,6 +329,136 @@ public extension EvidenceKind {
         case .photo: return .photos
         case .voiceNote, .textNote: return .humanObservations
         }
+    }
+}
+
+public enum VisitRecordingStatus: String, Codable, CaseIterable, Hashable, Sendable {
+    case recording
+    case completed
+    case interrupted
+
+    public var title: String {
+        switch self {
+        case .recording: return "Recording"
+        case .completed: return "Completed"
+        case .interrupted: return "Interrupted"
+        }
+    }
+}
+
+public struct VisitRecording: Codable, Hashable, Identifiable, Sendable {
+    public let id: UUID
+    public var sequenceNumber: Int
+    public var localFileName: String
+    public var startedAt: Date
+    public var endedAt: Date?
+    public var duration: TimeInterval?
+    public var status: VisitRecordingStatus
+    /// Embedded file bytes included in an exported VisitPackage to enable round-trip restore.
+    /// Nil when stored locally; populated by the exporter and consumed by the importer.
+    public var embeddedData: Data?
+
+    public var displayName: String {
+        "Recording \(String(format: "%03d", sequenceNumber))"
+    }
+
+    public init(
+        id: UUID = UUID(),
+        sequenceNumber: Int,
+        localFileName: String,
+        startedAt: Date = Date(),
+        endedAt: Date? = nil,
+        duration: TimeInterval? = nil,
+        status: VisitRecordingStatus = .recording,
+        embeddedData: Data? = nil
+    ) {
+        self.id = id
+        self.sequenceNumber = sequenceNumber
+        self.localFileName = localFileName
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.duration = duration
+        self.status = status
+        self.embeddedData = embeddedData
+    }
+}
+
+public enum TranscriptStatus: String, Codable, CaseIterable, Hashable, Sendable {
+    case pending
+    case processing
+    case complete
+    case failed
+
+    public var title: String {
+        switch self {
+        case .pending: return "Pending"
+        case .processing: return "Processing"
+        case .complete: return "Complete"
+        case .failed: return "Failed"
+        }
+    }
+}
+
+public struct TranscriptSource: Codable, Hashable, Sendable {
+    public var recordingID: UUID
+    public var localFileName: String?
+
+    public init(recordingID: UUID, localFileName: String? = nil) {
+        self.recordingID = recordingID
+        self.localFileName = localFileName
+    }
+}
+
+public struct TranscriptChunk: Codable, Hashable, Identifiable, Sendable {
+    public let id: UUID
+    public var sourceRecordingID: UUID
+    public var startTime: TimeInterval
+    public var endTime: TimeInterval
+    public var text: String
+
+    public init(
+        id: UUID = UUID(),
+        sourceRecordingID: UUID,
+        startTime: TimeInterval,
+        endTime: TimeInterval,
+        text: String
+    ) {
+        self.id = id
+        self.sourceRecordingID = sourceRecordingID
+        self.startTime = startTime
+        self.endTime = endTime
+        self.text = text
+    }
+}
+
+public struct Transcript: Codable, Hashable, Identifiable, Sendable {
+    public let id: UUID
+    public var source: TranscriptSource
+    public var status: TranscriptStatus
+    public var rawTranscript: String
+    public var chunks: [TranscriptChunk]
+    public var createdAt: Date
+    public var updatedAt: Date?
+    public var failureReason: String?
+
+    public init(
+        id: UUID = UUID(),
+        source: TranscriptSource,
+        status: TranscriptStatus = .pending,
+        rawTranscript: String = "",
+        chunks: [TranscriptChunk] = [],
+        createdAt: Date = Date(),
+        updatedAt: Date? = nil,
+        failureReason: String? = nil
+    ) {
+        self.id = id
+        self.source = source
+        self.status = status
+        self.rawTranscript = rawTranscript
+        self.chunks = chunks
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.failureReason = failureReason
     }
 }
 
@@ -1036,6 +1188,8 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
     public var twinVersion: Int
     public var lastMergedAt: Date?
     public var changeSetCounters: [String: Int]
+    public var recordings: [VisitRecording]
+    public var transcripts: [Transcript]
 
     public var areas: [Room] {
         get { rooms }
@@ -1067,7 +1221,9 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         lifecycleStage: TwinLifecycleStage = .capture,
         twinVersion: Int = 1,
         lastMergedAt: Date? = nil,
-        changeSetCounters: [String: Int] = [:]
+        changeSetCounters: [String: Int] = [:],
+        recordings: [VisitRecording] = [],
+        transcripts: [Transcript] = []
     ) {
         self.id = id
         self.reference = reference
@@ -1094,6 +1250,8 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         self.twinVersion = max(1, twinVersion)
         self.lastMergedAt = lastMergedAt
         self.changeSetCounters = changeSetCounters
+        self.recordings = recordings
+        self.transcripts = transcripts
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1120,6 +1278,8 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         case twinVersion
         case lastMergedAt
         case changeSetCounters
+        case recordings
+        case transcripts
     }
 
     private struct LegacyCodingKey: CodingKey {
@@ -1166,6 +1326,8 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         twinVersion = max(1, try container.decodeIfPresent(Int.self, forKey: .twinVersion) ?? 1)
         lastMergedAt = try container.decodeIfPresent(Date.self, forKey: .lastMergedAt)
         changeSetCounters = try container.decodeIfPresent([String: Int].self, forKey: .changeSetCounters) ?? [:]
+        recordings = try container.decodeIfPresent([VisitRecording].self, forKey: .recordings) ?? []
+        transcripts = try container.decodeIfPresent([Transcript].self, forKey: .transcripts) ?? []
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -1193,6 +1355,8 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         try container.encode(twinVersion, forKey: .twinVersion)
         try container.encodeIfPresent(lastMergedAt, forKey: .lastMergedAt)
         try container.encode(changeSetCounters, forKey: .changeSetCounters)
+        try container.encode(recordings, forKey: .recordings)
+        try container.encode(transcripts, forKey: .transcripts)
     }
 }
 

@@ -98,6 +98,8 @@ Evidence trust order:
 - JSON persistence for local-first storage
 - twin packages export Property Twin metadata, scanned areas, spatial objects, evidence, review state, lifecycle state, and spatial fallback metadata
 
+The Capture scope is frozen in [Capture Architecture Freeze](docs/CAPTURE_ARCHITECTURE_FREEZE.md).
+
 ## Core capture model
 
 Export/import packages are expected to represent:

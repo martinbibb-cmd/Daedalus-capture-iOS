@@ -19,6 +19,12 @@ struct VisitDetailView: View {
                         Label("Capture Summary", systemImage: "checklist")
                     }
 
+                    NavigationLink {
+                        CaptureReviewWorkspaceView(viewModel: viewModel, visitID: visitID)
+                    } label: {
+                        Label("Capture Review", systemImage: "tray.full")
+                    }
+
                     Button {
                         isPresentingContext = true
                     } label: {

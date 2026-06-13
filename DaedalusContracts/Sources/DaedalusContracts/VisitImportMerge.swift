@@ -103,7 +103,9 @@ public enum VisitImportMerger {
             lifecycleStage: visit.lifecycleStage,
             twinVersion: visit.twinVersion,
             lastMergedAt: visit.lastMergedAt,
-            changeSetCounters: visit.changeSetCounters
+            changeSetCounters: visit.changeSetCounters,
+            recordings: visit.recordings,
+            transcripts: visit.transcripts
         )
     }
 }

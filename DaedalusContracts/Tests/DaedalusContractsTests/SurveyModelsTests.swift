@@ -685,6 +685,138 @@ final class SurveyModelsTests: XCTestCase {
         XCTAssertEqual(copiedVisit.twinKind, .system)
         XCTAssertEqual(copiedVisit.reference, "VIS-200 (Imported copy)")
     }
+
+    func testVisitRecordingsRoundTripWithVisit() throws {
+        let startedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let endedAt = startedAt.addingTimeInterval(300)
+        let recordingID = UUID()
+        let visit = Visit(
+            reference: "VIS-REC",
+            twinKind: .system,
+            recordings: [
+                VisitRecording(
+                    id: recordingID,
+                    sequenceNumber: 1,
+                    localFileName: "recording-001.m4a",
+                    startedAt: startedAt,
+                    endedAt: endedAt,
+                    duration: 300,
+                    status: .completed
+                ),
+                VisitRecording(
+                    sequenceNumber: 2,
+                    localFileName: "recording-002.m4a",
+                    startedAt: endedAt,
+                    status: .recording
+                )
+            ]
+        )
+
+        let data = try JSONEncoder.iso8601Encoded.encode(VisitPackage(visits: [visit]))
+        let decoded = try JSONDecoder.iso8601Decoded.decode(VisitPackage.self, from: data)
+
+        XCTAssertEqual(decoded.visits[0].recordings.count, 2)
+        XCTAssertEqual(decoded.visits[0].recordings[0].displayName, "Recording 001")
+        XCTAssertEqual(decoded.visits[0].recordings[0].status, .completed)
+        XCTAssertEqual(decoded.visits[0].recordings[0].duration, 300)
+        XCTAssertEqual(decoded.visits[0].recordings[1].status, .recording)
+    }
+
+    func testVisitTranscriptsRoundTripWithVisit() throws {
+        let recordingID = UUID()
+        let transcript = Transcript(
+            source: TranscriptSource(recordingID: recordingID, localFileName: "recording-001.m4a"),
+            status: .complete,
+            rawTranscript: "Cylinder in airing cupboard.",
+            chunks: [
+                TranscriptChunk(
+                    sourceRecordingID: recordingID,
+                    startTime: 12.5,
+                    endTime: 18.25,
+                    text: "Cylinder in airing cupboard."
+                )
+            ],
+            createdAt: Date(timeIntervalSince1970: 1_700_000_010),
+            updatedAt: Date(timeIntervalSince1970: 1_700_000_020)
+        )
+        let visit = Visit(reference: "VIS-TRANSCRIPT", twinKind: .system, transcripts: [transcript])
+
+        let data = try JSONEncoder.iso8601Encoded.encode(VisitPackage(visits: [visit]))
+        let decoded = try JSONDecoder.iso8601Decoded.decode(VisitPackage.self, from: data)
+
+        XCTAssertEqual(decoded.visits[0].transcripts.count, 1)
+        XCTAssertEqual(decoded.visits[0].transcripts[0].source.recordingID, recordingID)
+        XCTAssertEqual(decoded.visits[0].transcripts[0].source.localFileName, "recording-001.m4a")
+        XCTAssertEqual(decoded.visits[0].transcripts[0].status, .complete)
+        XCTAssertEqual(decoded.visits[0].transcripts[0].rawTranscript, "Cylinder in airing cupboard.")
+        XCTAssertEqual(decoded.visits[0].transcripts[0].chunks[0].startTime, 12.5)
+        XCTAssertEqual(decoded.visits[0].transcripts[0].chunks[0].endTime, 18.25)
+    }
+
+    func testEvidenceTranscriptReferencesRoundTripWithoutEmbeddingTranscriptText() throws {
+        let transcriptID = UUID()
+        let chunkID = UUID()
+        let recordingID = UUID()
+        let evidence = Evidence(
+            kind: .photo,
+            localFileName: "boiler.jpg",
+            transcriptReferences: [
+                EvidenceTranscriptReference(
+                    transcriptID: transcriptID,
+                    chunkID: chunkID,
+                    sourceRecordingID: recordingID
+                )
+            ]
+        )
+        let component = SystemComponent(kind: .boiler, evidence: [evidence])
+        let visit = Visit(reference: "VIS-EVIDENCE-TRANSCRIPT", twinKind: .system, components: [component])
+
+        let data = try JSONEncoder.iso8601Encoded.encode(VisitPackage(visits: [visit]))
+        let decoded = try JSONDecoder.iso8601Decoded.decode(VisitPackage.self, from: data)
+
+        let reference = try XCTUnwrap(decoded.visits[0].components[0].evidence[0].transcriptReferences.first)
+        XCTAssertEqual(reference.transcriptID, transcriptID)
+        XCTAssertEqual(reference.chunkID, chunkID)
+        XCTAssertEqual(reference.sourceRecordingID, recordingID)
+    }
+
+    func testLegacyVisitDecodesWithNoRecordings() throws {
+        let json = "[{\"id\":\"00000000-0000-0000-0000-000000000071\",\"reference\":\"VIS-LEGACY-REC\",\"createdAt\":\"2024-01-01T00:00:00Z\",\"twinKind\":\"system\",\"rooms\":[],\"components\":[]}]"
+        let visits = try JSONDecoder.iso8601Decoded.decode([Visit].self, from: Data(json.utf8))
+
+        XCTAssertEqual(visits[0].recordings, [])
+        XCTAssertEqual(visits[0].transcripts, [])
+    }
+
+    func testLegacyEvidenceDecodesWithNoTranscriptReferences() throws {
+        let json = "{\"id\":\"00000000-0000-0000-0000-000000000072\",\"kind\":\"photo\",\"localFileName\":\"legacy.jpg\",\"createdAt\":\"2024-01-01T00:00:00Z\"}"
+        let evidence = try JSONDecoder.iso8601Decoded.decode(Evidence.self, from: Data(json.utf8))
+
+        XCTAssertEqual(evidence.transcriptReferences, [])
+    }
+
+    func testImportMergePreservesVisitRecordings() {
+        let sharedID = UUID()
+        let recording = VisitRecording(sequenceNumber: 1, localFileName: "recording-001.m4a", status: .completed)
+        let secondRecording = VisitRecording(sequenceNumber: 2, localFileName: "recording-002.m4a", status: .interrupted)
+        let transcript = Transcript(
+            source: TranscriptSource(recordingID: recording.id, localFileName: recording.localFileName),
+            status: .pending
+        )
+        let imported = Visit(
+            id: sharedID,
+            reference: "VIS-REC-MERGE",
+            twinKind: .system,
+            recordings: [recording, secondRecording],
+            transcripts: [transcript]
+        )
+
+        let merged = VisitImportMerger.merge(existingVisits: [], importedVisits: [imported], strategy: .replaceExistingVisit)
+
+        XCTAssertEqual(merged.visits[0].recordings.map(\.localFileName), ["recording-001.m4a", "recording-002.m4a"])
+        XCTAssertEqual(merged.visits[0].recordings.map(\.status), [.completed, .interrupted])
+        XCTAssertEqual(merged.visits[0].transcripts, [transcript])
+    }
 }
 
 private extension JSONEncoder {

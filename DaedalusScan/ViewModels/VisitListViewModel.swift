@@ -14,12 +14,14 @@ public final class VisitListViewModel: ObservableObject {
     @Published var statusMessage: String?
     @Published private(set) var pendingImportConflict: PendingImportConflict?
     @Published private(set) var pendingWorkingTwinWarning: PendingWorkingTwinWarning?
+    @Published private(set) var pendingCaptureRecoverySnapshot: CaptureRecoverySnapshot?
 
     private let repository: VisitRepository
 
     public init(repository: VisitRepository) {
         self.repository = repository
         loadVisits()
+        loadCaptureRecoverySnapshot()
     }
 
     func loadVisits() {
@@ -101,6 +103,72 @@ public final class VisitListViewModel: ObservableObject {
 
     func visit(id: UUID) -> Visit? {
         visits.first { $0.id == id }
+    }
+
+    func loadCaptureRecoverySnapshot() {
+        do {
+            pendingCaptureRecoverySnapshot = try repository.loadCaptureRecoverySnapshot()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func saveCaptureRecoverySnapshot(_ snapshot: CaptureRecoverySnapshot) {
+        do {
+            try repository.saveCaptureRecoverySnapshot(snapshot)
+            pendingCaptureRecoverySnapshot = snapshot
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func clearCaptureRecoverySnapshot() {
+        do {
+            try repository.clearCaptureRecoverySnapshot()
+            pendingCaptureRecoverySnapshot = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @discardableResult
+    func trackUnsavedEvidenceDraft(
+        visitID: UUID,
+        contextID: UUID? = nil,
+        contextKind: CaptureRecoveryDraftContextKind = .visit,
+        evidenceKind: EvidenceKind,
+        localFileName: String? = nil,
+        note: String = ""
+    ) -> UUID? {
+        guard visit(id: visitID) != nil else { return nil }
+        var snapshot = pendingCaptureRecoverySnapshot ?? CaptureRecoverySnapshot(visitID: visitID)
+        snapshot.visitID = visitID
+        snapshot.unsavedEvidenceDrafts.append(
+            RecoveredEvidenceDraft(
+                visitID: visitID,
+                contextID: contextID,
+                contextKind: contextKind,
+                evidenceKind: evidenceKind,
+                localFileName: normalizedOptionalString(localFileName ?? ""),
+                note: note.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        )
+        snapshot.updatedAt = Date()
+        saveCaptureRecoverySnapshot(snapshot)
+        return snapshot.unsavedEvidenceDrafts.last?.id
+    }
+
+    func discardUnsavedEvidenceDraft(_ draftID: UUID) {
+        guard var snapshot = pendingCaptureRecoverySnapshot else { return }
+        snapshot.unsavedEvidenceDrafts.removeAll { $0.id == draftID }
+        snapshot.updatedAt = Date()
+        if snapshot.activeRecordingID == nil,
+           snapshot.unsavedEvidenceDrafts.isEmpty,
+           !snapshot.shouldOfferResumeRecording {
+            clearCaptureRecoverySnapshot()
+        } else {
+            saveCaptureRecoverySnapshot(snapshot)
+        }
     }
 
     func room(visitID: UUID, roomID: UUID) -> Room? {
@@ -375,6 +443,105 @@ public final class VisitListViewModel: ObservableObject {
         appendEvidence(Evidence(kind: .voiceNote, localFileName: url.lastPathComponent), toComponent: componentID, in: visitID)
     }
 
+    func prepareVisitRecordingChunkURL(for visitID: UUID) -> (url: URL, sequenceNumber: Int)? {
+        guard let visit = visit(id: visitID) else { return nil }
+        let sequenceNumber = (visit.recordings.map(\.sequenceNumber).max() ?? 0) + 1
+        do {
+            let url = try repository.makeRecordingFileURL(visitID: visitID, sequenceNumber: sequenceNumber)
+            return (url, sequenceNumber)
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    @discardableResult
+    func attachVisitRecordingChunk(
+        localFileName: String,
+        sequenceNumber: Int,
+        startedAt: Date = Date(),
+        status: VisitRecordingStatus = .recording,
+        to visitID: UUID
+    ) -> UUID? {
+        guard let visitIndex = indexOfVisit(visitID) else { return nil }
+        let recording = VisitRecording(
+            sequenceNumber: sequenceNumber,
+            localFileName: localFileName,
+            startedAt: startedAt,
+            status: status
+        )
+        visits[visitIndex].recordings.append(recording)
+        markLocalChanges(at: visitIndex)
+        persistChanges()
+        return recording.id
+    }
+
+    func completeVisitRecordingChunk(
+        recordingID: UUID,
+        visitID: UUID,
+        endedAt: Date = Date(),
+        status: VisitRecordingStatus = .completed
+    ) {
+        guard let visitIndex = indexOfVisit(visitID),
+              let recordingIndex = visits[visitIndex].recordings.firstIndex(where: { $0.id == recordingID }) else {
+            return
+        }
+        let startedAt = visits[visitIndex].recordings[recordingIndex].startedAt
+        visits[visitIndex].recordings[recordingIndex].endedAt = endedAt
+        visits[visitIndex].recordings[recordingIndex].duration = max(0, endedAt.timeIntervalSince(startedAt))
+        visits[visitIndex].recordings[recordingIndex].status = status
+        markLocalChanges(at: visitIndex)
+        persistChanges()
+    }
+
+    @discardableResult
+    func attachTranscript(
+        sourceRecordingID: UUID,
+        status: TranscriptStatus = .pending,
+        rawTranscript: String = "",
+        chunks: [TranscriptChunk] = [],
+        to visitID: UUID
+    ) -> UUID? {
+        guard let visitIndex = indexOfVisit(visitID),
+              let recording = visits[visitIndex].recordings.first(where: { $0.id == sourceRecordingID }) else {
+            return nil
+        }
+        let transcript = Transcript(
+            source: TranscriptSource(
+                recordingID: sourceRecordingID,
+                localFileName: recording.localFileName
+            ),
+            status: status,
+            rawTranscript: rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines),
+            chunks: chunks
+        )
+        visits[visitIndex].transcripts.append(transcript)
+        markLocalChanges(at: visitIndex)
+        persistChanges()
+        return transcript.id
+    }
+
+    func updateTranscript(
+        transcriptID: UUID,
+        visitID: UUID,
+        status: TranscriptStatus,
+        rawTranscript: String,
+        chunks: [TranscriptChunk],
+        failureReason: String? = nil
+    ) {
+        guard let visitIndex = indexOfVisit(visitID),
+              let transcriptIndex = visits[visitIndex].transcripts.firstIndex(where: { $0.id == transcriptID }) else {
+            return
+        }
+        visits[visitIndex].transcripts[transcriptIndex].status = status
+        visits[visitIndex].transcripts[transcriptIndex].rawTranscript = rawTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        visits[visitIndex].transcripts[transcriptIndex].chunks = chunks
+        visits[visitIndex].transcripts[transcriptIndex].updatedAt = Date()
+        visits[visitIndex].transcripts[transcriptIndex].failureReason = normalizedOptionalString(failureReason ?? "")
+        markLocalChanges(at: visitIndex)
+        persistChanges()
+    }
+
     func attachQuickEvidencePhoto(data: Data, toComponent componentID: UUID, in visitID: UUID) {
         do {
             let url = try repository.makeEvidenceFileURL(fileExtension: "jpg", visitID: visitID, componentID: componentID)
@@ -583,6 +750,40 @@ public final class VisitListViewModel: ObservableObject {
         markEvidenceBundleNeedsReview(componentIndex: refreshedComponentIndex, visitIndex: refreshedVisitIndex)
         incrementChangeSetCounter("editedEvidence", by: max(1, visits[refreshedVisitIndex].components[refreshedComponentIndex].evidence.count), visitIndex: refreshedVisitIndex)
         markLocalChanges(at: refreshedVisitIndex)
+        persistChanges()
+    }
+
+    func linkTranscriptReferenceToRoomEvidence(
+        _ reference: EvidenceTranscriptReference,
+        evidenceID: UUID,
+        roomID: UUID,
+        visitID: UUID
+    ) {
+        guard let visitIndex = indexOfVisit(visitID),
+              transcriptReferenceExists(reference, in: visits[visitIndex]),
+              let roomIndex = indexOfRoom(roomID, in: visitIndex),
+              let evidenceIndex = visits[visitIndex].rooms[roomIndex].evidence.firstIndex(where: { $0.id == evidenceID }) else {
+            return
+        }
+        appendTranscriptReference(reference, to: &visits[visitIndex].rooms[roomIndex].evidence[evidenceIndex])
+        markLocalChanges(at: visitIndex)
+        persistChanges()
+    }
+
+    func linkTranscriptReferenceToComponentEvidence(
+        _ reference: EvidenceTranscriptReference,
+        evidenceID: UUID,
+        componentID: UUID,
+        visitID: UUID
+    ) {
+        guard let visitIndex = indexOfVisit(visitID),
+              transcriptReferenceExists(reference, in: visits[visitIndex]),
+              let componentIndex = indexOfComponent(componentID, in: visitIndex),
+              let evidenceIndex = visits[visitIndex].components[componentIndex].evidence.firstIndex(where: { $0.id == evidenceID }) else {
+            return
+        }
+        appendTranscriptReference(reference, to: &visits[visitIndex].components[componentIndex].evidence[evidenceIndex])
+        markLocalChanges(at: visitIndex)
         persistChanges()
     }
 
@@ -931,6 +1132,27 @@ public final class VisitListViewModel: ObservableObject {
     private func markEvidenceBundleNeedsReview(componentIndex: Int, visitIndex: Int) {
         for evidenceIndex in visits[visitIndex].components[componentIndex].evidence.indices {
             visits[visitIndex].components[componentIndex].evidence[evidenceIndex].reviewStatus = .needsReview
+        }
+    }
+
+    private func transcriptReferenceExists(_ reference: EvidenceTranscriptReference, in visit: Visit) -> Bool {
+        guard let transcript = visit.transcripts.first(where: { $0.id == reference.transcriptID }) else {
+            return false
+        }
+        if let sourceRecordingID = reference.sourceRecordingID,
+           transcript.source.recordingID != sourceRecordingID {
+            return false
+        }
+        if let chunkID = reference.chunkID,
+           transcript.chunks.contains(where: { $0.id == chunkID }) == false {
+            return false
+        }
+        return true
+    }
+
+    private func appendTranscriptReference(_ reference: EvidenceTranscriptReference, to evidence: inout Evidence) {
+        if evidence.transcriptReferences.contains(reference) == false {
+            evidence.transcriptReferences.append(reference)
         }
     }
 

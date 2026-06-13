@@ -18,13 +18,10 @@ enum VisitPackageImportError: LocalizedError {
 }
 
 enum VisitPackageExportError: LocalizedError {
-    case singleVisitRequired
     case validationFailed([PackageValidationIssue])
 
     var errorDescription: String? {
         switch self {
-        case .singleVisitRequired:
-            return "Daedalus package export currently supports one visit at a time. Open a visit and export it from the capture screen."
         case let .validationFailed(issues):
             let details = issues.prefix(5).map { issue in
                 "\(issue.path): \(issue.message)"
@@ -84,22 +81,40 @@ public final class VisitRepository {
         try data.write(to: url, options: .atomic)
     }
 
-    func exportPackage(visits: [Visit]) throws -> DaedalusPackage {
-        guard visits.count == 1, let visit = visits.first else {
-            throw VisitPackageExportError.singleVisitRequired
+    func loadCaptureRecoverySnapshot() throws -> CaptureRecoverySnapshot? {
+        let url = try captureRecoveryFileURL()
+        guard fileManager.fileExists(atPath: url.path) else {
+            return nil
         }
 
-        let exportDate = Date()
-        let package = DaedalusPackageExporter.makePackage(
-            from: visit,
-            createdAt: exportDate,
-            source: VisitPackageMetadata.canonicalSource
+        let data = try Data(contentsOf: url)
+        return try decoder.decode(CaptureRecoverySnapshot.self, from: data)
+    }
+
+    func saveCaptureRecoverySnapshot(_ snapshot: CaptureRecoverySnapshot) throws {
+        let url = try captureRecoveryFileURL()
+        let data = try encoder.encode(snapshot)
+        try data.write(to: url, options: .atomic)
+    }
+
+    func clearCaptureRecoverySnapshot() throws {
+        let url = try captureRecoveryFileURL()
+        guard fileManager.fileExists(atPath: url.path) else { return }
+        try fileManager.removeItem(at: url)
+    }
+
+    func exportPackage(visits: [Visit]) throws -> VisitPackage {
+        let evidenceDirectory = try evidenceDirectoryURL()
+        let recordingsDirectory = try recordingsDirectoryURL()
+        return VisitPackage(
+            visits: visits.map {
+                makeExportVisitCopy(
+                    from: $0,
+                    evidenceDirectory: evidenceDirectory,
+                    recordingsDirectory: recordingsDirectory
+                )
+            }
         )
-        let validation = validateDaedalusPackage(package)
-        guard validation.valid else {
-            throw VisitPackageExportError.validationFailed(validation.issues)
-        }
-        return package
     }
 
     func detectImportConflicts(from url: URL) throws -> [VisitImportConflict] {
@@ -130,8 +145,9 @@ public final class VisitRepository {
         mergeResult.replacedVisits.forEach(deleteEvidenceFiles(for:))
 
         let evidenceDir = try evidenceDirectoryURL()
+        let recordingsDir = try recordingsDirectoryURL()
         let mergedVisits = try mergeResult.visits
-            .map { try restoreEvidence(for: $0, evidenceDirectory: evidenceDir) }
+            .map { try restoreStoredFiles(for: $0, evidenceDirectory: evidenceDir, recordingsDirectory: recordingsDir) }
 
         try save(visits: mergedVisits)
         return mergedVisits
@@ -165,7 +181,7 @@ public final class VisitRepository {
         return try decoder.decode(VisitPackage.self, from: data)
     }
 
-    private func restoreEvidence(for visit: Visit, evidenceDirectory: URL) throws -> Visit {
+    private func restoreStoredFiles(for visit: Visit, evidenceDirectory: URL, recordingsDirectory: URL) throws -> Visit {
         let restoredRooms = try visit.rooms.map { room in
             let restoredEvidence = try room.evidence.map { try restoreEvidence($0, in: evidenceDirectory) }
             return Room(
@@ -225,8 +241,28 @@ public final class VisitRepository {
             lifecycleStage: visit.lifecycleStage,
             twinVersion: visit.twinVersion,
             lastMergedAt: visit.lastMergedAt,
-            changeSetCounters: visit.changeSetCounters
+            changeSetCounters: visit.changeSetCounters,
+            recordings: try visit.recordings.map { try restoreRecording($0, in: recordingsDirectory) },
+            transcripts: visit.transcripts
         )
+    }
+
+    private func makeExportVisitCopy(from visit: Visit, evidenceDirectory: URL, recordingsDirectory: URL) -> Visit {
+        let rooms = visit.rooms.map { room in
+            var exported = room
+            exported.evidence = room.evidence.map { embedEvidenceData($0, from: evidenceDirectory) }
+            return exported
+        }
+        let components = visit.components.map { component in
+            var exported = component
+            exported.evidence = component.evidence.map { embedEvidenceData($0, from: evidenceDirectory) }
+            return exported
+        }
+        var exported = visit
+        exported.rooms = rooms
+        exported.components = components
+        exported.recordings = visit.recordings.map { embedRecordingData($0, from: recordingsDirectory) }
+        return exported
     }
 
     private func restoreEvidence(_ evidence: Evidence, in evidenceDirectory: URL) throws -> Evidence {
@@ -239,6 +275,36 @@ public final class VisitRepository {
         }
         restored.embeddedData = nil
         return restored
+    }
+
+    private func restoreRecording(_ recording: VisitRecording, in recordingsDirectory: URL) throws -> VisitRecording {
+        var restored = recording
+        if let bytes = recording.embeddedData {
+            let fileName = uniqueEvidenceFileName(preferred: recording.localFileName, in: recordingsDirectory)
+            let fileURL = recordingsDirectory.appendingPathComponent(fileName)
+            try bytes.write(to: fileURL, options: .atomic)
+            restored.localFileName = fileName
+        }
+        restored.embeddedData = nil
+        return restored
+    }
+
+    private func embedEvidenceData(_ evidence: Evidence, from evidenceDirectory: URL) -> Evidence {
+        var exported = evidence
+        let safeName = URL(fileURLWithPath: evidence.localFileName).lastPathComponent
+        if !safeName.isEmpty {
+            exported.embeddedData = try? Data(contentsOf: evidenceDirectory.appendingPathComponent(safeName))
+        }
+        return exported
+    }
+
+    private func embedRecordingData(_ recording: VisitRecording, from recordingsDirectory: URL) -> VisitRecording {
+        var exported = recording
+        let safeName = URL(fileURLWithPath: recording.localFileName).lastPathComponent
+        if !safeName.isEmpty {
+            exported.embeddedData = try? Data(contentsOf: recordingsDirectory.appendingPathComponent(safeName))
+        }
+        return exported
     }
 
     private func uniqueEvidenceFileName(preferred: String, in evidenceDirectory: URL) -> String {
@@ -274,6 +340,7 @@ public final class VisitRepository {
                 deleteEvidenceFile(named: evidence.localFileName, in: dir)
             }
         }
+        deleteRecordingFiles(for: visit)
     }
 
     func deleteEvidenceFile(named fileName: String) {
@@ -295,6 +362,30 @@ public final class VisitRepository {
         try makeEvidenceFileURL(fileExtension: fileExtension, visitID: visitID, contextID: componentID)
     }
 
+    func makeRecordingFileURL(fileExtension: String = "m4a", visitID: UUID, sequenceNumber: Int) throws -> URL {
+        let directory = try recordingsDirectoryURL()
+        let fileName = [
+            visitID.uuidString,
+            "recording",
+            String(format: "%03d", sequenceNumber),
+            UUID().uuidString
+        ]
+        .joined(separator: "-") + ".\(fileExtension)"
+        return directory.appendingPathComponent(fileName)
+    }
+
+    func deleteRecordingFile(named fileName: String) {
+        guard let dir = try? recordingsDirectoryURL() else { return }
+        deleteEvidenceFile(named: fileName, in: dir)
+    }
+
+    private func deleteRecordingFiles(for visit: Visit) {
+        guard let dir = try? recordingsDirectoryURL() else { return }
+        for recording in visit.recordings where !recording.localFileName.isEmpty {
+            deleteEvidenceFile(named: recording.localFileName, in: dir)
+        }
+    }
+
     private func makeEvidenceFileURL(fileExtension: String, visitID: UUID, contextID: UUID) throws -> URL {
         let directory = try evidenceDirectoryURL()
         let fileName = [visitID.uuidString, contextID.uuidString, UUID().uuidString]
@@ -306,8 +397,20 @@ public final class VisitRepository {
         try storageDirectoryURL().appendingPathComponent("visits.json")
     }
 
+    private func captureRecoveryFileURL() throws -> URL {
+        try storageDirectoryURL().appendingPathComponent("capture-recovery.json")
+    }
+
     private func evidenceDirectoryURL() throws -> URL {
         let directory = try storageDirectoryURL().appendingPathComponent("Evidence", isDirectory: true)
+        if !fileManager.fileExists(atPath: directory.path) {
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        return directory
+    }
+
+    private func recordingsDirectoryURL() throws -> URL {
+        let directory = try storageDirectoryURL().appendingPathComponent("Recordings", isDirectory: true)
         if !fileManager.fileExists(atPath: directory.path) {
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         }

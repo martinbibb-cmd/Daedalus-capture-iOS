@@ -11,6 +11,40 @@ struct EvidenceTimelineEntry: Identifiable, Equatable {
     let isMerged: Bool
 }
 
+enum VisitTimelineEntryKind: String, Equatable {
+    case photo
+    case voiceNote
+    case note
+    case recordingChunk
+    case transcript
+    case roomScan
+
+    var title: String {
+        switch self {
+        case .photo: return "Photo"
+        case .voiceNote: return "Voice Note"
+        case .note: return "Note"
+        case .recordingChunk: return "Recording Chunk"
+        case .transcript: return "Transcript"
+        case .roomScan: return "Room Scan"
+        }
+    }
+}
+
+struct VisitTimelineEntry: Identifiable, Equatable {
+    let id: UUID
+    let capturedAt: Date
+    let kind: VisitTimelineEntryKind
+    let title: String
+    let detail: String
+    let roomID: UUID?
+    let componentID: UUID?
+    let evidenceID: UUID?
+    let recordingID: UUID?
+    let transcriptID: UUID?
+    let reviewStatus: ReviewStatus?
+}
+
 extension Visit {
     var evidenceTimelineEntries: [EvidenceTimelineEntry] {
         evidenceTimelineEntries(componentID: nil)
@@ -63,5 +97,130 @@ extension Visit {
                 }
                 return lhs.capturedAt > rhs.capturedAt
             }
+    }
+
+    var unifiedTimelineEntries: [VisitTimelineEntry] {
+        var entries: [VisitTimelineEntry] = []
+
+        entries.append(
+            contentsOf: rooms.map { room in
+                VisitTimelineEntry(
+                    id: room.id,
+                    capturedAt: createdAt,
+                    kind: .roomScan,
+                    title: VisitTimelineEntryKind.roomScan.title,
+                    detail: room.name,
+                    roomID: room.id,
+                    componentID: nil,
+                    evidenceID: nil,
+                    recordingID: nil,
+                    transcriptID: nil,
+                    reviewStatus: room.reviewStatus
+                )
+            }
+        )
+
+        entries.append(
+            contentsOf: rooms.flatMap { room in
+                room.evidence.map { evidence in
+                    makeTimelineEntry(
+                        from: evidence,
+                        capturedAt: evidence.createdAt,
+                        detail: room.name,
+                        roomID: room.id,
+                        componentID: nil
+                    )
+                }
+            }
+        )
+
+        entries.append(
+            contentsOf: components.flatMap { component in
+                component.evidence.map { evidence in
+                    makeTimelineEntry(
+                        from: evidence,
+                        capturedAt: evidence.createdAt,
+                        detail: component.spatialContext.map { "\(component.canonicalSubtype.title) - \($0.displaySummary)" } ?? component.canonicalSubtype.title,
+                        roomID: nil,
+                        componentID: component.id
+                    )
+                }
+            }
+        )
+
+        entries.append(
+            contentsOf: recordings.map { recording in
+                VisitTimelineEntry(
+                    id: recording.id,
+                    capturedAt: recording.startedAt,
+                    kind: .recordingChunk,
+                    title: recording.displayName,
+                    detail: recording.status.title,
+                    roomID: nil,
+                    componentID: nil,
+                    evidenceID: nil,
+                    recordingID: recording.id,
+                    transcriptID: nil,
+                    reviewStatus: nil
+                )
+            }
+        )
+
+        entries.append(
+            contentsOf: transcripts.map { transcript in
+                VisitTimelineEntry(
+                    id: transcript.id,
+                    capturedAt: transcript.createdAt,
+                    kind: .transcript,
+                    title: VisitTimelineEntryKind.transcript.title,
+                    detail: transcript.source.localFileName.map { "\(transcript.status.title) - \($0)" } ?? transcript.status.title,
+                    roomID: nil,
+                    componentID: nil,
+                    evidenceID: nil,
+                    recordingID: transcript.source.recordingID,
+                    transcriptID: transcript.id,
+                    reviewStatus: nil
+                )
+            }
+        )
+
+        return entries.sorted { lhs, rhs in
+            if lhs.capturedAt == rhs.capturedAt {
+                return lhs.title < rhs.title
+            }
+            return lhs.capturedAt < rhs.capturedAt
+        }
+    }
+
+    private func makeTimelineEntry(
+        from evidence: Evidence,
+        capturedAt: Date,
+        detail: String,
+        roomID: UUID?,
+        componentID: UUID?
+    ) -> VisitTimelineEntry {
+        let kind: VisitTimelineEntryKind
+        switch evidence.kind {
+        case .photo:
+            kind = .photo
+        case .voiceNote:
+            kind = .voiceNote
+        case .textNote:
+            kind = .note
+        }
+
+        return VisitTimelineEntry(
+            id: evidence.id,
+            capturedAt: capturedAt,
+            kind: kind,
+            title: kind.title,
+            detail: detail,
+            roomID: roomID,
+            componentID: componentID,
+            evidenceID: evidence.id,
+            recordingID: nil,
+            transcriptID: nil,
+            reviewStatus: evidence.reviewStatus
+        )
     }
 }
