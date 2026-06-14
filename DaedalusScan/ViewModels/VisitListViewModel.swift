@@ -662,6 +662,68 @@ public final class VisitListViewModel: ObservableObject {
         return componentID
     }
 
+    func addLiveCaptureEvidence(
+        to visitID: UUID,
+        kind: LiveCaptureEvidenceKind,
+        placement: SpatialPlacement?,
+        photoData: Data? = nil,
+        recordingID: UUID? = nil,
+        scanSessionID: UUID? = nil,
+        cameraFrameReference: String? = nil,
+        geometryAnchorID: String? = nil,
+        positionLabel: String? = nil
+    ) -> UUID? {
+        guard let componentID = addSpatialObject(
+            to: visitID,
+            kind: .boiler,
+            subtype: .unknownHeatSource,
+            areaID: nil,
+            placement: placement
+        ) else {
+            return nil
+        }
+
+        if let photoData {
+            attachQuickEvidencePhoto(data: photoData, toComponent: componentID, in: visitID)
+        } else {
+            attachTextNoteToComponent(
+                text: kind.evidenceNote,
+                to: componentID,
+                in: visitID,
+                reviewStatus: .needsReview,
+                reviewNotes: kind.title
+            )
+        }
+
+        guard let visitIndex = indexOfVisit(visitID),
+              let componentIndex = indexOfComponent(componentID, in: visitIndex) else {
+            return componentID
+        }
+
+        var attributes = visits[visitIndex].components[componentIndex].componentAttributes
+        attributes["captureSource"] = "Live Capture"
+        attributes["liveEvidenceKind"] = kind.rawValue
+        attributes["liveEvidenceTitle"] = kind.title
+        attributes["capturedTimestamp"] = ISO8601DateFormatter().string(from: Date())
+        attributes["recordingReference"] = recordingID?.uuidString ?? "current"
+        attributes["scanSessionID"] = scanSessionID?.uuidString
+        attributes["cameraFrameReference"] = normalizedOptionalString(cameraFrameReference ?? "")
+        attributes["geometryAnchorID"] = normalizedOptionalString(geometryAnchorID ?? placement?.anchorID ?? "")
+        attributes["positionLabel"] = normalizedOptionalString(positionLabel ?? "")
+        visits[visitIndex].components[componentIndex].componentAttributes = attributes
+        visits[visitIndex].components[componentIndex].name = kind.title
+        visits[visitIndex].components[componentIndex].reviewStatus = .needsReview
+        visits[visitIndex].components[componentIndex].spatialContext = SpatialEvidenceContext(
+            floorLevel: "Live capture",
+            areaLabel: "Unclassified evidence",
+            geometryID: attributes["geometryAnchorID"],
+            approximatePositionLabel: attributes["positionLabel"]
+        )
+        persistChanges()
+
+        return componentID
+    }
+
     func addCaptureLiteEvidenceCapture(
         to visitID: UUID,
         subtype: SystemComponentSubtype,

@@ -18,6 +18,24 @@ struct CaptureReviewEvidenceGroup: Identifiable, Equatable {
 extension Visit {
     var captureReviewEvidenceGroups: [CaptureReviewEvidenceGroup] {
         components.compactMap { component in
+            if component.isLiveCaptureEvidence {
+                let spatialContext = component.spatialContext?.displaySummary
+                return CaptureReviewEvidenceGroup(
+                    id: component.id,
+                    title: component.liveCaptureTitle,
+                    spatialContext: spatialContext,
+                    cards: component.evidence.map { evidence in
+                        CaptureReviewEvidenceCard(
+                            title: component.liveCaptureTitle,
+                            detail: component.displayDetail(for: evidence),
+                            reviewStatus: evidence.reviewStatus,
+                            capturedAt: evidence.createdAt,
+                            spatialContext: spatialContext
+                        )
+                    }
+                )
+            }
+
             let hasEvidenceCards = !component.evidence.isEmpty ||
                 component.componentAttributes["componentTypeEvidence"] != nil ||
                 component.componentAttributes["areaEvidence"] != nil ||
@@ -95,6 +113,9 @@ extension SystemComponent {
         case .voiceNote:
             return componentAttributes["voiceNoteTranscript"].flatMap(nonEmpty) ?? evidence.localFileName
         case .textNote:
+            if isLiveCaptureEvidence {
+                return componentAttributes["liveEvidenceTitle"].flatMap(nonEmpty) ?? evidence.reviewNotes.flatMap(nonEmpty) ?? evidence.localFileName
+            }
             return componentAttributes["geometryEvidence"] ?? evidence.localFileName
         }
     }

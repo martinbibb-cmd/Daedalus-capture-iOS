@@ -1,29 +1,20 @@
 import SwiftUI
+import UIKit
 
 struct LiveCaptureView: View {
     @ObservedObject var viewModel: VisitListViewModel
     let visitID: UUID
 
     @State private var isPresentingReview = false
-    @State private var isPresentingSummary = false
-    @State private var isPresentingOverview = false
-    @State private var isPresentingStage = false
-    @State private var isPresentingMerge = false
+    @State private var isPresentingPhotoCapture = false
     @State private var isPresentingShareSheet = false
-    @State private var isPresentingContext = false
-    @State private var isPresentingCameraMode = false
     @State private var shareURL: URL?
 
-    @State private var isPresentingCaptureArea = false
-    @State private var isPresentingCaptureObject = false
-    @State private var isPresentingAttachEvidence = false
-    @State private var isPresentingWaterTest = false
-    @State private var isPresentingServicePoint = false
-    @State private var isPresentingQuickEvidence = false
     @State private var capturedEvidenceComponentID: UUID?
-    @State private var isShowingCapturedEvidence = false
     @State private var spatialSession = SpatialCaptureSession()
     @State private var livePlacementState = LivePlacementState.unavailable
+    @State private var confirmation: LiveCaptureConfirmation?
+    @State private var finishStatus: LiveCaptureFinishStatus?
 
     private var visit: Visit? {
         viewModel.visit(id: visitID)
@@ -33,122 +24,30 @@ struct LiveCaptureView: View {
         Group {
             if let visit {
                 cameraFirstCapture(visit: visit)
-                    .navigationTitle(visit.reference)
+                    .navigationTitle("")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar(.hidden, for: .navigationBar)
                     .toolbar {
-                        ToolbarItem(placement: .topBarLeading) {
-                            Button {
-                                isPresentingOverview = true
-                            } label: {
-                                Label("Twin Overview", systemImage: "map")
-                            }
-                        }
                         ToolbarItem(placement: .topBarTrailing) {
                             Button {
-                                isPresentingCameraMode = true
+                                isPresentingReview = true
                             } label: {
-                                Label("Camera Mode", systemImage: "camera.viewfinder")
-                            }
-                        }
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Menu {
-                                Button("Property Twin Context") { isPresentingContext = true }
-                                Button("Review Capture") { isPresentingReview = true }
-                                Button("Capture Summary") { isPresentingSummary = true }
-                                Button("Review Changes") {
-                                    viewModel.advanceLifecycle(.stage, for: visitID)
-                                    isPresentingStage = true
-                                }
-                                Button("Merge Twin") { isPresentingMerge = true }
-                                Divider()
-                                Button("Export Twin Package") {
-                                    if let url = viewModel.makeExportTempURL(for: visitID) {
-                                        shareURL = url
-                                        isPresentingShareSheet = true
-                                    }
-                                }
-                            } label: {
-                                Label("Capture Tools", systemImage: "ellipsis.circle")
+                                Label("Review", systemImage: "list.bullet.rectangle")
                             }
                         }
                     }
                     .navigationDestination(isPresented: $isPresentingReview) {
                         VisitDetailView(viewModel: viewModel, visitID: visitID)
                     }
-                    .navigationDestination(isPresented: $isPresentingOverview) {
-                        TwinOverviewView(viewModel: viewModel, visitID: visitID)
-                    }
-                    .navigationDestination(isPresented: $isPresentingSummary) {
-                        VisitSummaryView(visit: visit)
-                    }
-                    .navigationDestination(isPresented: $isPresentingStage) {
-                        StageModeView(viewModel: viewModel, visitID: visitID)
-                    }
-                    .navigationDestination(isPresented: $isPresentingMerge) {
-                        MergeModeView(viewModel: viewModel, visitID: visitID)
-                    }
-                    .navigationDestination(isPresented: $isPresentingCameraMode) {
-                        SurveySectionCaptureView(viewModel: viewModel, visitID: visitID)
-                    }
-                    .navigationDestination(isPresented: $isShowingCapturedEvidence) {
-                        if let capturedEvidenceComponentID {
-                            ComponentDetailView(
-                                viewModel: viewModel,
-                                visitID: visitID,
-                                componentID: capturedEvidenceComponentID
-                            )
-                        } else {
-                            ContentUnavailableView("Component not found", systemImage: "exclamationmark.triangle")
-                        }
-                    }
                     .sheet(isPresented: $isPresentingShareSheet) {
                         if let url = shareURL {
                             ActivityView(url: url)
                         }
                     }
-                    .sheet(isPresented: $isPresentingContext) {
-                        VisitContextSheet(viewModel: viewModel, visitID: visitID)
-                    }
-                    .sheet(isPresented: $isPresentingCaptureArea) {
-                        CaptureAreaSheet { name in
-                            viewModel.addRoom(to: visitID, named: name, placement: currentPlacementMetadata)
+                    .sheet(isPresented: $isPresentingPhotoCapture) {
+                        CameraCaptureView { data in
+                            createLiveEvidence(.photo, photoData: data)
                         }
-                    }
-                    .sheet(isPresented: $isPresentingCaptureObject) {
-                        CaptureObjectSheet(areas: visit.areas) { subtype, areaID in
-                            _ = viewModel.addSpatialObject(
-                                to: visitID,
-                                kind: subtype.legacyKind,
-                                subtype: subtype,
-                                areaID: areaID,
-                                placement: currentPlacementMetadata
-                            )
-                        }
-                    }
-                    .sheet(isPresented: $isPresentingQuickEvidence) {
-                        ARQuickEvidenceSheet(areas: visit.areas) { request in
-                            capturedEvidenceComponentID = viewModel.addAREvidenceCapture(
-                                to: visitID,
-                                subtype: request.subtype,
-                                areaID: request.areaID,
-                                placement: currentPlacementMetadata,
-                                photoData: request.photoData,
-                                voiceNoteText: request.voiceNoteText,
-                                includeGeometry: request.includeGeometry,
-                                floorLevel: request.floorLevel,
-                                geometryID: request.geometryID,
-                                approximatePositionLabel: request.approximatePositionLabel
-                            )
-                            isShowingCapturedEvidence = capturedEvidenceComponentID != nil
-                        }
-                    }
-                    .sheet(isPresented: $isPresentingAttachEvidence) {
-                        AttachEvidenceSheet(viewModel: viewModel, visitID: visitID)
-                    }
-                    .sheet(isPresented: $isPresentingWaterTest) {
-                        WaterSupplyTestSheet(viewModel: viewModel, visitID: visitID)
-                    }
-                    .sheet(isPresented: $isPresentingServicePoint) {
-                        ServicePointSheet(viewModel: viewModel, visitID: visitID, visit: visit)
                     }
             } else {
                 ContentUnavailableView("Property Twin not found", systemImage: "exclamationmark.triangle")
@@ -158,246 +57,70 @@ struct LiveCaptureView: View {
 
     @ViewBuilder
     private func cameraFirstCapture(visit: Visit) -> some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                liveCaptureSurface
-                    .onAppear {
-                        syncPlacementStateForSession()
-                    }
-
-                VStack(alignment: .leading, spacing: 14) {
-                    TwinLifecycleStrip(visit: visit)
-
-                    Text("Captured reality")
-                        .font(.headline)
-                        .padding(.horizontal, 14)
-                        .padding(.top, 14)
-
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("House Twin")
-                            .font(.subheadline.weight(.semibold))
-                            .padding(.horizontal, 14)
-                            .padding(.top, 12)
-                            .padding(.bottom, 8)
-
-                        if visit.areas.isEmpty {
-                            Text("No areas captured yet.")
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 14)
-                                .padding(.bottom, 12)
-                        } else {
-                            ForEach(visit.areas) { room in
-                                NavigationLink {
-                                    RoomDetailView(viewModel: viewModel, visitID: visitID, roomID: room.id)
-                                } label: {
-                                    SpatialAreaRow(room: room)
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 8)
-                                }
-                                .buttonStyle(.plain)
-                                if room.id != visit.areas.last?.id {
-                                    Divider()
-                                        .padding(.leading, 14)
-                                }
-                            }
-                            .padding(.bottom, 8)
-                        }
-
-                        Text("Rooms are labels. Geometry is truth.")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 14)
-                            .padding(.bottom, 12)
-                    }
-                    .background(Color(.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                    let components = visit.components.filter { $0.captureMode == visit.captureMode }
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("System Twin")
-                            .font(.subheadline.weight(.semibold))
-                            .padding(.horizontal, 14)
-                            .padding(.top, 12)
-                            .padding(.bottom, 8)
-
-                        if components.isEmpty {
-                            Text("No components captured yet.")
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 14)
-                                .padding(.bottom, 12)
-                        } else {
-                            ForEach(components) { component in
-                                NavigationLink {
-                                    ComponentDetailView(
-                                        viewModel: viewModel,
-                                        visitID: visitID,
-                                        componentID: component.id
-                                    )
-                                } label: {
-                                    SpatialObjectRow(component: component)
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 8)
-                                }
-                                .buttonStyle(.plain)
-                                if component.id != components.last?.id {
-                                    Divider()
-                                        .padding(.leading, 14)
-                                }
-                            }
-                            .padding(.bottom, 8)
-                        }
-
-                        Text("Incomplete systems remain valid capture.")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 14)
-                            .padding(.bottom, 12)
-                    }
-                    .background(Color(.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                    CaptureLedgerCard(visit: visit)
-                    WaterSupplyLedgerCard(observations: visit.waterSupplyObservations)
-                    ServicePointLedgerCard(observations: visit.servicePointObservations)
-                    CompletenessOverlayCard(visit: visit)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-        }
-        .background(Color(.systemGroupedBackground))
-    }
-
-    private var liveCaptureSurface: some View {
-        VStack(spacing: 0) {
-            ZStack(alignment: .bottomLeading) {
-                LiveCameraPreviewView()
-                    .frame(height: 280)
-                    .clipped()
-
-                LinearGradient(
-                    colors: [.clear, .black.opacity(0.55)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Live capture")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                    Text("Capture records reality. Main explains reality.")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.9))
-                    Label("Spatial session: \(spatialSession.status.title)", systemImage: "dot.radiowaves.left.and.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(sessionStatusColor)
-                    Label(placementLabel, systemImage: "location")
-                        .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.9))
-                }
-                .padding(12)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-            spatialSessionControls
-                .background(Color(.tertiarySystemGroupedBackground))
-
-            primaryActions
-                .background(Color(.secondarySystemGroupedBackground))
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-        )
-    }
-
-    private var primaryActions: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-            Button {
-                isPresentingQuickEvidence = true
-            } label: {
-                Label("Quick Evidence", systemImage: "scope")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-
-            Button {
-                isPresentingCaptureArea = true
-            } label: {
-                Label("Capture Area", systemImage: "square.dashed")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-
-            Button {
-                isPresentingCaptureObject = true
-            } label: {
-                Label("Capture Object", systemImage: "cube")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-
-            Button {
-                isPresentingWaterTest = true
-            } label: {
-                Label("Water Test", systemImage: "drop")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-
-            Button {
-                isPresentingServicePoint = true
-            } label: {
-                Label("Service Point", systemImage: "faucet")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-
-            Button {
-                isPresentingAttachEvidence = true
-            } label: {
-                Label("Evidence", systemImage: "paperclip")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(.bar)
-    }
-
-    private var spatialSessionControls: some View {
-        HStack(spacing: 10) {
-            Button {
+        liveCaptureSurface(visit: visit)
+            .ignoresSafeArea()
+            .onAppear {
                 startSpatialSession()
-            } label: {
-                Label("Start", systemImage: "play.fill")
-                    .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(spatialSession.status == .scanning)
+    }
 
-            Button {
-                pauseSpatialSession()
-            } label: {
-                Label("Pause", systemImage: "pause.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .disabled(spatialSession.status != .scanning)
+    private func liveCaptureSurface(visit: Visit) -> some View {
+        ZStack {
+            LiveCameraPreviewView()
+                .ignoresSafeArea()
 
-            Button {
-                completeSpatialSession()
-            } label: {
-                Label("Complete", systemImage: "checkmark.circle.fill")
-                    .frame(maxWidth: .infinity)
+            GeometryOverlay(isAnchored: livePlacementState.hasAnchor)
+
+            LinearGradient(
+                colors: [.black.opacity(0.42), .clear, .black.opacity(0.66)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                LiveCaptureStatusBar(
+                    reference: visit.reference,
+                    sessionStatus: spatialSession.status.title,
+                    sessionColor: sessionStatusColor,
+                    placementLabel: placementLabel
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+
+                Spacer()
+
+                if let confirmation {
+                    LiveCaptureConfirmationView(confirmation: confirmation)
+                        .padding(.bottom, 18)
+                }
+
+                LiveCaptureMiniTimeline(visit: visit)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+
+                LiveCaptureControlBar(
+                    onPhoto: { isPresentingPhotoCapture = true },
+                    onMark: { createLiveEvidence(.mark) },
+                    onSafety: { createLiveEvidence(.safety) },
+                    onFinish: finishVisit
+                )
+                .padding(.horizontal, 16)
+                .padding(.bottom, 18)
             }
-            .buttonStyle(.bordered)
-            .disabled(spatialSession.status != .scanning && spatialSession.status != .paused)
+
+            if let finishStatus {
+                LiveCaptureFinishPanel(
+                    status: finishStatus,
+                    onShare: {
+                        shareURL = finishStatus.exportURL
+                        isPresentingShareSheet = true
+                    },
+                    onReview: { isPresentingReview = true }
+                )
+                .padding(.horizontal, 20)
+            }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
     }
 
     private var currentPlacementMetadata: SpatialPlacement? {
@@ -466,6 +189,252 @@ struct LiveCaptureView: View {
             lastKnownPosition: nil,
             lastUpdatedAt: Date()
         )
+    }
+
+    private func createLiveEvidence(_ kind: LiveCaptureEvidenceKind, photoData: Data? = nil) {
+        let componentID = viewModel.addLiveCaptureEvidence(
+            to: visitID,
+            kind: kind,
+            placement: currentPlacementMetadata,
+            photoData: photoData,
+            scanSessionID: spatialSession.id,
+            cameraFrameReference: photoData == nil ? nil : "current-frame",
+            geometryAnchorID: currentPlacementMetadata?.anchorID,
+            positionLabel: placementLabel
+        )
+        capturedEvidenceComponentID = componentID
+
+        let hapticStyle: UIImpactFeedbackGenerator.FeedbackStyle = kind == .safety ? .heavy : .medium
+        UIImpactFeedbackGenerator(style: hapticStyle).impactOccurred()
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+            confirmation = LiveCaptureConfirmation(kind: kind, anchored: currentPlacementMetadata != nil)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+            withAnimation(.easeOut(duration: 0.18)) {
+                confirmation = nil
+            }
+        }
+    }
+
+    private func finishVisit() {
+        completeSpatialSession()
+        guard let url = viewModel.makeExportTempURL(for: visitID) else {
+            withAnimation {
+                finishStatus = LiveCaptureFinishStatus(message: "Export package could not be created.", exportURL: nil)
+            }
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
+
+        withAnimation {
+            finishStatus = LiveCaptureFinishStatus(message: "Export package ready.", exportURL: url)
+        }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+}
+
+private struct LiveCaptureConfirmation: Equatable {
+    var kind: LiveCaptureEvidenceKind
+    var anchored: Bool
+}
+
+private struct LiveCaptureFinishStatus: Equatable {
+    var message: String
+    var exportURL: URL?
+}
+
+private struct LiveCaptureStatusBar: View {
+    let reference: String
+    let sessionStatus: String
+    let sessionColor: Color
+    let placementLabel: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 9, height: 9)
+                    Text("Recording")
+                        .font(.caption.weight(.semibold))
+                }
+                .foregroundStyle(.white)
+
+                Text(reference)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 7) {
+                Label(sessionStatus, systemImage: "dot.radiowaves.left.and.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(sessionColor)
+                Label(placementLabel, systemImage: "location")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+        }
+        .padding(12)
+        .background(.black.opacity(0.34), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private struct GeometryOverlay: View {
+    let isAnchored: Bool
+
+    var body: some View {
+        ZStack {
+            GeometryReader { proxy in
+                let width = proxy.size.width
+                let height = proxy.size.height
+                Path { path in
+                    let midY = height * 0.47
+                    path.move(to: CGPoint(x: width * 0.18, y: midY))
+                    path.addLine(to: CGPoint(x: width * 0.82, y: midY))
+                    path.move(to: CGPoint(x: width * 0.5, y: height * 0.2))
+                    path.addLine(to: CGPoint(x: width * 0.5, y: height * 0.76))
+                    path.addRoundedRect(in: CGRect(x: width * 0.22, y: height * 0.28, width: width * 0.56, height: height * 0.36), cornerSize: CGSize(width: 14, height: 14))
+                }
+                .stroke(isAnchored ? Color.green.opacity(0.72) : Color.white.opacity(0.42), style: StrokeStyle(lineWidth: 1.4, dash: [7, 7]))
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+private struct LiveCaptureControlBar: View {
+    let onPhoto: () -> Void
+    let onMark: () -> Void
+    let onSafety: () -> Void
+    let onFinish: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            liveButton("Photo", systemImage: "camera.fill", action: onPhoto)
+            liveButton("Mark", systemImage: "mappin.and.ellipse", action: onMark)
+            liveButton("Safety", systemImage: "exclamationmark.triangle.fill", tint: .red, action: onSafety)
+            liveButton("Finish", systemImage: "checkmark.circle.fill", action: onFinish)
+        }
+        .padding(10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func liveButton(
+        _ title: String,
+        systemImage: String,
+        tint: Color = .white,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                Image(systemName: systemImage)
+                    .font(.title3.weight(.semibold))
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+            }
+            .foregroundStyle(tint)
+            .frame(maxWidth: .infinity)
+            .frame(height: 58)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct LiveCaptureConfirmationView: View {
+    let confirmation: LiveCaptureConfirmation
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: confirmation.kind == .safety ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+            Text("\(confirmation.kind.title) saved")
+            Text(confirmation.anchored ? "anchored" : "geometry pending")
+                .foregroundStyle(.secondary)
+        }
+        .font(.subheadline.weight(.semibold))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(confirmation.kind == .safety ? Color.red.opacity(0.92) : Color.black.opacity(0.72), in: Capsule())
+        .foregroundStyle(.white)
+    }
+}
+
+private struct LiveCaptureMiniTimeline: View {
+    let visit: Visit
+
+    private var entries: [EvidenceTimelineEntry] {
+        Array(visit.evidenceTimelineEntries.prefix(3))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if entries.isEmpty {
+                Text("Geometry not available yet")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.84))
+            } else {
+                ForEach(entries) { entry in
+                    HStack(spacing: 8) {
+                        Text(entry.capturedAt.formatted(date: .omitted, time: .shortened))
+                            .monospacedDigit()
+                        Text(entry.evidenceType)
+                        Spacer()
+                        Text(anchorText(for: entry))
+                            .foregroundStyle(.white.opacity(0.76))
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.white)
+                }
+            }
+        }
+        .padding(10)
+        .background(.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func anchorText(for entry: EvidenceTimelineEntry) -> String {
+        guard let spatialContext = entry.spatialContext, !spatialContext.isEmpty else {
+            return "geometry pending"
+        }
+        if spatialContext.localizedCaseInsensitiveContains("geometry") ||
+            spatialContext.localizedCaseInsensitiveContains("anchor") {
+            return "anchored"
+        }
+        return "audio + geometry"
+    }
+}
+
+private struct LiveCaptureFinishPanel: View {
+    let status: LiveCaptureFinishStatus
+    let onShare: () -> Void
+    let onReview: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Label(status.message, systemImage: status.exportURL == nil ? "exclamationmark.triangle.fill" : "checkmark.seal.fill")
+                .font(.headline.weight(.semibold))
+            HStack(spacing: 10) {
+                Button(action: onReview) {
+                    Label("Review", systemImage: "list.bullet.rectangle")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button(action: onShare) {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(status.exportURL == nil)
+            }
+        }
+        .padding(16)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 

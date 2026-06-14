@@ -15,6 +15,8 @@ enum VisitTimelineEntryKind: String, Equatable {
     case photo
     case voiceNote
     case note
+    case mark
+    case safety
     case recordingChunk
     case transcript
     case roomScan
@@ -24,6 +26,8 @@ enum VisitTimelineEntryKind: String, Equatable {
         case .photo: return "Photo"
         case .voiceNote: return "Voice Note"
         case .note: return "Note"
+        case .mark: return "Mark"
+        case .safety: return "Safety"
         case .recordingChunk: return "Recording Chunk"
         case .transcript: return "Transcript"
         case .roomScan: return "Room Scan"
@@ -60,9 +64,9 @@ extension Visit {
                     EvidenceTimelineEntry(
                         id: evidence.id,
                         capturedAt: evidence.createdAt,
-                        evidenceType: evidence.kind.title,
+                        evidenceType: component.liveCaptureEvidenceKind?.title ?? evidence.kind.title,
                         componentID: component.id,
-                        componentTitle: component.canonicalSubtype.title,
+                        componentTitle: component.liveCaptureTitle,
                         spatialContext: component.spatialContext?.displaySummary,
                         reviewStatus: evidence.reviewStatus,
                         isMerged: repositoryState == .merged
@@ -137,12 +141,15 @@ extension Visit {
         entries.append(
             contentsOf: components.flatMap { component in
                 component.evidence.map { evidence in
-                    makeTimelineEntry(
+                    let liveKind = component.liveCaptureEvidenceKind
+                    return makeTimelineEntry(
                         from: evidence,
                         capturedAt: evidence.createdAt,
-                        detail: component.spatialContext.map { "\(component.canonicalSubtype.title) - \($0.displaySummary)" } ?? component.canonicalSubtype.title,
+                        detail: component.spatialContext.map { "\(component.liveCaptureTitle) - \($0.displaySummary)" } ?? component.liveCaptureTitle,
                         roomID: nil,
-                        componentID: component.id
+                        componentID: component.id,
+                        titleOverride: liveKind?.title,
+                        kindOverride: liveKind?.timelineKind
                     )
                 }
             }
@@ -197,7 +204,9 @@ extension Visit {
         capturedAt: Date,
         detail: String,
         roomID: UUID?,
-        componentID: UUID?
+        componentID: UUID?,
+        titleOverride: String? = nil,
+        kindOverride: VisitTimelineEntryKind? = nil
     ) -> VisitTimelineEntry {
         let kind: VisitTimelineEntryKind
         switch evidence.kind {
@@ -212,8 +221,8 @@ extension Visit {
         return VisitTimelineEntry(
             id: evidence.id,
             capturedAt: capturedAt,
-            kind: kind,
-            title: kind.title,
+            kind: kindOverride ?? kind,
+            title: titleOverride ?? (kindOverride ?? kind).title,
             detail: detail,
             roomID: roomID,
             componentID: componentID,
@@ -222,5 +231,15 @@ extension Visit {
             transcriptID: nil,
             reviewStatus: evidence.reviewStatus
         )
+    }
+}
+
+private extension LiveCaptureEvidenceKind {
+    var timelineKind: VisitTimelineEntryKind {
+        switch self {
+        case .photo: return .photo
+        case .mark: return .mark
+        case .safety: return .safety
+        }
     }
 }
