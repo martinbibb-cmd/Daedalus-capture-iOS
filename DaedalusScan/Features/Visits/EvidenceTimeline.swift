@@ -17,6 +17,7 @@ enum VisitTimelineEntryKind: String, Equatable {
     case note
     case mark
     case safety
+    case measurement
     case recordingChunk
     case transcript
     case roomScan
@@ -28,6 +29,7 @@ enum VisitTimelineEntryKind: String, Equatable {
         case .note: return "Note"
         case .mark: return "Mark"
         case .safety: return "Safety"
+        case .measurement: return "Measurement"
         case .recordingChunk: return "Recording Chunk"
         case .transcript: return "Transcript"
         case .roomScan: return "Room Scan"
@@ -240,6 +242,7 @@ private extension LiveCaptureEvidenceKind {
         case .photo: return .photo
         case .mark: return .mark
         case .safety: return .safety
+        case .measurement: return .measurement
         }
     }
 }

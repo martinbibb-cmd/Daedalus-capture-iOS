@@ -362,6 +362,13 @@ public final class VisitRepository {
         try makeEvidenceFileURL(fileExtension: fileExtension, visitID: visitID, contextID: componentID)
     }
 
+    func evidenceFileURL(localFileName: String) -> URL? {
+        guard let directory = try? evidenceDirectoryURL() else { return nil }
+        let safeName = URL(fileURLWithPath: localFileName).lastPathComponent
+        guard !safeName.isEmpty else { return nil }
+        return directory.appendingPathComponent(safeName)
+    }
+
     func makeRecordingFileURL(fileExtension: String = "m4a", visitID: UUID, sequenceNumber: Int) throws -> URL {
         let directory = try recordingsDirectoryURL()
         let fileName = [

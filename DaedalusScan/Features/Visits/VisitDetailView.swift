@@ -32,13 +32,14 @@ struct VisitDetailView: View {
                     }
 
                     Button {
-                        if let url = viewModel.makeExportTempURL(for: visitID) {
+                        if let url = viewModel.makeReviewedExportTempURL(for: visitID) {
                             shareURL = url
                             isPresentingShareSheet = true
                         }
                     } label: {
-                        Label("Export Twin Package", systemImage: "square.and.arrow.up")
+                        Label("Create Reviewed Capture Package", systemImage: "shippingbox")
                     }
+                    .disabled(visit.hasBlockingCaptureReviewItems)
                 } header: {
                     Text("Review")
                 }

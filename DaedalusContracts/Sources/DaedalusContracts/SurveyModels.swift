@@ -212,16 +212,24 @@ public struct SurveyResponse: Codable, Hashable, Sendable {
 }
 
 public enum ReviewStatus: String, Codable, CaseIterable, Hashable, Sendable {
+    case unreviewed
     case draft
     case needsReview
+    case needsAttention
     case confirmed
+    case changed
+    case ignored
     case rejected
 
     public var title: String {
         switch self {
+        case .unreviewed: return "Unreviewed"
         case .draft: return "Draft"
         case .needsReview: return "Needs review"
+        case .needsAttention: return "Needs attention"
         case .confirmed: return "Confirmed"
+        case .changed: return "Changed"
+        case .ignored: return "Ignored"
         case .rejected: return "Rejected"
         }
     }
