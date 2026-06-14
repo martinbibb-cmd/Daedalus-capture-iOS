@@ -690,7 +690,7 @@ public final class VisitListViewModel: ObservableObject {
                 text: kind.evidenceNote,
                 to: componentID,
                 in: visitID,
-                reviewStatus: .needsReview,
+                reviewStatus: kind == .safety ? .needsAttention : .unreviewed,
                 reviewNotes: kind.title
             )
         }
@@ -704,6 +704,12 @@ public final class VisitListViewModel: ObservableObject {
         attributes["captureSource"] = "Live Capture"
         attributes["liveEvidenceKind"] = kind.rawValue
         attributes["liveEvidenceTitle"] = kind.title
+        attributes["capturePhase"] = "raw"
+        attributes["reviewDecision"] = CaptureReviewDecision.unreviewed.rawValue
+        attributes["suggestedLabel"] = kind.defaultSuggestedLabel
+        attributes["reviewedLabel"] = ""
+        attributes["includedInReviewedHandoff"] = "false"
+        attributes["reviewAuditTrail"] = "created:\(ISO8601DateFormatter().string(from: Date()))"
         attributes["capturedTimestamp"] = ISO8601DateFormatter().string(from: Date())
         attributes["recordingReference"] = recordingID?.uuidString ?? "current"
         attributes["scanSessionID"] = scanSessionID?.uuidString
@@ -712,7 +718,10 @@ public final class VisitListViewModel: ObservableObject {
         attributes["positionLabel"] = normalizedOptionalString(positionLabel ?? "")
         visits[visitIndex].components[componentIndex].componentAttributes = attributes
         visits[visitIndex].components[componentIndex].name = kind.title
-        visits[visitIndex].components[componentIndex].reviewStatus = .needsReview
+        visits[visitIndex].components[componentIndex].reviewStatus = kind == .safety ? .needsAttention : .unreviewed
+        for evidenceIndex in visits[visitIndex].components[componentIndex].evidence.indices {
+            visits[visitIndex].components[componentIndex].evidence[evidenceIndex].reviewStatus = kind == .safety ? .needsAttention : .unreviewed
+        }
         visits[visitIndex].components[componentIndex].spatialContext = SpatialEvidenceContext(
             floorLevel: "Live capture",
             areaLabel: "Unclassified evidence",
@@ -722,6 +731,119 @@ public final class VisitListViewModel: ObservableObject {
         persistChanges()
 
         return componentID
+    }
+
+    func setCaptureReviewDecision(
+        _ decision: CaptureReviewDecision,
+        componentID: UUID,
+        visitID: UUID,
+        reviewedLabel: String? = nil
+    ) {
+        guard let visitIndex = indexOfVisit(visitID),
+              let componentIndex = indexOfComponent(componentID, in: visitIndex) else {
+            return
+        }
+
+        var attributes = visits[visitIndex].components[componentIndex].componentAttributes
+        let suggestedLabel = normalizedOptionalString(attributes["suggestedLabel"] ?? "") ??
+            visits[visitIndex].components[componentIndex].liveCaptureEvidenceKind?.defaultSuggestedLabel ??
+            visits[visitIndex].components[componentIndex].liveCaptureTitle
+        let finalLabel = normalizedOptionalString(reviewedLabel ?? "") ?? suggestedLabel
+        attributes["suggestedLabel"] = suggestedLabel
+        attributes["reviewedLabel"] = decision == .changed || decision == .confirmed ? finalLabel : normalizedOptionalString(reviewedLabel ?? "") ?? ""
+        attributes["reviewDecision"] = decision.rawValue
+        attributes["capturePhase"] = decision.includedInReviewedHandoff ? "reviewed" : "raw"
+        attributes["includedInReviewedHandoff"] = decision.includedInReviewedHandoff ? "true" : "false"
+        attributes["reviewedAt"] = ISO8601DateFormatter().string(from: Date())
+        attributes["reviewAuditTrail"] = [
+            normalizedOptionalString(attributes["reviewAuditTrail"] ?? ""),
+            "\(decision.rawValue):\(ISO8601DateFormatter().string(from: Date())):\(finalLabel)"
+        ]
+        .compactMap { $0 }
+        .joined(separator: " | ")
+
+        visits[visitIndex].components[componentIndex].componentAttributes = attributes
+        visits[visitIndex].components[componentIndex].reviewStatus = decision.reviewStatus
+        for evidenceIndex in visits[visitIndex].components[componentIndex].evidence.indices {
+            visits[visitIndex].components[componentIndex].evidence[evidenceIndex].reviewStatus = decision.reviewStatus
+            visits[visitIndex].components[componentIndex].evidence[evidenceIndex].reviewNotes = finalLabel
+        }
+        markLocalChanges(at: visitIndex)
+        persistChanges()
+    }
+
+    func refreshCaptureReviewSuggestions(for visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID) else { return }
+        let visit = visits[visitIndex]
+        for componentIndex in visits[visitIndex].components.indices where visits[visitIndex].components[componentIndex].isLiveCaptureEvidence {
+            guard visits[visitIndex].components[componentIndex].captureReviewDecision == .unreviewed ||
+                    visits[visitIndex].components[componentIndex].captureReviewDecision == .needsAttention else {
+                continue
+            }
+            let component = visits[visitIndex].components[componentIndex]
+            let snippet = transcriptSnippet(near: component, in: visit)
+            let suggestion = suggestedLabel(for: component, transcriptSnippet: snippet)
+            visits[visitIndex].components[componentIndex].componentAttributes["suggestedLabel"] = suggestion
+            visits[visitIndex].components[componentIndex].componentAttributes["transcriptSnippet"] = snippet
+            if component.liveCaptureEvidenceKind == .safety {
+                visits[visitIndex].components[componentIndex].componentAttributes["reviewDecision"] = CaptureReviewDecision.needsAttention.rawValue
+                visits[visitIndex].components[componentIndex].reviewStatus = .needsAttention
+                for evidenceIndex in visits[visitIndex].components[componentIndex].evidence.indices {
+                    visits[visitIndex].components[componentIndex].evidence[evidenceIndex].reviewStatus = .needsAttention
+                }
+            }
+        }
+        markLocalChanges(at: visitIndex)
+        persistChanges()
+    }
+
+    func prepareReviewedCapturePackage(for visitID: UUID) -> Bool {
+        guard let visitIndex = indexOfVisit(visitID) else { return false }
+        guard !visits[visitIndex].hasBlockingCaptureReviewItems else {
+            errorMessage = "Review safety and attention items before creating the reviewed capture package."
+            return false
+        }
+
+        visits[visitIndex].changeSetCounters["rawCaptureEvidence"] = visits[visitIndex].liveCaptureEvidenceComponents.count
+        visits[visitIndex].changeSetCounters["reviewedCaptureEvidence"] = visits[visitIndex].reviewedCaptureEvidenceComponents.count
+        visits[visitIndex].changeSetCounters["ignoredCaptureEvidence"] = visits[visitIndex].ignoredCaptureEvidenceComponents.count
+        markLocalChanges(at: visitIndex)
+        persistChanges()
+        return true
+    }
+
+    func makeReviewedExportTempURL(for visitID: UUID) -> URL? {
+        guard prepareReviewedCapturePackage(for: visitID) else { return nil }
+        return makeExportTempURL(for: visitID)
+    }
+
+    func evidenceFileURL(localFileName: String) -> URL? {
+        repository.evidenceFileURL(localFileName: localFileName)
+    }
+
+    private func transcriptSnippet(near component: SystemComponent, in visit: Visit) -> String {
+        let allText = visit.transcripts.flatMap { transcript in
+            if transcript.chunks.isEmpty {
+                return [transcript.rawTranscript]
+            }
+            return transcript.chunks.map(\.text)
+        }
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .first { !$0.isEmpty }
+
+        return allText.map { String($0.prefix(180)) } ?? ""
+    }
+
+    private func suggestedLabel(for component: SystemComponent, transcriptSnippet: String) -> String {
+        let text = transcriptSnippet.lowercased()
+        if text.contains("boiler") { return "Boiler" }
+        if text.contains("flue") { return "Flue" }
+        if text.contains("meter") { return "Meter" }
+        if text.contains("radiator") { return "Radiator" }
+        if text.contains("cylinder") || text.contains("tank") { return "Hot water cylinder" }
+        if text.contains("valve") { return "Valve" }
+        if text.contains("safety") || text.contains("concern") || text.contains("too close") { return "Safety concern" }
+        return component.liveCaptureEvidenceKind?.defaultSuggestedLabel ?? component.liveCaptureTitle
     }
 
     func addCaptureLiteEvidenceCapture(

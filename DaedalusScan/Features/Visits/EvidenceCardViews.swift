@@ -40,13 +40,13 @@ struct EvidenceCardView: View {
 
     private var statusColor: Color {
         switch reviewStatus {
-        case .confirmed:
+        case .confirmed, .changed:
             return .green
-        case .needsReview:
+        case .needsReview, .needsAttention, .unreviewed:
             return .orange
         case .rejected:
             return .red
-        case .draft, .none:
+        case .ignored, .draft, .none:
             return .secondary
         }
     }

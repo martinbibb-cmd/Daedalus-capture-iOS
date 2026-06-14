@@ -7,14 +7,11 @@ struct LiveCaptureView: View {
 
     @State private var isPresentingReview = false
     @State private var isPresentingPhotoCapture = false
-    @State private var isPresentingShareSheet = false
-    @State private var shareURL: URL?
 
     @State private var capturedEvidenceComponentID: UUID?
     @State private var spatialSession = SpatialCaptureSession()
     @State private var livePlacementState = LivePlacementState.unavailable
     @State private var confirmation: LiveCaptureConfirmation?
-    @State private var finishStatus: LiveCaptureFinishStatus?
 
     private var visit: Visit? {
         viewModel.visit(id: visitID)
@@ -38,11 +35,6 @@ struct LiveCaptureView: View {
                     }
                     .navigationDestination(isPresented: $isPresentingReview) {
                         VisitDetailView(viewModel: viewModel, visitID: visitID)
-                    }
-                    .sheet(isPresented: $isPresentingShareSheet) {
-                        if let url = shareURL {
-                            ActivityView(url: url)
-                        }
                     }
                     .sheet(isPresented: $isPresentingPhotoCapture) {
                         CameraCaptureView { data in
@@ -109,17 +101,6 @@ struct LiveCaptureView: View {
                 .padding(.bottom, 18)
             }
 
-            if let finishStatus {
-                LiveCaptureFinishPanel(
-                    status: finishStatus,
-                    onShare: {
-                        shareURL = finishStatus.exportURL
-                        isPresentingShareSheet = true
-                    },
-                    onReview: { isPresentingReview = true }
-                )
-                .padding(.horizontal, 20)
-            }
         }
     }
 
@@ -218,17 +199,8 @@ struct LiveCaptureView: View {
 
     private func finishVisit() {
         completeSpatialSession()
-        guard let url = viewModel.makeExportTempURL(for: visitID) else {
-            withAnimation {
-                finishStatus = LiveCaptureFinishStatus(message: "Export package could not be created.", exportURL: nil)
-            }
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
-            return
-        }
-
-        withAnimation {
-            finishStatus = LiveCaptureFinishStatus(message: "Export package ready.", exportURL: url)
-        }
+        viewModel.refreshCaptureReviewSuggestions(for: visitID)
+        isPresentingReview = true
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 }
@@ -236,11 +208,6 @@ struct LiveCaptureView: View {
 private struct LiveCaptureConfirmation: Equatable {
     var kind: LiveCaptureEvidenceKind
     var anchored: Bool
-}
-
-private struct LiveCaptureFinishStatus: Equatable {
-    var message: String
-    var exportURL: URL?
 }
 
 private struct LiveCaptureStatusBar: View {
@@ -406,35 +373,6 @@ private struct LiveCaptureMiniTimeline: View {
             return "anchored"
         }
         return "audio + geometry"
-    }
-}
-
-private struct LiveCaptureFinishPanel: View {
-    let status: LiveCaptureFinishStatus
-    let onShare: () -> Void
-    let onReview: () -> Void
-
-    var body: some View {
-        VStack(spacing: 12) {
-            Label(status.message, systemImage: status.exportURL == nil ? "exclamationmark.triangle.fill" : "checkmark.seal.fill")
-                .font(.headline.weight(.semibold))
-            HStack(spacing: 10) {
-                Button(action: onReview) {
-                    Label("Review", systemImage: "list.bullet.rectangle")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-
-                Button(action: onShare) {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .disabled(status.exportURL == nil)
-            }
-        }
-        .padding(16)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 

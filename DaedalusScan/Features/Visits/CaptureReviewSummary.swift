@@ -100,7 +100,10 @@ extension SystemComponent {
         if evidence.contains(where: { $0.reviewStatus == .needsReview }) {
             return .needsReview
         }
-        if evidence.allSatisfy({ $0.reviewStatus == .confirmed }) {
+        if evidence.contains(where: { $0.reviewStatus == .needsAttention || $0.reviewStatus == .unreviewed }) {
+            return .needsAttention
+        }
+        if evidence.allSatisfy({ $0.reviewStatus == .confirmed || $0.reviewStatus == .changed }) {
             return .confirmed
         }
         return reviewStatus
