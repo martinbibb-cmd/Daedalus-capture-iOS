@@ -240,6 +240,7 @@ private extension LiveCaptureEvidenceKind {
     var timelineKind: VisitTimelineEntryKind {
         switch self {
         case .photo: return .photo
+        case .voice: return .voiceNote
         case .mark: return .mark
         case .safety: return .safety
         case .measurement: return .measurement

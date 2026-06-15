@@ -39,7 +39,7 @@ extension Visit {
             ComponentMarker(
                 id: component.id,
                 componentID: component.id,
-                title: component.canonicalSubtype.title,
+                title: component.liveCaptureEvidenceKind?.title ?? component.canonicalSubtype.title,
                 systemImage: component.canonicalCategory.markerSystemImage,
                 areaLabel: component.spatialContext?.areaLabel ?? component.componentAttributes["location"] ?? "Spatial capture",
                 positionLabel: component.spatialContext?.markerSummary ?? component.spatialPlacement.captureState.title,

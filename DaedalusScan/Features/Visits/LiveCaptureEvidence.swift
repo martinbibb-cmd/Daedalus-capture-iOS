@@ -2,6 +2,7 @@ import Foundation
 
 enum LiveCaptureEvidenceKind: String, CaseIterable {
     case photo
+    case voice
     case mark
     case safety
     case measurement
@@ -9,6 +10,7 @@ enum LiveCaptureEvidenceKind: String, CaseIterable {
     var title: String {
         switch self {
         case .photo: return "Photo"
+        case .voice: return "Voice"
         case .mark: return "Mark"
         case .safety: return "Safety"
         case .measurement: return "Measurement"
@@ -18,6 +20,7 @@ enum LiveCaptureEvidenceKind: String, CaseIterable {
     var evidenceNote: String {
         switch self {
         case .photo: return "Photo captured during live visit."
+        case .voice: return "Voice note placeholder captured during live visit. Transcript pending."
         case .mark: return "Marked as important during live visit."
         case .safety: return "Potential safety concern marked during live visit."
         case .measurement: return "Measurement captured during live visit."
@@ -108,6 +111,7 @@ extension LiveCaptureEvidenceKind {
     var defaultSuggestedLabel: String {
         switch self {
         case .photo: return "Photo evidence"
+        case .voice: return "Voice note"
         case .mark: return "Marked evidence"
         case .safety: return "Safety concern"
         case .measurement: return "Measurement"

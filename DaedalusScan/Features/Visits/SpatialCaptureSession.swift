@@ -77,6 +77,66 @@ struct LivePlacementState: Codable, Hashable {
     }
 }
 
+struct LiveSpatialScanProgress: Codable, Hashable {
+    var meshAnchorCount: Int
+    var planeAnchorCount: Int
+    var lastAnchorID: String?
+    var lastKnownPosition: SpatialPosition?
+    var lastUpdatedAt: Date?
+
+    init(
+        meshAnchorCount: Int = 0,
+        planeAnchorCount: Int = 0,
+        lastAnchorID: String? = nil,
+        lastKnownPosition: SpatialPosition? = nil,
+        lastUpdatedAt: Date? = nil
+    ) {
+        self.meshAnchorCount = meshAnchorCount
+        self.planeAnchorCount = planeAnchorCount
+        self.lastAnchorID = lastAnchorID
+        self.lastKnownPosition = lastKnownPosition
+        self.lastUpdatedAt = lastUpdatedAt
+    }
+
+    static let empty = LiveSpatialScanProgress()
+
+    var capturedSurfaceCount: Int {
+        meshAnchorCount + planeAnchorCount
+    }
+
+    var hasGeometry: Bool {
+        capturedSurfaceCount > 0
+    }
+
+    var captureLabel: String {
+        guard hasGeometry else { return "Move through the area to capture geometry" }
+        return "\(capturedSurfaceCount) surfaces captured"
+    }
+
+    var confidence: SpatialConfidence {
+        if meshAnchorCount >= 2 || capturedSurfaceCount >= 4 { return .high }
+        if hasGeometry { return .medium }
+        return .low
+    }
+
+    var placement: SpatialPlacement? {
+        if let lastAnchorID, !lastAnchorID.isEmpty {
+            return SpatialPlacement(
+                anchorID: lastAnchorID,
+                approximatePosition: lastKnownPosition,
+                captureState: .anchored,
+                confidence: confidence
+            )
+        }
+        guard let lastKnownPosition else { return nil }
+        return SpatialPlacement(
+            approximatePosition: lastKnownPosition,
+            captureState: .approximate,
+            confidence: .low
+        )
+    }
+}
+
 struct SpatialCaptureSession: Codable, Hashable, Identifiable {
     var id: UUID
     var status: SpatialCaptureSessionStatus

@@ -118,6 +118,22 @@ Export/import packages are expected to represent:
 - evidence timeline entries derived from captured evidence
 - merge summary counts for added components, edited evidence, deleted evidence, confirmed evidence, and evidence still needing review
 
+## Spatial evidence loop
+
+The live capture path is a one-pass spatial evidence loop:
+
+1. Open or create a Property Twin.
+2. Start **AR Capture** from the lifecycle flow.
+3. The live surface runs native ARKit world tracking with plane detection and LiDAR mesh reconstruction when the device supports it. The scan overlay shows whether geometry is still pending or how many surfaces have been captured.
+4. While the spatial session remains active, capture **Photo**, **Voice**, **Mark**, or **Safety** evidence without leaving the survey flow.
+5. Each evidence item is stored as an unclassified spatial marker with the current scan session ID, anchor ID when available, approximate position when available, confidence, and an explicit fallback state when anchoring is unavailable.
+6. **Review** shows raw evidence cards with title/placeholder, evidence kind, transcript placeholder, location/anchor state, confidence, and review state.
+7. The surveyor can confirm, edit the reviewed label, mark attention, or ignore. Confirmed and changed evidence is distinguishable from raw evidence and is marked for reviewed handoff.
+8. **Twin Overview** shows the scanned/placed evidence as map-style component markers. Tapping a marker opens the underlying evidence bundle.
+9. Export packages preserve Property Twin metadata, partial scanned areas, spatial markers/components, photos, voice note placeholders, transcript placeholders, review decisions, anchor metadata, fallback metadata, confidence, and provenance.
+
+Voice capture in this slice creates a recording/transcript placeholder inside the spatial session. Production audio recording and transcription can replace the placeholder without changing the package shape. Partial twins are valid: a boiler cupboard capture with spatial evidence is a usable Property Twin fragment and can grow into a full Property Twin later.
+
 ## Features in this scaffold
 
 - Property Twin list and create Property Twin entry point

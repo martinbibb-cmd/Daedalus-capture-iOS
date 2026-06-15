@@ -67,6 +67,110 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertTrue(timelineTypes.contains("Safety"))
     }
 
+    func testLiveVoiceCreatesTranscriptPlaceholderInSpatialSession() throws {
+        let harness = try makeHarness()
+        let componentID = try XCTUnwrap(
+            harness.viewModel.addLiveCaptureEvidence(
+                to: harness.visitID,
+                kind: .voice,
+                placement: SpatialPlacement(
+                    anchorID: "voice-anchor",
+                    approximatePosition: SpatialPosition(x: 1.2, y: 0.4, z: -0.8),
+                    captureState: .anchored,
+                    confidence: .medium
+                ),
+                scanSessionID: UUID(),
+                geometryAnchorID: "voice-anchor",
+                positionLabel: "2 surfaces captured"
+            )
+        )
+
+        let visit = try XCTUnwrap(harness.viewModel.visit(id: harness.visitID))
+        let component = try XCTUnwrap(harness.viewModel.component(visitID: harness.visitID, componentID: componentID))
+        let evidence = try XCTUnwrap(component.evidence.first)
+
+        XCTAssertEqual(component.liveCaptureEvidenceKind, .voice)
+        XCTAssertEqual(component.spatialPlacement.captureState, .anchored)
+        XCTAssertEqual(component.spatialPlacement.anchorID, "voice-anchor")
+        XCTAssertEqual(evidence.kind, .voiceNote)
+        XCTAssertEqual(evidence.reviewStatus, .unreviewed)
+        XCTAssertEqual(evidence.transcriptReferences.first?.transcriptID, visit.transcripts.first?.id)
+        XCTAssertEqual(visit.recordings.first?.localFileName, evidence.localFileName)
+        XCTAssertEqual(visit.transcripts.first?.status, .pending)
+        XCTAssertEqual(component.componentAttributes["voiceNoteTranscript"], "Transcript pending.")
+    }
+
+    func testPartialSpatialTwinCanBeReviewedMarkedAndExported() throws {
+        let harness = try makeHarness()
+        let scanSessionID = UUID()
+        let photoID = try XCTUnwrap(
+            harness.viewModel.addLiveCaptureEvidence(
+                to: harness.visitID,
+                kind: .photo,
+                placement: SpatialPlacement(
+                    anchorID: "cupboard-mesh-1",
+                    approximatePosition: SpatialPosition(x: 0.4, y: 1.1, z: -0.2),
+                    captureState: .anchored,
+                    confidence: .high
+                ),
+                photoData: Data([0xFF, 0xD8, 0xFF]),
+                scanSessionID: scanSessionID,
+                geometryAnchorID: "cupboard-mesh-1",
+                positionLabel: "Boiler cupboard"
+            )
+        )
+        let voiceID = try XCTUnwrap(
+            harness.viewModel.addLiveCaptureEvidence(
+                to: harness.visitID,
+                kind: .voice,
+                placement: SpatialPlacement(
+                    anchorID: "cupboard-mesh-2",
+                    approximatePosition: SpatialPosition(x: 0.6, y: 1.0, z: -0.3),
+                    captureState: .anchored,
+                    confidence: .medium
+                ),
+                scanSessionID: scanSessionID,
+                geometryAnchorID: "cupboard-mesh-2",
+                positionLabel: "Boiler cupboard"
+            )
+        )
+        let markID = try XCTUnwrap(
+            harness.viewModel.addLiveCaptureEvidence(
+                to: harness.visitID,
+                kind: .mark,
+                placement: SpatialPlacement(captureState: .approximate, confidence: .low),
+                scanSessionID: scanSessionID,
+                positionLabel: "Fallback approximate"
+            )
+        )
+
+        harness.viewModel.setCaptureReviewDecision(.confirmed, componentID: photoID, visitID: harness.visitID)
+        harness.viewModel.setCaptureReviewDecision(.changed, componentID: voiceID, visitID: harness.visitID, reviewedLabel: "Boiler voice note")
+        harness.viewModel.setCaptureReviewDecision(.ignored, componentID: markID, visitID: harness.visitID)
+
+        let visit = try XCTUnwrap(harness.viewModel.visit(id: harness.visitID))
+        XCTAssertTrue(visit.rooms.isEmpty, "A cupboard-only partial twin is valid without a whole-property room pass.")
+        XCTAssertEqual(visit.liveCaptureEvidenceComponents.count, 3)
+        XCTAssertEqual(visit.reviewedCaptureEvidenceComponents.count, 2)
+        XCTAssertEqual(visit.componentMarkers.map(\.title).sorted(), ["Mark", "Photo", "Voice"])
+        XCTAssertTrue(visit.componentMarkers.contains { $0.componentID == photoID })
+        XCTAssertEqual(try XCTUnwrap(visit.components.first { $0.id == photoID }).spatialPlacement.anchorID, "cupboard-mesh-1")
+
+        let package = try harness.repository.exportPackage(visits: [visit])
+        let exportedVisit = try XCTUnwrap(package.visits.first)
+        let exportedPhoto = try XCTUnwrap(exportedVisit.components.first { $0.id == photoID })
+        let exportedVoice = try XCTUnwrap(exportedVisit.components.first { $0.id == voiceID })
+        let exportedFallback = try XCTUnwrap(exportedVisit.components.first { $0.id == markID })
+
+        XCTAssertEqual(exportedPhoto.evidence.first?.kind, .photo)
+        XCTAssertNotNil(exportedPhoto.evidence.first?.embeddedData)
+        XCTAssertEqual(exportedVoice.evidence.first?.kind, .voiceNote)
+        XCTAssertEqual(exportedVoice.evidence.first?.transcriptReferences.first?.transcriptID, exportedVisit.transcripts.first?.id)
+        XCTAssertEqual(exportedVoice.componentAttributes["reviewDecision"], CaptureReviewDecision.changed.rawValue)
+        XCTAssertEqual(exportedFallback.spatialPlacement.captureState, .approximate)
+        XCTAssertEqual(exportedFallback.componentAttributes["includedInReviewedHandoff"], "false")
+    }
+
     func testCaptureReviewStoresWeakSuggestionUntilDecision() throws {
         let harness = try makeHarness()
         let recordingID = try XCTUnwrap(
@@ -154,13 +258,34 @@ final class LiveCaptureUXTests: XCTestCase {
             XCTAssertFalse(source.localizedCaseInsensitiveContains(term), "Live capture source contains banned term: \(term)")
         }
 
-        for required in ["\"Photo\"", "\"Mark\"", "\"Safety\"", "\"Finish\""] {
+        for required in ["\"Photo\"", "\"Voice\"", "\"Mark\"", "\"Safety\"", "\"Finish\""] {
             XCTAssertTrue(source.contains(required), "Live capture source should expose \(required)")
+        }
+    }
+
+    func testCaptureSourceDoesNotIntroduceBannedBoundaryBehaviours() throws {
+        let source = try sourceText(relativePath: "DaedalusScan/ViewModels/VisitListViewModel.swift") +
+            sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureEvidence.swift") +
+            sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureView.swift")
+        let bannedTerms = [
+            "recommendation",
+            "recommended",
+            "quote",
+            "pricing",
+            "customer advice",
+            "heat loss",
+            "crm",
+            "scheduling"
+        ]
+
+        for term in bannedTerms {
+            XCTAssertFalse(source.localizedCaseInsensitiveContains(term), "Capture code contains banned boundary behaviour: \(term)")
         }
     }
 
     private struct Harness {
         let viewModel: VisitListViewModel
+        let repository: VisitRepository
         let visitID: UUID
     }
 
@@ -170,9 +295,10 @@ final class LiveCaptureUXTests: XCTestCase {
         addTeardownBlock {
             try? FileManager.default.removeItem(at: storageDirectory)
         }
-        let viewModel = VisitListViewModel(repository: VisitRepository(storageDirectory: storageDirectory))
+        let repository = VisitRepository(storageDirectory: storageDirectory)
+        let viewModel = VisitListViewModel(repository: repository)
         let visitID = try XCTUnwrap(viewModel.createVisit(reference: "Live Visit"))
-        return Harness(viewModel: viewModel, visitID: visitID)
+        return Harness(viewModel: viewModel, repository: repository, visitID: visitID)
     }
 
     private func liveCaptureSourcePath() -> String {
@@ -185,5 +311,12 @@ final class LiveCaptureUXTests: XCTestCase {
             .appendingPathComponent("Visits")
             .appendingPathComponent("LiveCaptureView.swift")
             .path
+    }
+
+    private func sourceText(relativePath: String) throws -> String {
+        var url = URL(fileURLWithPath: #filePath)
+        url.deleteLastPathComponent()
+        url.deleteLastPathComponent()
+        return try String(contentsOf: url.appendingPathComponent(relativePath), encoding: .utf8)
     }
 }

@@ -319,6 +319,7 @@ private struct CaptureReviewCardView: View {
     private var systemImage: String {
         switch card.markerType {
         case .photo: return "photo"
+        case .voice: return "waveform"
         case .mark: return "mappin.and.ellipse"
         case .safety: return "exclamationmark.triangle.fill"
         case .measurement: return "ruler"
@@ -351,7 +352,7 @@ private struct PhotoThumbnail: View {
                     .resizable()
                     .scaledToFill()
             } else {
-                Image(systemName: markerType == .safety ? "exclamationmark.triangle.fill" : "photo")
+                Image(systemName: placeholderSystemImage)
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(markerType == .safety ? .red : .secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -360,6 +361,21 @@ private struct PhotoThumbnail: View {
         }
         .frame(width: 74, height: 74)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var placeholderSystemImage: String {
+        switch markerType {
+        case .photo:
+            return "photo"
+        case .voice:
+            return "waveform"
+        case .mark:
+            return "mappin.and.ellipse"
+        case .safety:
+            return "exclamationmark.triangle.fill"
+        case .measurement:
+            return "ruler"
+        }
     }
 }
 

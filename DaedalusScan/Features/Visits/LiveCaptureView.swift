@@ -11,6 +11,7 @@ struct LiveCaptureView: View {
     @State private var capturedEvidenceComponentID: UUID?
     @State private var spatialSession = SpatialCaptureSession()
     @State private var livePlacementState = LivePlacementState.unavailable
+    @State private var scanProgress = LiveSpatialScanProgress.empty
     @State private var confirmation: LiveCaptureConfirmation?
 
     private var visit: Visit? {
@@ -58,10 +59,16 @@ struct LiveCaptureView: View {
 
     private func liveCaptureSurface(visit: Visit) -> some View {
         ZStack {
-            LiveCameraPreviewView()
+            LiveSpatialCaptureView(
+                progress: $scanProgress,
+                isScanning: spatialSession.status == .scanning
+            )
                 .ignoresSafeArea()
 
-            GeometryOverlay(isAnchored: livePlacementState.hasAnchor)
+            GeometryOverlay(
+                isAnchored: livePlacementState.hasAnchor,
+                capturedSurfaceCount: scanProgress.capturedSurfaceCount
+            )
 
             LinearGradient(
                 colors: [.black.opacity(0.42), .clear, .black.opacity(0.66)],
@@ -75,7 +82,8 @@ struct LiveCaptureView: View {
                     reference: visit.reference,
                     sessionStatus: spatialSession.status.title,
                     sessionColor: sessionStatusColor,
-                    placementLabel: placementLabel
+                    placementLabel: placementLabel,
+                    scanProgressLabel: scanProgress.captureLabel
                 )
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
@@ -93,6 +101,7 @@ struct LiveCaptureView: View {
 
                 LiveCaptureControlBar(
                     onPhoto: { isPresentingPhotoCapture = true },
+                    onVoice: { createLiveEvidence(.voice) },
                     onMark: { createLiveEvidence(.mark) },
                     onSafety: { createLiveEvidence(.safety) },
                     onFinish: finishVisit
@@ -101,6 +110,9 @@ struct LiveCaptureView: View {
                 .padding(.bottom, 18)
             }
 
+        }
+        .onChange(of: scanProgress) { _, _ in
+            syncPlacementStateForSession()
         }
     }
 
@@ -114,6 +126,9 @@ struct LiveCaptureView: View {
     private var placementLabel: String {
         if livePlacementState.hasAnchor {
             return "Placement anchor available"
+        }
+        if livePlacementState.lastKnownPosition != nil {
+            return "Approximate placement available"
         }
         return "No anchor - fallback active"
     }
@@ -162,14 +177,28 @@ struct LiveCaptureView: View {
             livePlacementState = .unavailable
             return
         }
-        livePlacementState = LivePlacementState(
-            currentAnchor: CapturedAnchor(
-                id: "session-\(spatialSession.id.uuidString)",
-                confidence: .medium
-            ),
-            lastKnownPosition: nil,
-            lastUpdatedAt: Date()
-        )
+        if let placement = scanProgress.placement {
+            livePlacementState = LivePlacementState(
+                currentAnchor: placement.anchorID.map {
+                    CapturedAnchor(
+                        id: $0,
+                        position: placement.approximatePosition,
+                        confidence: placement.confidence
+                    )
+                },
+                lastKnownPosition: placement.approximatePosition,
+                lastUpdatedAt: scanProgress.lastUpdatedAt ?? Date()
+            )
+        } else {
+            livePlacementState = LivePlacementState(
+                currentAnchor: CapturedAnchor(
+                    id: "session-\(spatialSession.id.uuidString)",
+                    confidence: .low
+                ),
+                lastKnownPosition: nil,
+                lastUpdatedAt: Date()
+            )
+        }
     }
 
     private func createLiveEvidence(_ kind: LiveCaptureEvidenceKind, photoData: Data? = nil) {
@@ -181,7 +210,7 @@ struct LiveCaptureView: View {
             scanSessionID: spatialSession.id,
             cameraFrameReference: photoData == nil ? nil : "current-frame",
             geometryAnchorID: currentPlacementMetadata?.anchorID,
-            positionLabel: placementLabel
+            positionLabel: scanProgress.hasGeometry ? scanProgress.captureLabel : placementLabel
         )
         capturedEvidenceComponentID = componentID
 
@@ -215,6 +244,7 @@ private struct LiveCaptureStatusBar: View {
     let sessionStatus: String
     let sessionColor: Color
     let placementLabel: String
+    let scanProgressLabel: String
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -245,6 +275,11 @@ private struct LiveCaptureStatusBar: View {
                     .foregroundStyle(.white.opacity(0.9))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
+                Label(scanProgressLabel, systemImage: "cube.transparent")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
         }
         .padding(12)
@@ -254,6 +289,7 @@ private struct LiveCaptureStatusBar: View {
 
 private struct GeometryOverlay: View {
     let isAnchored: Bool
+    let capturedSurfaceCount: Int
 
     var body: some View {
         ZStack {
@@ -269,6 +305,18 @@ private struct GeometryOverlay: View {
                     path.addRoundedRect(in: CGRect(x: width * 0.22, y: height * 0.28, width: width * 0.56, height: height * 0.36), cornerSize: CGSize(width: 14, height: 14))
                 }
                 .stroke(isAnchored ? Color.green.opacity(0.72) : Color.white.opacity(0.42), style: StrokeStyle(lineWidth: 1.4, dash: [7, 7]))
+
+                VStack {
+                    Spacer()
+                    HStack(spacing: 6) {
+                        ForEach(0..<6, id: \.self) { index in
+                            Capsule()
+                                .fill(index < min(capturedSurfaceCount, 6) ? Color.green.opacity(0.84) : Color.white.opacity(0.28))
+                                .frame(width: 30, height: 5)
+                        }
+                    }
+                    .padding(.bottom, 150)
+                }
             }
         }
         .allowsHitTesting(false)
@@ -277,6 +325,7 @@ private struct GeometryOverlay: View {
 
 private struct LiveCaptureControlBar: View {
     let onPhoto: () -> Void
+    let onVoice: () -> Void
     let onMark: () -> Void
     let onSafety: () -> Void
     let onFinish: () -> Void
@@ -284,6 +333,7 @@ private struct LiveCaptureControlBar: View {
     var body: some View {
         HStack(spacing: 10) {
             liveButton("Photo", systemImage: "camera.fill", action: onPhoto)
+            liveButton("Voice", systemImage: "waveform", action: onVoice)
             liveButton("Mark", systemImage: "mappin.and.ellipse", action: onMark)
             liveButton("Safety", systemImage: "exclamationmark.triangle.fill", tint: .red, action: onSafety)
             liveButton("Finish", systemImage: "checkmark.circle.fill", action: onFinish)

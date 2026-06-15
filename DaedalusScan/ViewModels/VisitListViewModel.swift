@@ -683,7 +683,9 @@ public final class VisitListViewModel: ObservableObject {
             return nil
         }
 
-        if let photoData {
+        if kind == .voice {
+            attachLiveVoicePlaceholder(toComponent: componentID, in: visitID)
+        } else if let photoData {
             attachQuickEvidencePhoto(data: photoData, toComponent: componentID, in: visitID)
         } else {
             attachTextNoteToComponent(
@@ -708,6 +710,10 @@ public final class VisitListViewModel: ObservableObject {
         attributes["reviewDecision"] = CaptureReviewDecision.unreviewed.rawValue
         attributes["suggestedLabel"] = kind.defaultSuggestedLabel
         attributes["reviewedLabel"] = ""
+        if kind == .voice {
+            attributes["transcriptSnippet"] = "Transcript pending."
+            attributes["voiceNoteTranscript"] = "Transcript pending."
+        }
         attributes["includedInReviewedHandoff"] = "false"
         attributes["reviewAuditTrail"] = "created:\(ISO8601DateFormatter().string(from: Date()))"
         attributes["capturedTimestamp"] = ISO8601DateFormatter().string(from: Date())
@@ -731,6 +737,52 @@ public final class VisitListViewModel: ObservableObject {
         persistChanges()
 
         return componentID
+    }
+
+    private func attachLiveVoicePlaceholder(toComponent componentID: UUID, in visitID: UUID) {
+        guard let visitIndex = indexOfVisit(visitID),
+              let componentIndex = indexOfComponent(componentID, in: visitIndex) else {
+            return
+        }
+
+        let sequenceNumber = (visits[visitIndex].recordings.map(\.sequenceNumber).max() ?? 0) + 1
+        let localFileName = [
+            visitID.uuidString,
+            componentID.uuidString,
+            "voice-placeholder",
+            String(format: "%03d", sequenceNumber)
+        ].joined(separator: "-") + ".m4a"
+        let recording = VisitRecording(
+            sequenceNumber: sequenceNumber,
+            localFileName: localFileName,
+            status: .completed
+        )
+        let transcript = Transcript(
+            source: TranscriptSource(
+                recordingID: recording.id,
+                localFileName: localFileName
+            ),
+            status: .pending,
+            rawTranscript: ""
+        )
+        let evidence = Evidence(
+            kind: .voiceNote,
+            localFileName: localFileName,
+            reviewStatus: .unreviewed,
+            reviewNotes: "Voice note placeholder captured during live spatial session. Transcript pending.",
+            transcriptReferences: [
+                EvidenceTranscriptReference(
+                    transcriptID: transcript.id,
+                    sourceRecordingID: recording.id
+                )
+            ]
+        )
+
+        visits[visitIndex].recordings.append(recording)
+        visits[visitIndex].transcripts.append(transcript)
+        visits[visitIndex].components[componentIndex].evidence.insert(evidence, at: 0)
+        markLocalChanges(at: visitIndex)
+        persistChanges()
     }
 
     func setCaptureReviewDecision(
