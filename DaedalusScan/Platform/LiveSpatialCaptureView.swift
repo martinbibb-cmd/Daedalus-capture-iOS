@@ -76,7 +76,7 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
                 node.geometry?.firstMaterial?.diffuse.contents = UIColor.systemTeal.withAlphaComponent(0.28)
                 node.geometry?.firstMaterial?.isDoubleSided = true
             } else if let planeAnchor = anchor as? ARPlaneAnchor {
-                let plane = SCNPlane(width: CGFloat(planeAnchor.extent.x), height: CGFloat(planeAnchor.extent.z))
+                let plane = SCNPlane(width: CGFloat(planeAnchor.planeExtent.width), height: CGFloat(planeAnchor.planeExtent.height))
                 plane.firstMaterial?.diffuse.contents = UIColor.systemGreen.withAlphaComponent(0.22)
                 plane.firstMaterial?.isDoubleSided = true
                 node.geometry = plane
