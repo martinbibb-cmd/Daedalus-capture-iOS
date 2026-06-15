@@ -18,7 +18,7 @@ final class LiveCaptureUXTests: XCTestCase {
 
         let component = try XCTUnwrap(harness.viewModel.component(visitID: harness.visitID, componentID: componentID))
         XCTAssertEqual(component.liveCaptureEvidenceKind, .mark)
-        XCTAssertEqual(component.liveCaptureTitle, "Mark")
+        XCTAssertEqual(component.liveCaptureTitle, "Focus")
         XCTAssertNil(component.componentAttributes["componentTypeEvidence"])
         XCTAssertNil(component.componentAttributes["areaEvidence"])
         XCTAssertEqual(component.componentAttributes["geometryAnchorID"], "anchor-1")
@@ -28,8 +28,8 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertEqual(component.evidence.first?.kind, .textNote)
 
         let visit = try XCTUnwrap(harness.viewModel.visit(id: harness.visitID))
-        XCTAssertEqual(visit.evidenceTimelineEntries.first?.evidenceType, "Mark")
-        XCTAssertEqual(visit.captureReviewEvidenceGroups.first?.title, "Mark")
+        XCTAssertEqual(visit.evidenceTimelineEntries.first?.evidenceType, "Focus")
+        XCTAssertEqual(visit.captureReviewEvidenceGroups.first?.title, "Focus")
     }
 
     func testLivePhotoAndSafetyUseEvidenceActionsWithoutClassification() throws {
@@ -152,7 +152,7 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertTrue(visit.rooms.isEmpty, "A cupboard-only partial twin is valid without a whole-property room pass.")
         XCTAssertEqual(visit.liveCaptureEvidenceComponents.count, 3)
         XCTAssertEqual(visit.reviewedCaptureEvidenceComponents.count, 2)
-        XCTAssertEqual(visit.componentMarkers.map(\.title).sorted(), ["Mark", "Photo", "Voice"])
+        XCTAssertEqual(visit.componentMarkers.map(\.title).sorted(), ["Focus", "Photo", "Voice"])
         XCTAssertTrue(visit.componentMarkers.contains { $0.componentID == photoID })
         XCTAssertEqual(try XCTUnwrap(visit.components.first { $0.id == photoID }).spatialPlacement.anchorID, "cupboard-mesh-1")
 
@@ -258,9 +258,12 @@ final class LiveCaptureUXTests: XCTestCase {
             XCTAssertFalse(source.localizedCaseInsensitiveContains(term), "Live capture source contains banned term: \(term)")
         }
 
-        for required in ["\"Photo\"", "\"Voice\"", "\"Mark\"", "\"Safety\"", "\"Finish\""] {
+        for required in ["\"Snapshot\"", "\"Note\"", "\"Focus\"", "\"Safety\"", "\"Review\"", "\"Pause & Review\""] {
             XCTAssertTrue(source.contains(required), "Live capture source should expose \(required)")
         }
+
+        let lifecycleSource = try sourceText(relativePath: "DaedalusScan/Features/Visits/TwinLifecycleViews.swift")
+        XCTAssertTrue(lifecycleSource.contains("\"Resume Survey\""), "Review should expose a Resume Survey action")
     }
 
     func testCaptureSourceDoesNotIntroduceBannedBoundaryBehaviours() throws {

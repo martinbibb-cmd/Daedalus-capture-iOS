@@ -5,6 +5,7 @@ struct PropertyTwinHomeView: View {
     let visitID: UUID
     var onRequestLeave: (() -> Void)?
     @State private var isPresentingCaptureLite = false
+    @State private var showSurveyRecord = false
 
     var body: some View {
         if let visit = viewModel.visit(id: visitID) {
@@ -26,72 +27,27 @@ struct PropertyTwinHomeView: View {
                             .foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 4)
-
-                    Button {
-                        viewModel.requestPullTwin(for: visitID)
-                    } label: {
-                        Label("Pull Twin", systemImage: "arrow.down.circle")
-                    }
                 } header: {
                     Text("Property Twin")
                 }
 
                 Section {
-                    Label(visit.captureSessionStatus.title, systemImage: visit.captureSessionStatus.systemImage)
-                    ForEach(warnings(for: visit), id: \.self) { warning in
-                        Label(warning, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.orange)
-                    }
-                    if warnings(for: visit).isEmpty {
-                        Label("No open capture warnings", systemImage: "checkmark.circle")
-                            .foregroundStyle(.secondary)
-                    }
-                } header: {
-                    Text("Working State")
-                }
-
-                Section {
-                    TwinLifecycleStrip(visit: visit)
-                        .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
-                } header: {
-                    Text("Lifecycle")
-                }
-
-                Section {
-                    NavigationLink {
-                        TwinOverviewView(viewModel: viewModel, visitID: visitID)
-                    } label: {
-                        Label("Twin Overview", systemImage: "map")
-                    }
-
                     NavigationLink {
                         LiveCaptureView(viewModel: viewModel, visitID: visitID)
                     } label: {
-                        Label("AR Capture", systemImage: "camera.viewfinder")
+                        SurveyPrimaryActionRow(visit: visit)
                     }
+                } header: {
+                    Text("Survey")
+                } footer: {
+                    Text("Walk, talk, capture, then review before merge.")
+                }
 
-                    Button {
-                        isPresentingCaptureLite = true
-                    } label: {
-                        Label("Capture Lite", systemImage: "camera")
-                    }
-
+                Section {
                     NavigationLink {
-                        AttachEvidenceSheet(viewModel: viewModel, visitID: visitID)
+                        StageModeView(viewModel: viewModel, visitID: visitID, showsResumeSurveyLink: true)
                     } label: {
-                        Label("Component Evidence", systemImage: "paperclip")
-                    }
-
-                    NavigationLink {
-                        StageModeView(viewModel: viewModel, visitID: visitID)
-                    } label: {
-                        Label("Review", systemImage: "list.bullet.rectangle")
-                    }
-
-                    NavigationLink {
-                        EvidenceTimelineView(viewModel: viewModel, visitID: visitID)
-                    } label: {
-                        Label("Evidence Timeline", systemImage: "clock")
+                        Label("Review Survey", systemImage: "list.bullet.rectangle")
                     }
 
                     NavigationLink {
@@ -100,7 +56,52 @@ struct PropertyTwinHomeView: View {
                         Label("Merge Twin", systemImage: "arrow.triangle.merge")
                     }
                 } header: {
-                    Text("Workflow")
+                    Text("Finish")
+                }
+
+                Section {
+                    DisclosureGroup(isExpanded: $showSurveyRecord) {
+                        NavigationLink {
+                            TwinOverviewView(viewModel: viewModel, visitID: visitID)
+                        } label: {
+                            Label("Twin Overview", systemImage: "map")
+                        }
+
+                        NavigationLink {
+                            EvidenceTimelineView(viewModel: viewModel, visitID: visitID)
+                        } label: {
+                            Label("Evidence Log", systemImage: "clock")
+                        }
+
+                        NavigationLink {
+                            AttachEvidenceSheet(viewModel: viewModel, visitID: visitID)
+                        } label: {
+                            Label("Attach Existing Evidence", systemImage: "paperclip")
+                        }
+
+                        Button {
+                            isPresentingCaptureLite = true
+                        } label: {
+                            Label("Snapshot Fallback", systemImage: "camera")
+                        }
+
+                        Button {
+                            viewModel.requestPullTwin(for: visitID)
+                        } label: {
+                            Label("Refresh Working Twin", systemImage: "arrow.down.circle")
+                        }
+                    } label: {
+                        Label("Survey Record", systemImage: "folder")
+                    }
+                } header: {
+                    Text("More")
+                }
+
+                Section {
+                    TwinLifecycleStrip(visit: visit)
+                        .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
+                } header: {
+                    Text("Status")
                 }
             }
             .navigationTitle("Property Twin")
@@ -141,15 +142,58 @@ struct PropertyTwinHomeView: View {
         return "Last Merged: \(lastMergedAt.formatted(date: .abbreviated, time: .omitted))"
     }
 
-    private func warnings(for visit: Visit) -> [String] {
-        var warnings: [String] = []
+}
+
+private struct SurveyPrimaryActionRow: View {
+    let visit: Visit
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.16))
+                    .frame(width: 48, height: 48)
+                Image(systemName: "figure.walk.motion")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(primaryTitle)
+                    .font(.headline.weight(.semibold))
+                Text("Continuous space and audio capture")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if !warnings.isEmpty {
+                    Text(warnings.joined(separator: " · "))
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.orange)
+                }
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private var primaryTitle: String {
+        switch visit.captureSessionStatus {
+        case .hasUnreviewedEvidence:
+            return "Continue Survey"
+        case .readyToMerge, .merged:
+            return "Open Survey"
+        default:
+            return "Start Survey"
+        }
+    }
+
+    private var warnings: [String] {
+        var output: [String] = []
         if visit.hasUnreviewedEvidence {
-            warnings.append("Captured evidence needs review.")
+            output.append("review pending")
         }
         if visit.hasUnmergedLocalWork {
-            warnings.append("Working Twin has unmerged local changes.")
+            output.append("merge pending")
         }
-        return warnings
+        return output
     }
 }
 
@@ -365,10 +409,36 @@ struct TwinOverviewView: View {
 struct StageModeView: View {
     @ObservedObject var viewModel: VisitListViewModel
     let visitID: UUID
+    var showsResumeSurveyLink = false
+    var onResumeSurvey: (() -> Void)?
 
     var body: some View {
         if let visit = viewModel.visit(id: visitID) {
             List {
+                if showsResumeSurveyLink || onResumeSurvey != nil {
+                    Section {
+                        if let onResumeSurvey {
+                            Button {
+                                onResumeSurvey()
+                            } label: {
+                                Label("Resume Survey", systemImage: "figure.walk.motion")
+                            }
+                        } else {
+                            NavigationLink {
+                                LiveCaptureView(viewModel: viewModel, visitID: visitID)
+                            } label: {
+                                Label("Resume Survey", systemImage: "figure.walk.motion")
+                            }
+                        }
+
+                        Text("Review is a checkpoint. Resume keeps the survey open so you can collect more evidence before merge.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } header: {
+                        Text("Survey")
+                    }
+                }
+
                 Section {
                     TwinCountRow(title: "Added areas", count: visit.areas.count, systemImage: "square.dashed")
                     TwinCountRow(title: "Added components", count: visit.components.count, systemImage: "cube")
@@ -420,7 +490,7 @@ struct StageModeView: View {
                     Text("Review")
                 }
             }
-            .navigationTitle("Review")
+            .navigationTitle("Review Survey")
             .navigationBarTitleDisplayMode(.inline)
         } else {
             ContentUnavailableView("Property Twin not found", systemImage: "exclamationmark.triangle")

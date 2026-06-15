@@ -5,6 +5,7 @@ struct LiveCaptureView: View {
     @ObservedObject var viewModel: VisitListViewModel
     let visitID: UUID
 
+    @StateObject private var recordingService: ContinuousVisitRecordingService
     @State private var isPresentingReview = false
     @State private var isPresentingPhotoCapture = false
 
@@ -18,6 +19,12 @@ struct LiveCaptureView: View {
         viewModel.visit(id: visitID)
     }
 
+    init(viewModel: VisitListViewModel, visitID: UUID) {
+        self.viewModel = viewModel
+        self.visitID = visitID
+        _recordingService = StateObject(wrappedValue: ContinuousVisitRecordingService(viewModel: viewModel))
+    }
+
     var body: some View {
         Group {
             if let visit {
@@ -28,14 +35,14 @@ struct LiveCaptureView: View {
                     .toolbar {
                         ToolbarItem(placement: .topBarTrailing) {
                             Button {
-                                isPresentingReview = true
+                                pauseForReview()
                             } label: {
-                                Label("Review", systemImage: "list.bullet.rectangle")
+                                Label("Pause & Review", systemImage: "list.bullet.rectangle")
                             }
                         }
                     }
                     .navigationDestination(isPresented: $isPresentingReview) {
-                        VisitDetailView(viewModel: viewModel, visitID: visitID)
+                        StageModeView(viewModel: viewModel, visitID: visitID, onResumeSurvey: resumeSurvey)
                     }
                     .sheet(isPresented: $isPresentingPhotoCapture) {
                         CameraCaptureView { data in
@@ -80,10 +87,10 @@ struct LiveCaptureView: View {
             VStack(spacing: 0) {
                 LiveCaptureStatusBar(
                     reference: visit.reference,
-                    sessionStatus: spatialSession.status.title,
+                    sessionStatus: surveyStatusTitle,
                     sessionColor: sessionStatusColor,
-                    placementLabel: placementLabel,
-                    scanProgressLabel: scanProgress.captureLabel
+                    placementLabel: surveyConfidenceLabel,
+                    scanProgressLabel: surveyCoverageLabel
                 )
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
@@ -100,11 +107,11 @@ struct LiveCaptureView: View {
                     .padding(.bottom, 12)
 
                 LiveCaptureControlBar(
-                    onPhoto: { isPresentingPhotoCapture = true },
-                    onVoice: { createLiveEvidence(.voice) },
-                    onMark: { createLiveEvidence(.mark) },
+                    onSnapshot: { isPresentingPhotoCapture = true },
+                    onVoiceNote: { createLiveEvidence(.voice) },
+                    onFocus: { createLiveEvidence(.mark) },
                     onSafety: { createLiveEvidence(.safety) },
-                    onFinish: finishVisit
+                    onReview: pauseForReview
                 )
                 .padding(.horizontal, 16)
                 .padding(.bottom, 18)
@@ -123,14 +130,25 @@ struct LiveCaptureView: View {
         return livePlacementState.currentPlacement
     }
 
-    private var placementLabel: String {
+    private var surveyStatusTitle: String {
+        spatialSession.status == .scanning ? "Surveying" : spatialSession.status.title
+    }
+
+    private var surveyConfidenceLabel: String {
         if livePlacementState.hasAnchor {
-            return "Placement anchor available"
+            return "Spatial confidence building"
         }
         if livePlacementState.lastKnownPosition != nil {
-            return "Approximate placement available"
+            return "Approximate coverage available"
         }
-        return "No anchor - fallback active"
+        return "Keep moving to build coverage"
+    }
+
+    private var surveyCoverageLabel: String {
+        if scanProgress.hasGeometry {
+            return scanProgress.captureLabel
+        }
+        return recordingService.isRecording ? "Audio running" : "Starting survey record"
     }
 
     private var sessionStatusColor: Color {
@@ -157,6 +175,7 @@ struct LiveCaptureView: View {
         }
         spatialSession.endedAt = nil
         spatialSession.status = .scanning
+        recordingService.startRecording(visitID: visitID)
         syncPlacementStateForSession()
     }
 
@@ -169,6 +188,7 @@ struct LiveCaptureView: View {
         guard spatialSession.status == .scanning || spatialSession.status == .paused else { return }
         spatialSession.status = .completed
         spatialSession.endedAt = Date()
+        recordingService.stopRecording()
         livePlacementState = .unavailable
     }
 
@@ -210,7 +230,7 @@ struct LiveCaptureView: View {
             scanSessionID: spatialSession.id,
             cameraFrameReference: photoData == nil ? nil : "current-frame",
             geometryAnchorID: currentPlacementMetadata?.anchorID,
-            positionLabel: scanProgress.hasGeometry ? scanProgress.captureLabel : placementLabel
+            positionLabel: scanProgress.hasGeometry ? scanProgress.captureLabel : surveyConfidenceLabel
         )
         capturedEvidenceComponentID = componentID
 
@@ -226,10 +246,16 @@ struct LiveCaptureView: View {
         }
     }
 
-    private func finishVisit() {
+    private func pauseForReview() {
         completeSpatialSession()
         viewModel.refreshCaptureReviewSuggestions(for: visitID)
         isPresentingReview = true
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    private func resumeSurvey() {
+        isPresentingReview = false
+        startSpatialSession()
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 }
@@ -253,7 +279,7 @@ private struct LiveCaptureStatusBar: View {
                     Circle()
                         .fill(Color.red)
                         .frame(width: 9, height: 9)
-                    Text("Recording")
+                    Text("Survey in progress")
                         .font(.caption.weight(.semibold))
                 }
                 .foregroundStyle(.white)
@@ -324,19 +350,19 @@ private struct GeometryOverlay: View {
 }
 
 private struct LiveCaptureControlBar: View {
-    let onPhoto: () -> Void
-    let onVoice: () -> Void
-    let onMark: () -> Void
+    let onSnapshot: () -> Void
+    let onVoiceNote: () -> Void
+    let onFocus: () -> Void
     let onSafety: () -> Void
-    let onFinish: () -> Void
+    let onReview: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
-            liveButton("Photo", systemImage: "camera.fill", action: onPhoto)
-            liveButton("Voice", systemImage: "waveform", action: onVoice)
-            liveButton("Mark", systemImage: "mappin.and.ellipse", action: onMark)
+            liveButton("Snapshot", systemImage: "camera.fill", action: onSnapshot)
+            liveButton("Note", systemImage: "waveform", action: onVoiceNote)
+            liveButton("Focus", systemImage: "scope", action: onFocus)
             liveButton("Safety", systemImage: "exclamationmark.triangle.fill", tint: .red, action: onSafety)
-            liveButton("Finish", systemImage: "checkmark.circle.fill", action: onFinish)
+            liveButton("Review", systemImage: "list.bullet.rectangle", action: onReview)
         }
         .padding(10)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
