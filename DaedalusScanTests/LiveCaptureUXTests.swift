@@ -262,7 +262,9 @@ final class LiveCaptureUXTests: XCTestCase {
             XCTAssertTrue(source.contains(required), "Live capture source should expose \(required)")
         }
         XCTAssertFalse(source.contains("Geometry not available yet"), "Live survey should not show unavailable geometry once surfaces are captured")
-        XCTAssertTrue(source.contains("Room geometry active"), "Live survey should expose room mapping progress")
+        XCTAssertFalse(source.contains("Room geometry active"), "Live survey should not claim fake room geometry")
+        XCTAssertTrue(source.contains("Detected geometry"), "Live survey should expose detected geometry progress")
+        XCTAssertTrue(source.contains("\"Exit\""), "Live survey should expose an explicit route out")
 
         let lifecycleSource = try sourceText(relativePath: "DaedalusScan/Features/Visits/TwinLifecycleViews.swift")
         XCTAssertTrue(lifecycleSource.contains("\"Resume Survey\""), "Review should expose a Resume Survey action")

@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 
 struct LiveCaptureView: View {
+    @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: VisitListViewModel
     let visitID: UUID
 
@@ -74,8 +75,7 @@ struct LiveCaptureView: View {
             )
                 .ignoresSafeArea()
 
-            GeometryOverlay(
-                isAnchored: livePlacementState.hasAnchor,
+            LiveSurveyCoverageOverlay(
                 capturedSurfaceCount: scanProgress.capturedSurfaceCount,
                 isFocusModeActive: isFocusModeActive
             )
@@ -88,13 +88,27 @@ struct LiveCaptureView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                LiveCaptureStatusBar(
-                    reference: visit.reference,
-                    sessionStatus: surveyStatusTitle,
-                    sessionColor: sessionStatusColor,
-                    placementLabel: surveyConfidenceLabel,
-                    scanProgressLabel: surveyCoverageLabel
-                )
+                HStack(alignment: .top, spacing: 10) {
+                    Button {
+                        leaveSurvey()
+                    } label: {
+                        Label("Exit", systemImage: "xmark")
+                            .labelStyle(.iconOnly)
+                            .font(.headline.weight(.semibold))
+                            .frame(width: 44, height: 44)
+                            .background(.black.opacity(0.38), in: Circle())
+                            .foregroundStyle(.white)
+                    }
+                    .accessibilityLabel("Exit survey")
+
+                    LiveCaptureStatusBar(
+                        reference: visit.reference,
+                        sessionStatus: surveyStatusTitle,
+                        sessionColor: sessionStatusColor,
+                        placementLabel: surveyConfidenceLabel,
+                        scanProgressLabel: surveyCoverageLabel
+                    )
+                }
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
 
@@ -278,6 +292,12 @@ struct LiveCaptureView: View {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
+    private func leaveSurvey() {
+        completeSpatialSession()
+        dismiss()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
     private func resumeSurvey() {
         isPresentingReview = false
         startSpatialSession()
@@ -338,20 +358,15 @@ private struct LiveCaptureStatusBar: View {
     }
 }
 
-private struct GeometryOverlay: View {
-    let isAnchored: Bool
+private struct LiveSurveyCoverageOverlay: View {
     let capturedSurfaceCount: Int
     let isFocusModeActive: Bool
 
     var body: some View {
         ZStack {
             GeometryReader { proxy in
-                let width = proxy.size.width
-                let height = proxy.size.height
                 if isFocusModeActive {
-                    focusGeometry(in: CGSize(width: width, height: height))
-                } else {
-                    roomMappingGeometry(in: CGSize(width: width, height: height))
+                    focusReticle(in: proxy.size)
                 }
 
                 VStack {
@@ -370,48 +385,7 @@ private struct GeometryOverlay: View {
         .allowsHitTesting(false)
     }
 
-    private func roomMappingGeometry(in size: CGSize) -> some View {
-        let width = size.width
-        let height = size.height
-        let color = isAnchored ? Color.green : Color.white
-
-        return ZStack {
-            Path { path in
-                let room = CGRect(x: width * 0.12, y: height * 0.28, width: width * 0.76, height: height * 0.38)
-                let doorStart = CGPoint(x: room.minX, y: room.maxY - room.height * 0.28)
-                let doorEnd = CGPoint(x: room.minX, y: room.maxY - room.height * 0.08)
-
-                path.move(to: CGPoint(x: room.minX, y: room.minY))
-                path.addLine(to: CGPoint(x: room.maxX, y: room.minY))
-                path.addLine(to: CGPoint(x: room.maxX, y: room.maxY))
-                path.addLine(to: CGPoint(x: room.minX, y: room.maxY))
-                path.addLine(to: doorEnd)
-                path.move(to: doorStart)
-                path.addLine(to: CGPoint(x: room.minX, y: room.minY))
-
-                path.move(to: CGPoint(x: room.minX + room.width * 0.16, y: room.minY))
-                path.addLine(to: CGPoint(x: room.minX + room.width * 0.40, y: room.minY))
-                path.move(to: CGPoint(x: room.minX + room.width * 0.62, y: room.maxY))
-                path.addLine(to: CGPoint(x: room.minX + room.width * 0.82, y: room.maxY))
-
-                path.move(to: CGPoint(x: doorStart.x, y: doorStart.y))
-                path.addQuadCurve(
-                    to: CGPoint(x: doorStart.x + room.width * 0.18, y: doorStart.y + room.height * 0.16),
-                    control: CGPoint(x: doorStart.x + room.width * 0.17, y: doorStart.y)
-                )
-            }
-            .stroke(color.opacity(capturedSurfaceCount > 0 ? 0.82 : 0.45), style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round))
-
-            ForEach(Array(roomCornerPoints(in: size).enumerated()), id: \.offset) { _, point in
-                Circle()
-                    .fill(color.opacity(capturedSurfaceCount > 0 ? 0.9 : 0.42))
-                    .frame(width: 7, height: 7)
-                    .position(point)
-            }
-        }
-    }
-
-    private func focusGeometry(in size: CGSize) -> some View {
+    private func focusReticle(in size: CGSize) -> some View {
         let width = size.width
         let height = size.height
         let rect = CGRect(x: width * 0.18, y: height * 0.25, width: width * 0.64, height: height * 0.44)
@@ -443,16 +417,6 @@ private struct GeometryOverlay: View {
                 .frame(width: 10, height: 10)
                 .position(x: rect.midX, y: rect.midY)
         }
-    }
-
-    private func roomCornerPoints(in size: CGSize) -> [CGPoint] {
-        let room = CGRect(x: size.width * 0.12, y: size.height * 0.28, width: size.width * 0.76, height: size.height * 0.38)
-        return [
-            CGPoint(x: room.minX, y: room.minY),
-            CGPoint(x: room.maxX, y: room.minY),
-            CGPoint(x: room.maxX, y: room.maxY),
-            CGPoint(x: room.minX, y: room.maxY)
-        ]
     }
 
     private func focusCorners(in rect: CGRect) -> [FocusCorner] {
@@ -574,7 +538,7 @@ private struct LiveCaptureMiniTimeline: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if entries.isEmpty {
-                Text(scanProgress.hasGeometry ? "Room geometry active · \(scanProgress.captureLabel)" : "Move around the room to map walls and corners")
+                Text(scanProgress.hasGeometry ? "Detected geometry · \(scanProgress.captureLabel)" : "Move slowly to detect walls, openings, and corners")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.white.opacity(0.84))
             } else {

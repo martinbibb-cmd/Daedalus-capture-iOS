@@ -83,15 +83,27 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
         private func updateNode(_ node: SCNNode, for anchor: ARAnchor) {
             if let meshAnchor = anchor as? ARMeshAnchor {
                 node.geometry = SCNGeometry(arMeshGeometry: meshAnchor.geometry)
-                node.geometry?.firstMaterial?.diffuse.contents = UIColor.systemTeal.withAlphaComponent(isFocusModeActive ? 0.34 : 0.10)
-                node.geometry?.firstMaterial?.isDoubleSided = true
+                applySurveyLineMaterial(to: node.geometry)
             } else if let planeAnchor = anchor as? ARPlaneAnchor {
                 let plane = SCNPlane(width: CGFloat(planeAnchor.planeExtent.width), height: CGFloat(planeAnchor.planeExtent.height))
-                plane.firstMaterial?.diffuse.contents = UIColor.systemGreen.withAlphaComponent(isFocusModeActive ? 0.28 : 0.08)
-                plane.firstMaterial?.isDoubleSided = true
                 node.geometry = plane
                 node.eulerAngles.x = -.pi / 2
+                applySurveyLineMaterial(to: node.geometry)
             }
+        }
+
+        private func applySurveyLineMaterial(to geometry: SCNGeometry?) {
+            guard let material = geometry?.firstMaterial else { return }
+            material.diffuse.contents = isFocusModeActive
+                ? UIColor.systemYellow.withAlphaComponent(0.95)
+                : UIColor.white.withAlphaComponent(0.88)
+            material.emission.contents = isFocusModeActive
+                ? UIColor.systemYellow.withAlphaComponent(0.28)
+                : UIColor.white.withAlphaComponent(0.18)
+            material.fillMode = .lines
+            material.isDoubleSided = true
+            material.readsFromDepthBuffer = true
+            material.writesToDepthBuffer = false
         }
 
         private func record(anchor: ARAnchor) {
