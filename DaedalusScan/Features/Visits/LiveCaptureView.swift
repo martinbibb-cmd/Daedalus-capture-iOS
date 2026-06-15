@@ -14,6 +14,7 @@ struct LiveCaptureView: View {
     @State private var livePlacementState = LivePlacementState.unavailable
     @State private var scanProgress = LiveSpatialScanProgress.empty
     @State private var confirmation: LiveCaptureConfirmation?
+    @State private var isFocusModeActive = false
 
     private var visit: Visit? {
         viewModel.visit(id: visitID)
@@ -68,13 +69,15 @@ struct LiveCaptureView: View {
         ZStack {
             LiveSpatialCaptureView(
                 progress: $scanProgress,
-                isScanning: spatialSession.status == .scanning
+                isScanning: spatialSession.status == .scanning,
+                isFocusModeActive: isFocusModeActive
             )
                 .ignoresSafeArea()
 
             GeometryOverlay(
                 isAnchored: livePlacementState.hasAnchor,
-                capturedSurfaceCount: scanProgress.capturedSurfaceCount
+                capturedSurfaceCount: scanProgress.capturedSurfaceCount,
+                isFocusModeActive: isFocusModeActive
             )
 
             LinearGradient(
@@ -102,16 +105,17 @@ struct LiveCaptureView: View {
                         .padding(.bottom, 18)
                 }
 
-                LiveCaptureMiniTimeline(visit: visit)
+                LiveCaptureMiniTimeline(visit: visit, scanProgress: scanProgress)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 12)
 
                 LiveCaptureControlBar(
                     onSnapshot: { isPresentingPhotoCapture = true },
                     onVoiceNote: { createLiveEvidence(.voice) },
-                    onFocus: { createLiveEvidence(.mark) },
+                    onFocus: toggleFocusMode,
                     onSafety: { createLiveEvidence(.safety) },
-                    onReview: pauseForReview
+                    onReview: pauseForReview,
+                    isFocusModeActive: isFocusModeActive
                 )
                 .padding(.horizontal, 16)
                 .padding(.bottom, 18)
@@ -131,10 +135,16 @@ struct LiveCaptureView: View {
     }
 
     private var surveyStatusTitle: String {
-        spatialSession.status == .scanning ? "Surveying" : spatialSession.status.title
+        if isFocusModeActive {
+            return "Focusing"
+        }
+        return spatialSession.status == .scanning ? "Surveying" : spatialSession.status.title
     }
 
     private var surveyConfidenceLabel: String {
+        if isFocusModeActive {
+            return "Detail geometry capture active"
+        }
         if livePlacementState.hasAnchor {
             return "Spatial confidence building"
         }
@@ -146,7 +156,7 @@ struct LiveCaptureView: View {
 
     private var surveyCoverageLabel: String {
         if scanProgress.hasGeometry {
-            return scanProgress.captureLabel
+            return isFocusModeActive ? "Focus: \(scanProgress.captureLabel)" : scanProgress.captureLabel
         }
         return recordingService.isRecording ? "Audio running" : "Starting survey record"
     }
@@ -188,6 +198,7 @@ struct LiveCaptureView: View {
         guard spatialSession.status == .scanning || spatialSession.status == .paused else { return }
         spatialSession.status = .completed
         spatialSession.endedAt = Date()
+        isFocusModeActive = false
         recordingService.stopRecording()
         livePlacementState = .unavailable
     }
@@ -243,6 +254,20 @@ struct LiveCaptureView: View {
             withAnimation(.easeOut(duration: 0.18)) {
                 confirmation = nil
             }
+        }
+    }
+
+    private func toggleFocusMode() {
+        if isFocusModeActive {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                isFocusModeActive = false
+            }
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        } else {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                isFocusModeActive = true
+            }
+            createLiveEvidence(.mark)
         }
     }
 
@@ -316,21 +341,18 @@ private struct LiveCaptureStatusBar: View {
 private struct GeometryOverlay: View {
     let isAnchored: Bool
     let capturedSurfaceCount: Int
+    let isFocusModeActive: Bool
 
     var body: some View {
         ZStack {
             GeometryReader { proxy in
                 let width = proxy.size.width
                 let height = proxy.size.height
-                Path { path in
-                    let midY = height * 0.47
-                    path.move(to: CGPoint(x: width * 0.18, y: midY))
-                    path.addLine(to: CGPoint(x: width * 0.82, y: midY))
-                    path.move(to: CGPoint(x: width * 0.5, y: height * 0.2))
-                    path.addLine(to: CGPoint(x: width * 0.5, y: height * 0.76))
-                    path.addRoundedRect(in: CGRect(x: width * 0.22, y: height * 0.28, width: width * 0.56, height: height * 0.36), cornerSize: CGSize(width: 14, height: 14))
+                if isFocusModeActive {
+                    focusGeometry(in: CGSize(width: width, height: height))
+                } else {
+                    roomMappingGeometry(in: CGSize(width: width, height: height))
                 }
-                .stroke(isAnchored ? Color.green.opacity(0.72) : Color.white.opacity(0.42), style: StrokeStyle(lineWidth: 1.4, dash: [7, 7]))
 
                 VStack {
                     Spacer()
@@ -347,6 +369,133 @@ private struct GeometryOverlay: View {
         }
         .allowsHitTesting(false)
     }
+
+    private func roomMappingGeometry(in size: CGSize) -> some View {
+        let width = size.width
+        let height = size.height
+        let color = isAnchored ? Color.green : Color.white
+
+        return ZStack {
+            Path { path in
+                let room = CGRect(x: width * 0.12, y: height * 0.28, width: width * 0.76, height: height * 0.38)
+                let doorStart = CGPoint(x: room.minX, y: room.maxY - room.height * 0.28)
+                let doorEnd = CGPoint(x: room.minX, y: room.maxY - room.height * 0.08)
+
+                path.move(to: CGPoint(x: room.minX, y: room.minY))
+                path.addLine(to: CGPoint(x: room.maxX, y: room.minY))
+                path.addLine(to: CGPoint(x: room.maxX, y: room.maxY))
+                path.addLine(to: CGPoint(x: room.minX, y: room.maxY))
+                path.addLine(to: doorEnd)
+                path.move(to: doorStart)
+                path.addLine(to: CGPoint(x: room.minX, y: room.minY))
+
+                path.move(to: CGPoint(x: room.minX + room.width * 0.16, y: room.minY))
+                path.addLine(to: CGPoint(x: room.minX + room.width * 0.40, y: room.minY))
+                path.move(to: CGPoint(x: room.minX + room.width * 0.62, y: room.maxY))
+                path.addLine(to: CGPoint(x: room.minX + room.width * 0.82, y: room.maxY))
+
+                path.move(to: CGPoint(x: doorStart.x, y: doorStart.y))
+                path.addQuadCurve(
+                    to: CGPoint(x: doorStart.x + room.width * 0.18, y: doorStart.y + room.height * 0.16),
+                    control: CGPoint(x: doorStart.x + room.width * 0.17, y: doorStart.y)
+                )
+            }
+            .stroke(color.opacity(capturedSurfaceCount > 0 ? 0.82 : 0.45), style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round))
+
+            ForEach(Array(roomCornerPoints(in: size).enumerated()), id: \.offset) { _, point in
+                Circle()
+                    .fill(color.opacity(capturedSurfaceCount > 0 ? 0.9 : 0.42))
+                    .frame(width: 7, height: 7)
+                    .position(point)
+            }
+        }
+    }
+
+    private func focusGeometry(in size: CGSize) -> some View {
+        let width = size.width
+        let height = size.height
+        let rect = CGRect(x: width * 0.18, y: height * 0.25, width: width * 0.64, height: height * 0.44)
+
+        return ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.yellow.opacity(0.94), style: StrokeStyle(lineWidth: 2.2, dash: [9, 5]))
+                .frame(width: rect.width, height: rect.height)
+                .position(x: rect.midX, y: rect.midY)
+
+            Path { path in
+                for corner in focusCorners(in: rect) {
+                    path.move(to: corner.horizontalStart)
+                    path.addLine(to: corner.point)
+                    path.addLine(to: corner.verticalEnd)
+                    path.move(to: corner.verticalStart)
+                    path.addLine(to: corner.point)
+                    path.addLine(to: corner.horizontalEnd)
+                }
+            }
+            .stroke(Color.yellow, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+
+            Circle()
+                .stroke(Color.yellow.opacity(0.82), lineWidth: 2)
+                .frame(width: 78, height: 78)
+                .position(x: rect.midX, y: rect.midY)
+            Circle()
+                .fill(Color.yellow.opacity(0.92))
+                .frame(width: 10, height: 10)
+                .position(x: rect.midX, y: rect.midY)
+        }
+    }
+
+    private func roomCornerPoints(in size: CGSize) -> [CGPoint] {
+        let room = CGRect(x: size.width * 0.12, y: size.height * 0.28, width: size.width * 0.76, height: size.height * 0.38)
+        return [
+            CGPoint(x: room.minX, y: room.minY),
+            CGPoint(x: room.maxX, y: room.minY),
+            CGPoint(x: room.maxX, y: room.maxY),
+            CGPoint(x: room.minX, y: room.maxY)
+        ]
+    }
+
+    private func focusCorners(in rect: CGRect) -> [FocusCorner] {
+        let tick: CGFloat = 32
+        return [
+            FocusCorner(
+                point: CGPoint(x: rect.minX, y: rect.minY),
+                horizontalStart: CGPoint(x: rect.minX + tick, y: rect.minY),
+                horizontalEnd: CGPoint(x: rect.minX + tick, y: rect.minY),
+                verticalStart: CGPoint(x: rect.minX, y: rect.minY + tick),
+                verticalEnd: CGPoint(x: rect.minX, y: rect.minY + tick)
+            ),
+            FocusCorner(
+                point: CGPoint(x: rect.maxX, y: rect.minY),
+                horizontalStart: CGPoint(x: rect.maxX - tick, y: rect.minY),
+                horizontalEnd: CGPoint(x: rect.maxX - tick, y: rect.minY),
+                verticalStart: CGPoint(x: rect.maxX, y: rect.minY + tick),
+                verticalEnd: CGPoint(x: rect.maxX, y: rect.minY + tick)
+            ),
+            FocusCorner(
+                point: CGPoint(x: rect.maxX, y: rect.maxY),
+                horizontalStart: CGPoint(x: rect.maxX - tick, y: rect.maxY),
+                horizontalEnd: CGPoint(x: rect.maxX - tick, y: rect.maxY),
+                verticalStart: CGPoint(x: rect.maxX, y: rect.maxY - tick),
+                verticalEnd: CGPoint(x: rect.maxX, y: rect.maxY - tick)
+            ),
+            FocusCorner(
+                point: CGPoint(x: rect.minX, y: rect.maxY),
+                horizontalStart: CGPoint(x: rect.minX + tick, y: rect.maxY),
+                horizontalEnd: CGPoint(x: rect.minX + tick, y: rect.maxY),
+                verticalStart: CGPoint(x: rect.minX, y: rect.maxY - tick),
+                verticalEnd: CGPoint(x: rect.minX, y: rect.maxY - tick)
+            )
+        ]
+    }
+}
+
+private struct FocusCorner {
+    let point: CGPoint
+    let horizontalStart: CGPoint
+    let horizontalEnd: CGPoint
+    let verticalStart: CGPoint
+    let verticalEnd: CGPoint
 }
 
 private struct LiveCaptureControlBar: View {
@@ -355,12 +504,18 @@ private struct LiveCaptureControlBar: View {
     let onFocus: () -> Void
     let onSafety: () -> Void
     let onReview: () -> Void
+    let isFocusModeActive: Bool
 
     var body: some View {
         HStack(spacing: 10) {
             liveButton("Snapshot", systemImage: "camera.fill", action: onSnapshot)
             liveButton("Note", systemImage: "waveform", action: onVoiceNote)
-            liveButton("Focus", systemImage: "scope", action: onFocus)
+            liveButton(
+                isFocusModeActive ? "Stop" : "Focus",
+                systemImage: isFocusModeActive ? "xmark.circle.fill" : "scope",
+                tint: isFocusModeActive ? .yellow : .white,
+                action: onFocus
+            )
             liveButton("Safety", systemImage: "exclamationmark.triangle.fill", tint: .red, action: onSafety)
             liveButton("Review", systemImage: "list.bullet.rectangle", action: onReview)
         }
@@ -410,6 +565,7 @@ private struct LiveCaptureConfirmationView: View {
 
 private struct LiveCaptureMiniTimeline: View {
     let visit: Visit
+    let scanProgress: LiveSpatialScanProgress
 
     private var entries: [EvidenceTimelineEntry] {
         Array(visit.evidenceTimelineEntries.prefix(3))
@@ -418,7 +574,7 @@ private struct LiveCaptureMiniTimeline: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if entries.isEmpty {
-                Text("Geometry not available yet")
+                Text(scanProgress.hasGeometry ? "Room geometry active · \(scanProgress.captureLabel)" : "Move around the room to map walls and corners")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.white.opacity(0.84))
             } else {
