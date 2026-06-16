@@ -37,6 +37,7 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
         private var isFocusModeActive = false
         private var meshAnchorIDs = Set<String>()
         private var planeAnchorIDs = Set<String>()
+        private var lastProgressUpdate = Date.distantPast
         weak var sceneView: ARSCNView?
 
         init(progress: Binding<LiveSpatialScanProgress>) {
@@ -57,17 +58,27 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
             guard enabled != isFocusModeActive else { return }
             isFocusModeActive = enabled
             sceneView?.debugOptions = enabled ? [.showFeaturePoints] : []
+            guard isRunning else { return }
+            runSession(resetTracking: false, removeExistingAnchors: !enabled)
         }
 
-        private func runSession() {
+        private func runSession(resetTracking: Bool = true, removeExistingAnchors: Bool = true) {
             guard ARWorldTrackingConfiguration.isSupported else { return }
             let configuration = ARWorldTrackingConfiguration()
             configuration.planeDetection = [.horizontal, .vertical]
-            if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
+            if isFocusModeActive,
+               ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
                 configuration.sceneReconstruction = .mesh
             }
             sceneView?.debugOptions = isFocusModeActive ? [.showFeaturePoints] : []
-            sceneView?.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+            var options: ARSession.RunOptions = []
+            if resetTracking {
+                options.insert(.resetTracking)
+            }
+            if removeExistingAnchors {
+                options.insert(.removeExistingAnchors)
+            }
+            sceneView?.session.run(configuration, options: options)
         }
 
         func renderer(_ renderer: SCNSceneRenderer, didAdd node: SCNNode, for anchor: ARAnchor) {
@@ -81,9 +92,12 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
         }
 
         private func updateNode(_ node: SCNNode, for anchor: ARAnchor) {
-            if let meshAnchor = anchor as? ARMeshAnchor {
-                node.geometry = SCNGeometry(arMeshGeometry: meshAnchor.geometry)
-                applySurveyLineMaterial(to: node.geometry)
+            if anchor is ARMeshAnchor {
+                node.geometry = nil
+                node.childNodes.forEach { $0.removeFromParentNode() }
+                if isFocusModeActive {
+                    node.addChildNode(focusMarkerNode())
+                }
             } else if let planeAnchor = anchor as? ARPlaneAnchor {
                 let plane = SCNPlane(width: CGFloat(planeAnchor.planeExtent.width), height: CGFloat(planeAnchor.planeExtent.height))
                 node.geometry = plane
@@ -95,15 +109,25 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
         private func applySurveyLineMaterial(to geometry: SCNGeometry?) {
             guard let material = geometry?.firstMaterial else { return }
             material.diffuse.contents = isFocusModeActive
-                ? UIColor.systemYellow.withAlphaComponent(0.95)
-                : UIColor.white.withAlphaComponent(0.88)
+                ? UIColor.systemYellow.withAlphaComponent(0.22)
+                : UIColor.white.withAlphaComponent(0.16)
             material.emission.contents = isFocusModeActive
-                ? UIColor.systemYellow.withAlphaComponent(0.28)
-                : UIColor.white.withAlphaComponent(0.18)
-            material.fillMode = .lines
+                ? UIColor.systemYellow.withAlphaComponent(0.10)
+                : UIColor.white.withAlphaComponent(0.06)
+            material.fillMode = .fill
             material.isDoubleSided = true
             material.readsFromDepthBuffer = true
             material.writesToDepthBuffer = false
+        }
+
+        private func focusMarkerNode() -> SCNNode {
+            let geometry = SCNSphere(radius: 0.035)
+            geometry.firstMaterial?.diffuse.contents = UIColor.systemYellow.withAlphaComponent(0.18)
+            geometry.firstMaterial?.emission.contents = UIColor.systemYellow.withAlphaComponent(0.08)
+            geometry.firstMaterial?.isDoubleSided = true
+
+            let node = SCNNode(geometry: geometry)
+            return node
         }
 
         private func record(anchor: ARAnchor) {
@@ -114,6 +138,10 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
             } else {
                 return
             }
+            guard Date().timeIntervalSince(lastProgressUpdate) >= 0.25 else {
+                return
+            }
+            lastProgressUpdate = Date()
 
             let position = SpatialPosition(
                 x: Double(anchor.transform.columns.3.x),

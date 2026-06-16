@@ -152,6 +152,7 @@ private extension SystemComponent {
 struct CaptureReviewWorkspaceView: View {
     @ObservedObject var viewModel: VisitListViewModel
     let visitID: UUID
+    var onResumeSurvey: (() -> Void)?
 
     @State private var changeTarget: CaptureReviewCard?
     @State private var isPresentingShareSheet = false
@@ -219,6 +220,17 @@ struct CaptureReviewWorkspaceView: View {
             }
             .navigationTitle("Review Capture")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if let onResumeSurvey {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            onResumeSurvey()
+                        } label: {
+                            Label("Resume", systemImage: "figure.walk.motion")
+                        }
+                    }
+                }
+            }
             .onAppear {
                 viewModel.refreshCaptureReviewSuggestions(for: visitID)
             }

@@ -16,6 +16,7 @@ struct LiveCaptureView: View {
     @State private var scanProgress = LiveSpatialScanProgress.empty
     @State private var confirmation: LiveCaptureConfirmation?
     @State private var isFocusModeActive = false
+    @State private var didRequestSpatialStart = false
 
     private var visit: Visit? {
         viewModel.visit(id: visitID)
@@ -44,7 +45,7 @@ struct LiveCaptureView: View {
                         }
                     }
                     .navigationDestination(isPresented: $isPresentingReview) {
-                        StageModeView(viewModel: viewModel, visitID: visitID, onResumeSurvey: resumeSurvey)
+                        CaptureReviewWorkspaceView(viewModel: viewModel, visitID: visitID, onResumeSurvey: resumeSurvey)
                     }
                     .sheet(isPresented: $isPresentingPhotoCapture) {
                         CameraCaptureView { data in
@@ -62,7 +63,7 @@ struct LiveCaptureView: View {
         liveCaptureSurface(visit: visit)
             .ignoresSafeArea()
             .onAppear {
-                startSpatialSession()
+                requestSpatialSessionStart()
             }
     }
 
@@ -191,6 +192,16 @@ struct LiveCaptureView: View {
         syncPlacementStateForSession()
     }
 
+    private func requestSpatialSessionStart() {
+        guard !didRequestSpatialStart else { return }
+        didRequestSpatialStart = true
+
+        Task { @MainActor in
+            await Task.yield()
+            startSpatialSession()
+        }
+    }
+
     private func pauseSpatialSession() {
         guard spatialSession.status == .scanning else { return }
         spatialSession.status = .paused
@@ -200,6 +211,7 @@ struct LiveCaptureView: View {
         guard spatialSession.status == .scanning || spatialSession.status == .paused else { return }
         spatialSession.status = .completed
         spatialSession.endedAt = Date()
+        didRequestSpatialStart = false
         isFocusModeActive = false
         recordingService.stopRecording()
         livePlacementState = .unavailable
@@ -288,7 +300,7 @@ struct LiveCaptureView: View {
 
     private func resumeSurvey() {
         isPresentingReview = false
-        startSpatialSession()
+        requestSpatialSessionStart()
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 }

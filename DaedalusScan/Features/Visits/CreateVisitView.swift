@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CreateVisitView: View {
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var focusedField: Field?
 
     @State private var reference = ""
     @State private var customerName = ""
@@ -13,8 +14,18 @@ struct CreateVisitView: View {
     @State private var notes = ""
     @State private var currentSystemType: HeatingSystemType = .unknown
     @State private var captureMode: CaptureMode = .create
+    @State private var isCreating = false
 
     let onCreate: (String, String, String, String, String?, Date?, String, HeatingSystemType, CaptureMode) -> Void
+
+    private enum Field: Hashable {
+        case reference
+        case customerName
+        case addressLine
+        case postcode
+        case engineerName
+        case notes
+    }
 
     var body: some View {
         NavigationStack {
@@ -22,6 +33,8 @@ struct CreateVisitView: View {
                 Section("Property Twin") {
                     TextField("Property reference (required)", text: $reference)
                         .textInputAutocapitalization(.characters)
+                        .focused($focusedField, equals: .reference)
+                        .submitLabel(.next)
                     LabeledContent("Twin Layers", value: "System · House · Home")
                     Text("Enter what is known now, then continue directly into capture.")
                         .font(.caption)
@@ -31,16 +44,24 @@ struct CreateVisitView: View {
                 Section("Customer & Site") {
                     TextField("Customer name", text: $customerName)
                         .textContentType(.organizationName)
+                        .focused($focusedField, equals: .customerName)
+                        .submitLabel(.next)
                     TextField("Address", text: $addressLine)
                         .textContentType(.streetAddressLine1)
+                        .focused($focusedField, equals: .addressLine)
+                        .submitLabel(.next)
                     TextField("Postcode", text: $postcode)
                         .textInputAutocapitalization(.characters)
                         .textContentType(.postalCode)
+                        .focused($focusedField, equals: .postcode)
+                        .submitLabel(.next)
                 }
 
                 Section("Engineer") {
                     TextField("Engineer name (optional)", text: $engineerName)
                         .textContentType(.name)
+                        .focused($focusedField, equals: .engineerName)
+                        .submitLabel(.next)
                 }
 
                 Section("Appointment") {
@@ -57,6 +78,8 @@ struct CreateVisitView: View {
                 Section("Notes") {
                     TextField("Notes (optional)", text: $notes, axis: .vertical)
                         .lineLimit(3...6)
+                        .focused($focusedField, equals: .notes)
+                        .submitLabel(.done)
                 }
 
                 Section("Twin Context") {
@@ -73,6 +96,9 @@ struct CreateVisitView: View {
                 }
             }
             .navigationTitle("New Property Twin")
+            .onSubmit {
+                advanceFocus()
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -81,23 +107,64 @@ struct CreateVisitView: View {
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
-                        onCreate(
-                            reference,
-                            customerName,
-                            addressLine,
-                            postcode,
-                            engineerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : engineerName,
-                            hasAppointmentDate ? appointmentDate : nil,
-                            notes,
-                            currentSystemType,
-                            captureMode
-                        )
-                        dismiss()
+                    Button {
+                        createVisit()
+                    } label: {
+                        if isCreating {
+                            ProgressView()
+                        } else {
+                            Text("Create")
+                        }
                     }
-                    .disabled(reference.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(reference.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isCreating)
+                }
+
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        focusedField = nil
+                    }
                 }
             }
+        }
+    }
+
+    private func createVisit() {
+        guard !isCreating else { return }
+        focusedField = nil
+        isCreating = true
+
+        Task { @MainActor in
+            await Task.yield()
+            onCreate(
+                reference,
+                customerName,
+                addressLine,
+                postcode,
+                engineerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : engineerName,
+                hasAppointmentDate ? appointmentDate : nil,
+                notes,
+                currentSystemType,
+                captureMode
+            )
+            dismiss()
+        }
+    }
+
+    private func advanceFocus() {
+        switch focusedField {
+        case .reference:
+            focusedField = .customerName
+        case .customerName:
+            focusedField = .addressLine
+        case .addressLine:
+            focusedField = .postcode
+        case .postcode:
+            focusedField = .engineerName
+        case .engineerName:
+            focusedField = .notes
+        case .notes, nil:
+            focusedField = nil
         }
     }
 }
