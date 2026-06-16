@@ -1,4 +1,7 @@
 import ARKit
+#if canImport(RoomPlan)
+import RoomPlan
+#endif
 import SceneKit
 import SwiftUI
 
@@ -11,24 +14,40 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
         Coordinator(progress: $progress)
     }
 
-    func makeUIView(context: Context) -> ARSCNView {
-        let view = ARSCNView(frame: .zero)
-        view.delegate = context.coordinator
-        view.automaticallyUpdatesLighting = true
-        view.scene = SCNScene()
-        context.coordinator.sceneView = view
+    func makeUIView(context: Context) -> UIView {
+        let container = UIView(frame: .zero)
+
+        let arView = ARSCNView(frame: .zero)
+        arView.delegate = context.coordinator
+        arView.automaticallyUpdatesLighting = true
+        arView.scene = SCNScene()
+        arView.debugOptions = []
+        context.coordinator.sceneView = arView
+        context.coordinator.add(arView, to: container)
+
+        #if canImport(RoomPlan)
+        if #available(iOS 16.0, *), RoomCaptureSession.isSupported {
+            let roomView = RoomCaptureView(frame: .zero)
+            roomView.captureSession.delegate = context.coordinator
+            context.coordinator.roomCaptureView = roomView
+            context.coordinator.usesRoomPlan = true
+            context.coordinator.add(roomView, to: container)
+            arView.isHidden = true
+        }
+        #endif
+
         context.coordinator.setFocusMode(isFocusModeActive)
         context.coordinator.setScanning(isScanning)
-        return view
+        return container
     }
 
-    func updateUIView(_ uiView: ARSCNView, context: Context) {
+    func updateUIView(_ uiView: UIView, context: Context) {
         context.coordinator.setFocusMode(isFocusModeActive)
         context.coordinator.setScanning(isScanning)
     }
 
-    static func dismantleUIView(_ uiView: ARSCNView, coordinator: Coordinator) {
-        uiView.session.pause()
+    static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
+        coordinator.stopSessions()
     }
 
     final class Coordinator: NSObject, ARSCNViewDelegate {
@@ -38,39 +57,107 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
         private var meshAnchorIDs = Set<String>()
         private var planeAnchorIDs = Set<String>()
         private var lastProgressUpdate = Date.distantPast
+        var usesRoomPlan = false
         weak var sceneView: ARSCNView?
+        #if canImport(RoomPlan)
+        @available(iOS 16.0, *)
+        weak var roomCaptureView: RoomCaptureView?
+        #endif
 
         init(progress: Binding<LiveSpatialScanProgress>) {
             self.progress = progress
+        }
+
+        func add(_ child: UIView, to container: UIView) {
+            child.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(child)
+            NSLayoutConstraint.activate([
+                child.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                child.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                child.topAnchor.constraint(equalTo: container.topAnchor),
+                child.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+            ])
         }
 
         func setScanning(_ enabled: Bool) {
             guard enabled != isRunning else { return }
             isRunning = enabled
             if enabled {
-                runSession()
+                runSurveySession()
             } else {
-                sceneView?.session.pause()
+                stopSessions()
             }
         }
 
         func setFocusMode(_ enabled: Bool) {
             guard enabled != isFocusModeActive else { return }
             isFocusModeActive = enabled
-            sceneView?.debugOptions = enabled ? [.showFeaturePoints] : []
+            sceneView?.debugOptions = []
             guard isRunning else { return }
-            runSession(resetTracking: false, removeExistingAnchors: !enabled)
+            runSurveySession(resetTracking: false, removeExistingAnchors: !enabled)
         }
 
-        private func runSession(resetTracking: Bool = true, removeExistingAnchors: Bool = true) {
+        func stopSessions() {
+            sceneView?.session.pause()
+            #if canImport(RoomPlan)
+            if #available(iOS 16.0, *) {
+                roomCaptureView?.captureSession.stop()
+            }
+            #endif
+        }
+
+        private func runSurveySession(resetTracking: Bool = true, removeExistingAnchors: Bool = true) {
+            if isFocusModeActive {
+                runARKitSession(
+                    resetTracking: resetTracking,
+                    removeExistingAnchors: removeExistingAnchors,
+                    sceneReconstruction: true,
+                    capturePath: .focusPointCloud
+                )
+                return
+            }
+
+            #if canImport(RoomPlan)
+            if #available(iOS 16.0, *), usesRoomPlan, let roomCaptureView {
+                sceneView?.session.pause()
+                sceneView?.isHidden = true
+                roomCaptureView.isHidden = false
+                let configuration = RoomCaptureSession.Configuration()
+                roomCaptureView.captureSession.run(configuration: configuration)
+                publishRoomPlanProgress(elementCount: 0)
+                return
+            }
+            #endif
+
+            runARKitSession(
+                resetTracking: resetTracking,
+                removeExistingAnchors: removeExistingAnchors,
+                sceneReconstruction: false,
+                capturePath: .arkitFallback
+            )
+        }
+
+        private func runARKitSession(
+            resetTracking: Bool = true,
+            removeExistingAnchors: Bool = true,
+            sceneReconstruction: Bool,
+            capturePath: LiveSpatialCapturePath
+        ) {
             guard ARWorldTrackingConfiguration.isSupported else { return }
+            #if canImport(RoomPlan)
+            if #available(iOS 16.0, *) {
+                roomCaptureView?.captureSession.stop()
+                roomCaptureView?.isHidden = true
+            }
+            #endif
+            sceneView?.isHidden = false
             let configuration = ARWorldTrackingConfiguration()
             configuration.planeDetection = [.horizontal, .vertical]
-            if isFocusModeActive,
+            if sceneReconstruction,
                ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
                 configuration.sceneReconstruction = .mesh
             }
-            sceneView?.debugOptions = isFocusModeActive ? [.showFeaturePoints] : []
+            sceneView?.debugOptions = []
             var options: ARSession.RunOptions = []
             if resetTracking {
                 options.insert(.resetTracking)
@@ -79,6 +166,7 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
                 options.insert(.removeExistingAnchors)
             }
             sceneView?.session.run(configuration, options: options)
+            publishARProgress(capturePath: capturePath)
         }
 
         func renderer(_ renderer: SCNSceneRenderer, didAdd node: SCNNode, for anchor: ARAnchor) {
@@ -213,18 +301,40 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
                 return
             }
             lastProgressUpdate = Date()
-
-            let position = SpatialPosition(
-                x: Double(anchor.transform.columns.3.x),
-                y: Double(anchor.transform.columns.3.y),
-                z: Double(anchor.transform.columns.3.z)
+            publishARProgress(
+                anchorID: anchor.identifier.uuidString,
+                position: SpatialPosition(
+                    x: Double(anchor.transform.columns.3.x),
+                    y: Double(anchor.transform.columns.3.y),
+                    z: Double(anchor.transform.columns.3.z)
+                ),
+                capturePath: isFocusModeActive ? .focusPointCloud : .arkitFallback
             )
+        }
+
+        private func publishARProgress(
+            anchorID: String? = nil,
+            position: SpatialPosition? = nil,
+            capturePath: LiveSpatialCapturePath
+        ) {
             let updated = LiveSpatialScanProgress(
                 meshAnchorCount: meshAnchorIDs.count,
                 planeAnchorCount: planeAnchorIDs.count,
-                lastAnchorID: anchor.identifier.uuidString,
+                lastAnchorID: anchorID,
                 lastKnownPosition: position,
-                lastUpdatedAt: Date()
+                lastUpdatedAt: Date(),
+                capturePath: capturePath
+            )
+            DispatchQueue.main.async {
+                self.progress.wrappedValue = updated
+            }
+        }
+
+        private func publishRoomPlanProgress(elementCount: Int, updatedAt: Date = Date()) {
+            let updated = LiveSpatialScanProgress(
+                roomElementCount: elementCount,
+                lastUpdatedAt: updatedAt,
+                capturePath: .roomPlan
             )
             DispatchQueue.main.async {
                 self.progress.wrappedValue = updated
@@ -232,6 +342,16 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
         }
     }
 }
+
+#if canImport(RoomPlan)
+@available(iOS 16.0, *)
+extension LiveSpatialCaptureView.Coordinator: RoomCaptureSessionDelegate {
+    func captureSession(_ session: RoomCaptureSession, didUpdate room: CapturedRoom) {
+        let elementCount = room.walls.count + room.doors.count + room.windows.count + room.openings.count + room.objects.count
+        publishRoomPlanProgress(elementCount: elementCount)
+    }
+}
+#endif
 
 private extension SCNGeometry {
     convenience init(arMeshGeometry: ARMeshGeometry) {

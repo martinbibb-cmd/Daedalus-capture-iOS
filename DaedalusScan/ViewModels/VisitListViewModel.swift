@@ -671,7 +671,11 @@ public final class VisitListViewModel: ObservableObject {
         scanSessionID: UUID? = nil,
         cameraFrameReference: String? = nil,
         geometryAnchorID: String? = nil,
-        positionLabel: String? = nil
+        positionLabel: String? = nil,
+        geometryCaptureMode: GeometryCaptureMode = .photoOnly,
+        geometryDetailLevel: GeometryDetailLevel = .component,
+        geometrySource: GeometrySource = .userMarked,
+        geometryConfidence: SpatialConfidence = .unknown
     ) -> UUID? {
         guard let componentID = addSpatialObject(
             to: visitID,
@@ -722,11 +726,23 @@ public final class VisitListViewModel: ObservableObject {
         attributes["cameraFrameReference"] = normalizedOptionalString(cameraFrameReference ?? "")
         attributes["geometryAnchorID"] = normalizedOptionalString(geometryAnchorID ?? placement?.anchorID ?? "")
         attributes["positionLabel"] = normalizedOptionalString(positionLabel ?? "")
+        attributes["geometryCaptureMode"] = geometryCaptureMode.rawValue
+        attributes["geometryDetailLevel"] = geometryDetailLevel.rawValue
+        attributes["geometrySource"] = geometrySource.rawValue
         visits[visitIndex].components[componentIndex].componentAttributes = attributes
         visits[visitIndex].components[componentIndex].name = kind.title
         visits[visitIndex].components[componentIndex].reviewStatus = kind == .safety ? .needsAttention : .unreviewed
+        let metadata = GeometryEvidenceMetadata(
+            captureMode: geometryCaptureMode,
+            detailLevel: geometryDetailLevel,
+            source: geometrySource,
+            linkedItemID: componentID,
+            needsReview: true,
+            confidence: geometryConfidence
+        )
         for evidenceIndex in visits[visitIndex].components[componentIndex].evidence.indices {
             visits[visitIndex].components[componentIndex].evidence[evidenceIndex].reviewStatus = kind == .safety ? .needsAttention : .unreviewed
+            visits[visitIndex].components[componentIndex].evidence[evidenceIndex].geometryMetadata = metadata
         }
         visits[visitIndex].components[componentIndex].spatialContext = SpatialEvidenceContext(
             floorLevel: "Live capture",

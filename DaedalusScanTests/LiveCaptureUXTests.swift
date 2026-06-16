@@ -26,10 +26,73 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertEqual(component.componentAttributes["includedInReviewedHandoff"], "false")
         XCTAssertEqual(component.evidence.count, 1)
         XCTAssertEqual(component.evidence.first?.kind, .textNote)
+        XCTAssertEqual(component.evidence.first?.geometryMetadata?.captureMode, .photoOnly)
+        XCTAssertEqual(component.evidence.first?.geometryMetadata?.source, .userMarked)
 
         let visit = try XCTUnwrap(harness.viewModel.visit(id: harness.visitID))
         XCTAssertEqual(visit.evidenceTimelineEntries.first?.evidenceType, "Focus")
         XCTAssertEqual(visit.captureReviewEvidenceGroups.first?.title, "Focus")
+    }
+
+    func testFocusModeCreatesHighDetailGeometryEvidence() throws {
+        let harness = try makeHarness()
+        let componentID = try XCTUnwrap(
+            harness.viewModel.addLiveCaptureEvidence(
+                to: harness.visitID,
+                kind: .mark,
+                placement: SpatialPlacement(anchorID: "focus-anchor", captureState: .anchored, confidence: .high),
+                scanSessionID: UUID(),
+                geometryAnchorID: "focus-anchor",
+                positionLabel: "Boiler cupboard",
+                geometryCaptureMode: .focusPointCloud,
+                geometryDetailLevel: .local,
+                geometrySource: .arkitPointCloud,
+                geometryConfidence: .high
+            )
+        )
+
+        let component = try XCTUnwrap(harness.viewModel.component(visitID: harness.visitID, componentID: componentID))
+        let evidence = try XCTUnwrap(component.evidence.first)
+        XCTAssertEqual(component.componentAttributes["geometryCaptureMode"], GeometryCaptureMode.focusPointCloud.rawValue)
+        XCTAssertEqual(component.componentAttributes["geometryDetailLevel"], GeometryDetailLevel.local.rawValue)
+        XCTAssertEqual(component.componentAttributes["geometrySource"], GeometrySource.arkitPointCloud.rawValue)
+        XCTAssertEqual(evidence.geometryMetadata?.captureMode, .focusPointCloud)
+        XCTAssertEqual(evidence.geometryMetadata?.detailLevel, .local)
+        XCTAssertEqual(evidence.geometryMetadata?.source, .arkitPointCloud)
+        XCTAssertEqual(evidence.geometryMetadata?.linkedItemID, componentID)
+        XCTAssertEqual(evidence.geometryMetadata?.confidence, .high)
+        XCTAssertEqual(evidence.geometryMetadata?.needsReview, true)
+    }
+
+    func testRoomPlanCapturePathSavesCompatibleEvidenceMetadata() throws {
+        let harness = try makeHarness()
+        let componentID = try XCTUnwrap(
+            harness.viewModel.addLiveCaptureEvidence(
+                to: harness.visitID,
+                kind: .photo,
+                placement: SpatialPlacement(anchorID: "room-outline-1", captureState: .anchored, confidence: .medium),
+                photoData: Data([0xFF, 0xD8]),
+                scanSessionID: UUID(),
+                geometryAnchorID: "room-outline-1",
+                positionLabel: "Room understood",
+                geometryCaptureMode: .roomPlan,
+                geometryDetailLevel: .room,
+                geometrySource: .roomPlan,
+                geometryConfidence: .medium
+            )
+        )
+
+        let visit = try XCTUnwrap(harness.viewModel.visit(id: harness.visitID))
+        let component = try XCTUnwrap(visit.components.first { $0.id == componentID })
+        let evidence = try XCTUnwrap(component.evidence.first)
+        XCTAssertEqual(evidence.geometryMetadata?.captureMode, .roomPlan)
+        XCTAssertEqual(evidence.geometryMetadata?.detailLevel, .room)
+        XCTAssertEqual(evidence.geometryMetadata?.source, .roomPlan)
+
+        let package = try harness.repository.exportPackage(visits: [visit])
+        let exportedEvidence = try XCTUnwrap(package.visits.first?.components.first?.evidence.first)
+        XCTAssertEqual(exportedEvidence.geometryMetadata?.captureMode, .roomPlan)
+        XCTAssertEqual(exportedEvidence.geometryMetadata?.source, .roomPlan)
     }
 
     func testLivePhotoAndSafetyUseEvidenceActionsWithoutClassification() throws {
@@ -258,12 +321,18 @@ final class LiveCaptureUXTests: XCTestCase {
             XCTAssertFalse(source.localizedCaseInsensitiveContains(term), "Live capture source contains banned term: \(term)")
         }
 
-        for required in ["\"Snapshot\"", "\"Note\"", "\"Focus\"", "\"Stop\"", "\"Safety\"", "\"Review\"", "\"Pause & Review\""] {
+        for required in ["\"Photo\"", "\"Voice Note\"", "\"Mark Item\"", "\"Focus\"", "\"Stop\"", "\"Safety\"", "\"Review\"", "\"Pause & Review\""] {
             XCTAssertTrue(source.contains(required), "Live capture source should expose \(required)")
         }
         XCTAssertFalse(source.contains("Geometry not available yet"), "Live survey should not show unavailable geometry once surfaces are captured")
         XCTAssertFalse(source.contains("Room geometry active"), "Live survey should not claim fake room geometry")
-        XCTAssertTrue(source.contains("Detected geometry"), "Live survey should expose detected geometry progress")
+        XCTAssertFalse(source.localizedCaseInsensitiveContains("Detected geometry"), "Normal survey should not expose diagnostic geometry labels")
+        XCTAssertFalse(source.localizedCaseInsensitiveContains("surfaces captured"), "Normal survey should not expose surface counts")
+        XCTAssertFalse(source.localizedCaseInsensitiveContains("spatial confidence"), "Normal survey should not expose tracking confidence language")
+        XCTAssertFalse(source.localizedCaseInsensitiveContains("feature points"), "Normal survey should not expose AR debug language")
+        XCTAssertTrue(source.contains("Building room outline"), "Live survey should expose clean room capture progress")
+        XCTAssertTrue(source.contains("Room understood"), "Live survey should expose clean room capture completion")
+        XCTAssertTrue(source.contains("Needs another angle"), "Live survey should expose plain fallback guidance")
         XCTAssertTrue(source.contains("\"End\""), "Live survey should expose an explicit route out")
 
         let lifecycleSource = try sourceText(relativePath: "DaedalusScan/Features/Visits/TwinLifecycleViews.swift")

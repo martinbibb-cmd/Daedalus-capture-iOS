@@ -74,6 +74,50 @@ final class SurveyModelsTests: XCTestCase {
         XCTAssertFalse(SurveyResponse().isAnswered(for: numericQuestion))
     }
 
+    func testEvidenceGeometryMetadataRoundTripsAndDefaultsForLegacyPayloads() throws {
+        let metadata = GeometryEvidenceMetadata(
+            captureMode: .focusPointCloud,
+            detailLevel: .local,
+            source: .arkitPointCloud,
+            linkedAreaID: UUID(uuidString: "00000000-0000-0000-0000-000000000111"),
+            linkedItemID: UUID(uuidString: "00000000-0000-0000-0000-000000000222"),
+            capturedAt: Date(timeIntervalSince1970: 1_720_000_000),
+            needsReview: true,
+            confidence: .high
+        )
+        let evidence = Evidence(
+            kind: .textNote,
+            localFileName: "focus-detail.txt",
+            geometryMetadata: metadata
+        )
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(evidence)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(Evidence.self, from: data)
+
+        XCTAssertEqual(decoded.geometryMetadata?.captureMode, .focusPointCloud)
+        XCTAssertEqual(decoded.geometryMetadata?.detailLevel, .local)
+        XCTAssertEqual(decoded.geometryMetadata?.source, .arkitPointCloud)
+        XCTAssertEqual(decoded.geometryMetadata?.linkedItemID, metadata.linkedItemID)
+        XCTAssertEqual(decoded.geometryMetadata?.confidence, .high)
+
+        let legacyJSON = """
+        {
+          "id": "00000000-0000-0000-0000-000000000099",
+          "kind": "photo",
+          "localFileName": "legacy.jpg",
+          "createdAt": "2024-01-01T00:00:00Z",
+          "trustLevel": 2,
+          "transcriptReferences": []
+        }
+        """
+        let legacy = try decoder.decode(Evidence.self, from: Data(legacyJSON.utf8))
+        XCTAssertNil(legacy.geometryMetadata)
+    }
+
     func testCanonicalOrderCoversAllSystemComponentKinds() {
         let canonical = Set(SystemComponentKind.canonicalOrder)
         let all = Set(SystemComponentKind.allCases)

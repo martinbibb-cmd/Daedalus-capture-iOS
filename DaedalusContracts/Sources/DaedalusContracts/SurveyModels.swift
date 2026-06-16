@@ -241,6 +241,60 @@ public enum EvidenceKind: String, Codable, CaseIterable, Sendable {
     case textNote
 }
 
+public enum GeometryCaptureMode: String, Codable, CaseIterable, Hashable, Sendable {
+    case roomPlan
+    case focusPointCloud
+    case photoOnly
+    case manual
+}
+
+public enum GeometryDetailLevel: String, Codable, CaseIterable, Hashable, Sendable {
+    case room
+    case local
+    case component
+}
+
+public enum GeometrySource: String, Codable, CaseIterable, Hashable, Sendable {
+    case roomPlan
+    case arkitSceneReconstruction
+    case arkitPointCloud
+    case userMarked
+}
+
+public struct GeometryEvidenceMetadata: Codable, Hashable, Sendable {
+    public var captureMode: GeometryCaptureMode
+    public var detailLevel: GeometryDetailLevel
+    public var source: GeometrySource
+    public var linkedRoomID: UUID?
+    public var linkedAreaID: UUID?
+    public var linkedItemID: UUID?
+    public var capturedAt: Date
+    public var needsReview: Bool
+    public var confidence: SpatialConfidence
+
+    public init(
+        captureMode: GeometryCaptureMode,
+        detailLevel: GeometryDetailLevel,
+        source: GeometrySource,
+        linkedRoomID: UUID? = nil,
+        linkedAreaID: UUID? = nil,
+        linkedItemID: UUID? = nil,
+        capturedAt: Date = Date(),
+        needsReview: Bool = true,
+        confidence: SpatialConfidence = .unknown
+    ) {
+        self.captureMode = captureMode
+        self.detailLevel = detailLevel
+        self.source = source
+        self.linkedRoomID = linkedRoomID
+        self.linkedAreaID = linkedAreaID
+        self.linkedItemID = linkedItemID
+        self.capturedAt = capturedAt
+        self.needsReview = needsReview
+        self.confidence = confidence
+    }
+}
+
 public struct EvidenceTranscriptReference: Codable, Hashable, Sendable {
     public var transcriptID: UUID
     public var chunkID: UUID?
@@ -266,6 +320,7 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
     public var reviewNotes: String?
     public var trustLevel: EvidenceTrustLevel
     public var transcriptReferences: [EvidenceTranscriptReference]
+    public var geometryMetadata: GeometryEvidenceMetadata?
     /// Embedded file bytes included in an exported VisitPackage to enable round-trip restore.
     /// Nil when stored locally; populated by the exporter and consumed by the importer.
     public var embeddedData: Data?
@@ -279,6 +334,7 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
         reviewNotes: String? = nil,
         trustLevel: EvidenceTrustLevel? = nil,
         transcriptReferences: [EvidenceTranscriptReference] = [],
+        geometryMetadata: GeometryEvidenceMetadata? = nil,
         embeddedData: Data? = nil
     ) {
         self.id = id
@@ -289,6 +345,7 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
         self.reviewNotes = reviewNotes
         self.trustLevel = trustLevel ?? kind.defaultTrustLevel
         self.transcriptReferences = transcriptReferences
+        self.geometryMetadata = geometryMetadata
         self.embeddedData = embeddedData
     }
 
@@ -301,6 +358,7 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
         case reviewNotes
         case trustLevel
         case transcriptReferences
+        case geometryMetadata
         case embeddedData
     }
 
@@ -314,6 +372,7 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
         reviewNotes = try container.decodeIfPresent(String.self, forKey: .reviewNotes)
         trustLevel = try container.decodeIfPresent(EvidenceTrustLevel.self, forKey: .trustLevel) ?? kind.defaultTrustLevel
         transcriptReferences = try container.decodeIfPresent([EvidenceTranscriptReference].self, forKey: .transcriptReferences) ?? []
+        geometryMetadata = try container.decodeIfPresent(GeometryEvidenceMetadata.self, forKey: .geometryMetadata)
         embeddedData = try container.decodeIfPresent(Data.self, forKey: .embeddedData)
     }
 
@@ -327,6 +386,7 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
         try container.encodeIfPresent(reviewNotes, forKey: .reviewNotes)
         try container.encode(trustLevel, forKey: .trustLevel)
         try container.encode(transcriptReferences, forKey: .transcriptReferences)
+        try container.encodeIfPresent(geometryMetadata, forKey: .geometryMetadata)
         try container.encodeIfPresent(embeddedData, forKey: .embeddedData)
     }
 }

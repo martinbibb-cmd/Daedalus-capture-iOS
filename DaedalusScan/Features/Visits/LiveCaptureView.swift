@@ -112,8 +112,9 @@ struct LiveCaptureView: View {
                     .padding(.bottom, 12)
 
                 LiveCaptureControlBar(
-                    onSnapshot: { isPresentingPhotoCapture = true },
+                    onPhoto: { isPresentingPhotoCapture = true },
                     onVoiceNote: { createLiveEvidence(.voice) },
+                    onMark: { createLiveEvidence(.mark, geometryCaptureMode: .manual, geometryDetailLevel: .component, geometrySource: .userMarked) },
                     onFocus: toggleFocusMode,
                     onSafety: { createLiveEvidence(.safety) },
                     onReview: pauseForReview,
@@ -139,29 +140,29 @@ struct LiveCaptureView: View {
 
     private var surveyStatusTitle: String {
         if isFocusModeActive {
-            return "Focusing"
+            return "Focus Mode"
         }
-        return spatialSession.status == .scanning ? "Surveying" : spatialSession.status.title
+        return spatialSession.status == .scanning ? "Survey" : spatialSession.status.title
     }
 
     private var surveyConfidenceLabel: String {
         if isFocusModeActive {
-            return "Detail geometry capture active"
+            return "Capturing local detail"
         }
-        if livePlacementState.hasAnchor {
-            return "Spatial confidence building"
+        if scanProgress.captureLabel == "Room understood" {
+            return "Room understood"
         }
-        if livePlacementState.lastKnownPosition != nil {
-            return "Approximate coverage available"
+        if scanProgress.hasGeometry {
+            return "Building room outline"
         }
-        return "Keep moving to build coverage"
+        return "Move around for more detail"
     }
 
     private var surveyCoverageLabel: String {
-        if scanProgress.hasGeometry {
-            return isFocusModeActive ? "Focus: \(scanProgress.captureLabel)" : scanProgress.captureLabel
+        if isFocusModeActive {
+            return scanProgress.captureLabel
         }
-        return recordingService.isRecording ? "Audio running" : "Starting survey record"
+        return scanProgress.hasGeometry ? scanProgress.captureLabel : "Needs another angle"
     }
 
     private var sessionStatusColor: Color {
@@ -246,7 +247,16 @@ struct LiveCaptureView: View {
         }
     }
 
-    private func createLiveEvidence(_ kind: LiveCaptureEvidenceKind, photoData: Data? = nil) {
+    private func createLiveEvidence(
+        _ kind: LiveCaptureEvidenceKind,
+        photoData: Data? = nil,
+        geometryCaptureMode: GeometryCaptureMode? = nil,
+        geometryDetailLevel: GeometryDetailLevel? = nil,
+        geometrySource: GeometrySource? = nil
+    ) {
+        let geometryMode = geometryCaptureMode ?? defaultGeometryCaptureMode(for: kind)
+        let detailLevel = geometryDetailLevel ?? defaultGeometryDetailLevel(for: geometryMode)
+        let source = geometrySource ?? defaultGeometrySource(for: geometryMode)
         let componentID = viewModel.addLiveCaptureEvidence(
             to: visitID,
             kind: kind,
@@ -255,7 +265,11 @@ struct LiveCaptureView: View {
             scanSessionID: spatialSession.id,
             cameraFrameReference: photoData == nil ? nil : "current-frame",
             geometryAnchorID: currentPlacementMetadata?.anchorID,
-            positionLabel: scanProgress.hasGeometry ? scanProgress.captureLabel : surveyConfidenceLabel
+            positionLabel: scanProgress.hasGeometry ? scanProgress.captureLabel : surveyConfidenceLabel,
+            geometryCaptureMode: geometryMode,
+            geometryDetailLevel: detailLevel,
+            geometrySource: source,
+            geometryConfidence: scanProgress.confidence
         )
         capturedEvidenceComponentID = componentID
 
@@ -281,7 +295,49 @@ struct LiveCaptureView: View {
             withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                 isFocusModeActive = true
             }
-            createLiveEvidence(.mark)
+            createLiveEvidence(
+                .mark,
+                geometryCaptureMode: .focusPointCloud,
+                geometryDetailLevel: .local,
+                geometrySource: .arkitPointCloud
+            )
+        }
+    }
+
+    private func defaultGeometryCaptureMode(for kind: LiveCaptureEvidenceKind) -> GeometryCaptureMode {
+        if isFocusModeActive {
+            return .focusPointCloud
+        }
+        if scanProgress.capturePath == .roomPlan, scanProgress.hasGeometry {
+            return .roomPlan
+        }
+        switch kind {
+        case .photo, .voice:
+            return .photoOnly
+        case .mark, .safety, .measurement:
+            return .manual
+        }
+    }
+
+    private func defaultGeometryDetailLevel(for mode: GeometryCaptureMode) -> GeometryDetailLevel {
+        switch mode {
+        case .roomPlan:
+            return .room
+        case .focusPointCloud:
+            return .local
+        case .photoOnly, .manual:
+            return .component
+        }
+    }
+
+    private func defaultGeometrySource(for mode: GeometryCaptureMode) -> GeometrySource {
+        switch mode {
+        case .roomPlan:
+            return .roomPlan
+        case .focusPointCloud:
+            return .arkitPointCloud
+        case .photoOnly, .manual:
+            return .userMarked
         }
     }
 
@@ -383,18 +439,6 @@ private struct LiveSurveyCoverageOverlay: View {
                 if isFocusModeActive {
                     focusReticle(in: proxy.size)
                 }
-
-                VStack {
-                    Spacer()
-                    HStack(spacing: 6) {
-                        ForEach(0..<6, id: \.self) { index in
-                            Capsule()
-                                .fill(index < min(capturedSurfaceCount, 6) ? Color.green.opacity(0.84) : Color.white.opacity(0.28))
-                                .frame(width: 30, height: 5)
-                        }
-                    }
-                    .padding(.bottom, 150)
-                }
             }
         }
         .allowsHitTesting(false)
@@ -478,8 +522,9 @@ private struct FocusCorner {
 }
 
 private struct LiveCaptureControlBar: View {
-    let onSnapshot: () -> Void
+    let onPhoto: () -> Void
     let onVoiceNote: () -> Void
+    let onMark: () -> Void
     let onFocus: () -> Void
     let onSafety: () -> Void
     let onReview: () -> Void
@@ -489,8 +534,12 @@ private struct LiveCaptureControlBar: View {
     var body: some View {
         VStack(spacing: 10) {
             HStack(spacing: 10) {
-                liveButton("Snapshot", systemImage: "camera.fill", action: onSnapshot)
-                liveButton("Note", systemImage: "waveform", action: onVoiceNote)
+                liveButton("Photo", systemImage: "camera.fill", action: onPhoto)
+                liveButton("Voice Note", systemImage: "waveform", action: onVoiceNote)
+                liveButton("Mark Item", systemImage: "mappin.and.ellipse", action: onMark)
+            }
+
+            HStack(spacing: 10) {
                 liveButton(
                     isFocusModeActive ? "Stop" : "Focus",
                     systemImage: isFocusModeActive ? "xmark.circle.fill" : "scope",
@@ -564,7 +613,7 @@ private struct LiveCaptureConfirmationView: View {
         HStack(spacing: 8) {
             Image(systemName: confirmation.kind == .safety ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
             Text("\(confirmation.kind.title) saved")
-            Text(confirmation.anchored ? "anchored" : "geometry pending")
+            Text(confirmation.anchored ? "linked to room" : "needs another angle")
                 .foregroundStyle(.secondary)
         }
         .font(.subheadline.weight(.semibold))
@@ -586,7 +635,7 @@ private struct LiveCaptureMiniTimeline: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if entries.isEmpty {
-                Text(scanProgress.hasGeometry ? "Detected geometry · \(scanProgress.captureLabel)" : "Move slowly to detect walls, openings, and corners")
+                Text(scanProgress.hasGeometry ? scanProgress.captureLabel : "Move around for more detail")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.white.opacity(0.84))
             } else {
@@ -610,13 +659,13 @@ private struct LiveCaptureMiniTimeline: View {
 
     private func anchorText(for entry: EvidenceTimelineEntry) -> String {
         guard let spatialContext = entry.spatialContext, !spatialContext.isEmpty else {
-            return "geometry pending"
+            return "needs another angle"
         }
         if spatialContext.localizedCaseInsensitiveContains("geometry") ||
             spatialContext.localizedCaseInsensitiveContains("anchor") {
-            return "anchored"
+            return "linked to room"
         }
-        return "audio + geometry"
+        return "evidence linked"
     }
 }
 

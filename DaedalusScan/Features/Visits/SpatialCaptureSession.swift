@@ -77,25 +77,37 @@ struct LivePlacementState: Codable, Hashable {
     }
 }
 
+enum LiveSpatialCapturePath: String, Codable, Hashable {
+    case roomPlan
+    case arkitFallback
+    case focusPointCloud
+}
+
 struct LiveSpatialScanProgress: Codable, Hashable {
     var meshAnchorCount: Int
     var planeAnchorCount: Int
+    var roomElementCount: Int
     var lastAnchorID: String?
     var lastKnownPosition: SpatialPosition?
     var lastUpdatedAt: Date?
+    var capturePath: LiveSpatialCapturePath
 
     init(
         meshAnchorCount: Int = 0,
         planeAnchorCount: Int = 0,
+        roomElementCount: Int = 0,
         lastAnchorID: String? = nil,
         lastKnownPosition: SpatialPosition? = nil,
-        lastUpdatedAt: Date? = nil
+        lastUpdatedAt: Date? = nil,
+        capturePath: LiveSpatialCapturePath = .roomPlan
     ) {
         self.meshAnchorCount = meshAnchorCount
         self.planeAnchorCount = planeAnchorCount
+        self.roomElementCount = roomElementCount
         self.lastAnchorID = lastAnchorID
         self.lastKnownPosition = lastKnownPosition
         self.lastUpdatedAt = lastUpdatedAt
+        self.capturePath = capturePath
     }
 
     static let empty = LiveSpatialScanProgress()
@@ -105,16 +117,40 @@ struct LiveSpatialScanProgress: Codable, Hashable {
     }
 
     var hasGeometry: Bool {
-        capturedSurfaceCount > 0
+        capturedSurfaceCount > 0 || roomElementCount > 0
     }
 
     var captureLabel: String {
-        guard hasGeometry else { return "Move through the area to capture geometry" }
-        return "\(capturedSurfaceCount) surfaces captured"
+        switch capturePath {
+        case .roomPlan:
+            if roomElementCount >= 4 || capturedSurfaceCount >= 4 {
+                return "Room understood"
+            }
+            if hasGeometry {
+                return "Building room outline"
+            }
+            return "Move around for more detail"
+        case .arkitFallback:
+            if capturedSurfaceCount >= 4 {
+                return "Room understood"
+            }
+            if hasGeometry {
+                return "Building room outline"
+            }
+            return "Needs another angle"
+        case .focusPointCloud:
+            if meshAnchorCount >= 2 {
+                return "Local detail captured"
+            }
+            if hasGeometry {
+                return "Capturing local detail"
+            }
+            return "Hold on the item"
+        }
     }
 
     var confidence: SpatialConfidence {
-        if meshAnchorCount >= 2 || capturedSurfaceCount >= 4 { return .high }
+        if roomElementCount >= 4 || meshAnchorCount >= 2 || capturedSurfaceCount >= 4 { return .high }
         if hasGeometry { return .medium }
         return .low
     }
