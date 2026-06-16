@@ -15,7 +15,6 @@ struct LiveCaptureView: View {
     @State private var livePlacementState = LivePlacementState.unavailable
     @State private var scanProgress = LiveSpatialScanProgress.empty
     @State private var spatialAim = LiveSpatialAim.empty
-    @State private var mapPins: [EvidenceMapPin] = []
     @State private var confirmation: LiveCaptureConfirmation?
     @State private var captureState: LiveCaptureState = .idle
     @State private var didRequestSpatialStart = false
@@ -132,18 +131,6 @@ struct LiveCaptureView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 18)
             }
-
-            VStack {
-                Spacer()
-                HStack {
-                    LiveMiniTwinMapView(progress: scanProgress, pins: mapPins)
-                        .frame(width: 126, height: 126)
-                        .padding(.leading, 16)
-                        .padding(.bottom, 134)
-                    Spacer()
-                }
-            }
-            .allowsHitTesting(false)
 
         }
         .onChange(of: scanProgress) { _, _ in
@@ -302,13 +289,6 @@ struct LiveCaptureView: View {
             targetPosition: spatialAim.targetPosition
         )
         capturedEvidenceComponentID = componentID
-        if let pinPosition = spatialAim.targetPosition ?? currentPlacementMetadata?.approximatePosition,
-           kind == .photo || kind == .voice || kind == .safety {
-            mapPins.append(EvidenceMapPin(kind: kind, position: pinPosition))
-            if mapPins.count > 40 {
-                mapPins.removeFirst(mapPins.count - 40)
-            }
-        }
 
         let hapticStyle: UIImpactFeedbackGenerator.FeedbackStyle = kind == .safety ? .heavy : .medium
         UIImpactFeedbackGenerator(style: hapticStyle).impactOccurred()
@@ -336,16 +316,7 @@ struct LiveCaptureView: View {
     }
 
     private func capAction() {
-        if captureState.isFocusActive {
-            endFocusMode()
-        } else {
-            createLiveEvidence(
-                .mark,
-                geometryCaptureMode: scanProgress.capturePath == .roomPlan ? .roomPlan : .manual,
-                geometryDetailLevel: .component,
-                geometrySource: scanProgress.capturePath == .roomPlan ? .roomPlan : .userMarked
-            )
-        }
+        createLiveEvidence(.photo, photoData: nil)
         UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
     }
 
@@ -582,88 +553,6 @@ private struct FocusCorner {
     let verticalEnd: CGPoint
 }
 
-private struct LiveMiniTwinMapView: View {
-    let progress: LiveSpatialScanProgress
-    let pins: [EvidenceMapPin]
-
-    private var mapPoints: [SpatialMapPoint] {
-        progress.revealedMapPoints
-    }
-
-    var body: some View {
-        Canvas { context, size in
-            let rect = CGRect(origin: .zero, size: size)
-            context.fill(Path(roundedRect: rect, cornerRadius: 8), with: .color(.black.opacity(0.64)))
-
-            let gridPath = grid(in: rect)
-            context.stroke(gridPath, with: .color(.white.opacity(0.12)), lineWidth: 0.8)
-
-            for point in mapPoints {
-                let mapped = map(point: SpatialPosition(x: point.x, y: 0, z: point.z), in: rect)
-                let clearRect = CGRect(x: mapped.x - 8, y: mapped.y - 8, width: 16, height: 16)
-                context.fill(Path(ellipseIn: clearRect), with: .color(.white.opacity(0.12 * point.intensity)))
-            }
-
-            for pin in pins {
-                let mapped = map(point: pin.position, in: rect)
-                let pinRect = CGRect(x: mapped.x - 4.5, y: mapped.y - 4.5, width: 9, height: 9)
-                context.fill(Path(ellipseIn: pinRect), with: .color(pinColor(for: pin.kind)))
-                context.stroke(Path(ellipseIn: pinRect.insetBy(dx: -1.5, dy: -1.5)), with: .color(.white.opacity(0.82)), lineWidth: 1)
-            }
-
-            let deviceRect = CGRect(x: rect.midX - 3, y: rect.midY - 3, width: 6, height: 6)
-            context.fill(Path(ellipseIn: deviceRect), with: .color(.white))
-        }
-        .overlay(alignment: .topLeading) {
-            Text("Twin")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.86))
-                .padding(8)
-        }
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.white.opacity(0.18), lineWidth: 1)
-        )
-    }
-
-    private func grid(in rect: CGRect) -> Path {
-        var path = Path()
-        let step = rect.width / 4
-        for index in 1..<4 {
-            let offset = CGFloat(index) * step
-            path.move(to: CGPoint(x: rect.minX + offset, y: rect.minY))
-            path.addLine(to: CGPoint(x: rect.minX + offset, y: rect.maxY))
-            path.move(to: CGPoint(x: rect.minX, y: rect.minY + offset))
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + offset))
-        }
-        return path
-    }
-
-    private func map(point: SpatialPosition, in rect: CGRect) -> CGPoint {
-        let scale = max(rect.width, rect.height) / 7
-        let x = rect.midX + CGFloat(point.x) * scale
-        let y = rect.midY + CGFloat(point.z) * scale
-        return CGPoint(
-            x: min(max(x, rect.minX + 8), rect.maxX - 8),
-            y: min(max(y, rect.minY + 8), rect.maxY - 8)
-        )
-    }
-
-    private func pinColor(for kind: LiveCaptureEvidenceKind) -> Color {
-        switch kind {
-        case .photo:
-            return .yellow
-        case .voice:
-            return .cyan
-        case .safety:
-            return .red
-        case .mark, .measurement:
-            return .white
-        }
-    }
-}
-
 private struct LiveCaptureControlBar: View {
     let onPhoto: () -> Void
     let onVoiceNote: () -> Void
@@ -703,11 +592,6 @@ private struct LiveCaptureControlBar: View {
                     .overlay(
                         Circle()
                             .stroke(Color.white.opacity(0.85), lineWidth: 2)
-                    )
-                    .overlay(
-                        Text("CAP.")
-                            .font(.system(size: 18, weight: .heavy, design: .monospaced))
-                            .foregroundStyle(.black)
                     )
                     .frame(width: 78, height: 78)
             }

@@ -170,39 +170,6 @@ struct LiveSpatialAim: Codable, Hashable {
     static let empty = LiveSpatialAim()
 }
 
-struct SpatialMapPoint: Identifiable, Codable, Hashable {
-    var id: String
-    var x: Double
-    var z: Double
-    var intensity: Double
-
-    init(id: String = UUID().uuidString, x: Double, z: Double, intensity: Double = 1.0) {
-        self.id = id
-        self.x = x
-        self.z = z
-        self.intensity = intensity
-    }
-}
-
-struct EvidenceMapPin: Identifiable, Hashable {
-    var id: UUID
-    var kind: LiveCaptureEvidenceKind
-    var position: SpatialPosition
-    var createdAt: Date
-
-    init(
-        id: UUID = UUID(),
-        kind: LiveCaptureEvidenceKind,
-        position: SpatialPosition,
-        createdAt: Date = Date()
-    ) {
-        self.id = id
-        self.kind = kind
-        self.position = position
-        self.createdAt = createdAt
-    }
-}
-
 struct LiveSpatialScanProgress: Codable, Hashable {
     var meshAnchorCount: Int
     var planeAnchorCount: Int
@@ -211,7 +178,6 @@ struct LiveSpatialScanProgress: Codable, Hashable {
     var lastKnownPosition: SpatialPosition?
     var lastUpdatedAt: Date?
     var capturePath: LiveSpatialCapturePath
-    var revealedMapPoints: [SpatialMapPoint]
 
     init(
         meshAnchorCount: Int = 0,
@@ -220,8 +186,7 @@ struct LiveSpatialScanProgress: Codable, Hashable {
         lastAnchorID: String? = nil,
         lastKnownPosition: SpatialPosition? = nil,
         lastUpdatedAt: Date? = nil,
-        capturePath: LiveSpatialCapturePath = .roomPlan,
-        revealedMapPoints: [SpatialMapPoint] = []
+        capturePath: LiveSpatialCapturePath = .roomPlan
     ) {
         self.meshAnchorCount = meshAnchorCount
         self.planeAnchorCount = planeAnchorCount
@@ -230,7 +195,6 @@ struct LiveSpatialScanProgress: Codable, Hashable {
         self.lastKnownPosition = lastKnownPosition
         self.lastUpdatedAt = lastUpdatedAt
         self.capturePath = capturePath
-        self.revealedMapPoints = revealedMapPoints
     }
 
     static let empty = LiveSpatialScanProgress()

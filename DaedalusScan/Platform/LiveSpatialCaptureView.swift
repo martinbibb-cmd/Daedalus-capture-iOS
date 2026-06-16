@@ -42,7 +42,6 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
         private var planeAnchorIDs = Set<String>()
         private var lastProgressUpdate = Date.distantPast
         private var lastAimUpdate = Date.distantPast
-        private var revealedMapPoints: [SpatialMapPoint] = []
         var usesRoomPlan = false
         weak var containerView: UIView?
         weak var sceneView: ARSCNView?
@@ -83,7 +82,9 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
             guard enabled != isRunning else { return }
             isRunning = enabled
             if enabled {
-                runSurveySession()
+                performSessionMutation {
+                    self.runSurveySession()
+                }
             } else {
                 stopSessions()
             }
@@ -93,16 +94,30 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
             guard state != captureState else { return }
             let oldState = captureState
             captureState = state
-            sceneView?.debugOptions = []
-            clearTransientOverlays()
-            guard isRunning else { return }
-            if oldState.isFocusActive != state.isFocusActive {
-                stopSessions()
+            performSessionMutation {
+                self.sceneView?.debugOptions = []
+                self.clearTransientOverlays()
+                guard self.isRunning else { return }
+                if oldState.isFocusActive != state.isFocusActive {
+                    self.stopSessionsNow()
+                }
+                self.runSurveySession(resetTracking: false, removeExistingAnchors: true)
             }
-            runSurveySession(resetTracking: false, removeExistingAnchors: true)
         }
 
         func stopSessions() {
+            performSessionMutation {
+                self.stopSessionsNow()
+            }
+        }
+
+        private func performSessionMutation(_ operation: @escaping @MainActor () -> Void) {
+            Task { @MainActor in
+                operation()
+            }
+        }
+
+        private func stopSessionsNow() {
             sceneView?.session.pause()
             clearTransientOverlays()
             #if canImport(RoomPlan)
@@ -339,7 +354,6 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
             } else {
                 return
             }
-            appendMapPoints(from: anchor)
             guard Date().timeIntervalSince(lastProgressUpdate) >= 0.25 else {
                 return
             }
@@ -375,8 +389,7 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
                 lastAnchorID: anchorID,
                 lastKnownPosition: position,
                 lastUpdatedAt: Date(),
-                capturePath: capturePath,
-                revealedMapPoints: revealedMapPoints
+                capturePath: capturePath
             )
             DispatchQueue.main.async {
                 self.progress.wrappedValue = updated
@@ -387,8 +400,7 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
             let updated = LiveSpatialScanProgress(
                 roomElementCount: elementCount,
                 lastUpdatedAt: updatedAt,
-                capturePath: .roomPlan,
-                revealedMapPoints: revealedMapPoints
+                capturePath: .roomPlan
             )
             DispatchQueue.main.async {
                 self.progress.wrappedValue = updated
@@ -447,6 +459,9 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
         }
 
         private func centerRaycastTarget(in sceneView: ARSCNView, at point: CGPoint) -> SpatialPosition? {
+            guard let frame = sceneView.session.currentFrame else {
+                return nil
+            }
             if let query = sceneView.raycastQuery(from: point, allowing: .estimatedPlane, alignment: .any),
                let result = sceneView.session.raycast(query).first {
                 return SpatialPosition(
@@ -454,10 +469,6 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
                     y: Double(result.worldTransform.columns.3.y),
                     z: Double(result.worldTransform.columns.3.z)
                 )
-            }
-
-            guard let frame = sceneView.session.currentFrame else {
-                return nil
             }
             return forwardRaycastTarget(in: sceneView.session, frame: frame)
         }
@@ -479,48 +490,6 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
             return SpatialPosition(x: Double(target.x), y: Double(target.y), z: Double(target.z))
         }
 
-        private func appendMapPoints(from anchor: ARAnchor) {
-            if let meshAnchor = anchor as? ARMeshAnchor {
-                let points = sampledMapPoints(from: meshAnchor, maximumCount: 18)
-                revealedMapPoints.append(contentsOf: points)
-            } else if let planeAnchor = anchor as? ARPlaneAnchor {
-                let origin = anchor.transform.columns.3
-                let width = Double(max(planeAnchor.planeExtent.width, 0.08))
-                let depth = Double(max(planeAnchor.planeExtent.height, 0.08))
-                revealedMapPoints.append(contentsOf: [
-                    SpatialMapPoint(x: Double(origin.x) - width / 2, z: Double(origin.z) - depth / 2),
-                    SpatialMapPoint(x: Double(origin.x) + width / 2, z: Double(origin.z) - depth / 2),
-                    SpatialMapPoint(x: Double(origin.x) + width / 2, z: Double(origin.z) + depth / 2),
-                    SpatialMapPoint(x: Double(origin.x) - width / 2, z: Double(origin.z) + depth / 2)
-                ])
-            }
-
-            if revealedMapPoints.count > 240 {
-                revealedMapPoints.removeFirst(revealedMapPoints.count - 240)
-            }
-        }
-
-        private func sampledMapPoints(from meshAnchor: ARMeshAnchor, maximumCount: Int) -> [SpatialMapPoint] {
-            let source = meshAnchor.geometry.vertices
-            guard source.count > 0 else { return [] }
-
-            let sampleCount = min(source.count, maximumCount)
-            let step = max(source.count / sampleCount, 1)
-            let basePointer = source.buffer.contents().advanced(by: source.offset)
-            var points: [SpatialMapPoint] = []
-            points.reserveCapacity(sampleCount)
-
-            for vertexIndex in stride(from: 0, to: source.count, by: step) {
-                guard points.count < sampleCount else { break }
-                let vertexPointer = basePointer.advanced(by: vertexIndex * source.stride)
-                let values = vertexPointer.assumingMemoryBound(to: Float.self)
-                let local = simd_float4(values[0], values[1], values[2], 1)
-                let world = meshAnchor.transform * local
-                points.append(SpatialMapPoint(x: Double(world.x), z: Double(world.z), intensity: captureState.isFocusActive ? 0.55 : 1.0))
-            }
-
-            return points
-        }
     }
 }
 

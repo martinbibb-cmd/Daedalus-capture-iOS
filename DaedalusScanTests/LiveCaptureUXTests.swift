@@ -359,9 +359,11 @@ final class LiveCaptureUXTests: XCTestCase {
             XCTAssertFalse(source.localizedCaseInsensitiveContains(term), "Live capture source contains banned term: \(term)")
         }
 
-        for required in ["\"Photo\"", "\"Voice Note\"", "\"Mark Item\"", "\"Focus\"", "\"Stop\"", "\"Safety\"", "\"Review\"", "\"Pause & Review\"", "\"CAP.\""] {
+        for required in ["\"Photo\"", "\"Voice Note\"", "\"Mark Item\"", "\"Focus\"", "\"Stop\"", "\"Safety\"", "\"Review\"", "\"Pause & Review\""] {
             XCTAssertTrue(source.contains(required), "Live capture source should expose \(required)")
         }
+        XCTAssertFalse(source.contains("\"CAP.\""), "Primary shutter should be a blank yellow dial")
+        XCTAssertFalse(source.contains("LiveMiniTwinMapView"), "Live capture should not render a 2D mini-map panel")
         XCTAssertFalse(source.contains("Geometry not available yet"), "Live survey should not show unavailable geometry once surfaces are captured")
         XCTAssertFalse(source.contains("Room geometry active"), "Live survey should not claim fake room geometry")
         XCTAssertFalse(source.localizedCaseInsensitiveContains("Detected geometry"), "Normal survey should not expose diagnostic geometry labels")
@@ -416,24 +418,25 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertTrue(source.contains("ensureRoomCaptureView()"), "RoomPlan renderer should be lazy")
     }
 
-    func testFogOfWarCaptureSourceUsesCenterRaycastAndMiniTwinPins() throws {
+    func testLiveCaptureSourceUsesCenterRaycastWithoutMiniTwinPanel() throws {
         let captureSource = try sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureView.swift")
-        XCTAssertTrue(captureSource.contains("LiveMiniTwinMapView"), "Live capture should render the Mini Twin Map overlay")
-        XCTAssertTrue(captureSource.contains("EvidenceMapPin"), "Live evidence should drop pins onto the Mini Twin Map")
+        XCTAssertFalse(captureSource.contains("LiveMiniTwinMapView"), "Live capture should not render a 2D Mini Twin Map overlay")
+        XCTAssertFalse(captureSource.contains("EvidenceMapPin"), "Live capture should not maintain 2D map pins")
         XCTAssertTrue(captureSource.contains("spatialAim.targetPosition"), "Evidence should use the current target position")
         XCTAssertTrue(captureSource.contains("spatialAim.devicePosition"), "Evidence should use the current device position")
-        XCTAssertTrue(captureSource.contains("\"CAP.\""), "The primary capture control should be labelled CAP.")
-        XCTAssertTrue(captureSource.contains(".monospaced"), "CAP. should use a clear monospaced design")
+        XCTAssertFalse(captureSource.contains("\"CAP.\""), "The primary shutter control should not contain text")
+        XCTAssertFalse(captureSource.contains("design: .monospaced"), "Blank shutter should not need text styling")
         XCTAssertTrue(captureSource.contains("private func capAction()"))
-        XCTAssertTrue(captureSource.contains("endFocusMode()"), "CAP. should be able to finish Focus Mode")
+        XCTAssertTrue(captureSource.contains("createLiveEvidence(.photo, photoData: nil)"), "Shutter should create immediate photo evidence")
 
         let rendererSource = try sourceText(relativePath: "DaedalusScan/Platform/LiveSpatialCaptureView.swift")
         XCTAssertTrue(rendererSource.contains("raycastQuery(from:"), "AR view should query the screen-centre raycast target")
         XCTAssertTrue(rendererSource.contains("session.raycast(query)"), "AR view should raycast against the active session")
+        XCTAssertTrue(rendererSource.contains("guard let frame = sceneView.session.currentFrame else"), "Raycaster should exit when no frame is available")
+        XCTAssertTrue(rendererSource.contains("Task { @MainActor in"), "AR session mutations should be scheduled on the main actor")
         XCTAssertTrue(rendererSource.contains("devicePosition"), "AR view should publish where the surveyor stood")
         XCTAssertTrue(rendererSource.contains("targetPosition"), "AR view should publish where the camera points")
-        XCTAssertTrue(rendererSource.contains("revealedMapPoints"), "AR mesh/plane updates should reveal map points")
-        XCTAssertTrue(rendererSource.contains("ARMeshAnchor"), "Mini map should react to mesh anchor updates")
+        XCTAssertTrue(rendererSource.contains("ARMeshAnchor"), "Focus capture should still handle mesh anchor updates")
     }
 
     func testCaptureStateMachineSeparatesRoomAndFocusModes() throws {
