@@ -15,8 +15,12 @@ struct LiveCaptureView: View {
     @State private var livePlacementState = LivePlacementState.unavailable
     @State private var scanProgress = LiveSpatialScanProgress.empty
     @State private var confirmation: LiveCaptureConfirmation?
-    @State private var isFocusModeActive = false
+    @State private var captureState: LiveCaptureState = .idle
     @State private var didRequestSpatialStart = false
+
+    private var isFocusModeActive: Bool {
+        captureState.isFocusActive
+    }
 
     private var visit: Visit? {
         viewModel.visit(id: visitID)
@@ -72,7 +76,7 @@ struct LiveCaptureView: View {
             LiveSpatialCaptureView(
                 progress: $scanProgress,
                 isScanning: spatialSession.status == .scanning,
-                isFocusModeActive: isFocusModeActive
+                captureState: captureState
             )
                 .ignoresSafeArea()
 
@@ -139,14 +143,14 @@ struct LiveCaptureView: View {
     }
 
     private var surveyStatusTitle: String {
-        if isFocusModeActive {
+        if captureState.isFocusActive {
             return "Focus Mode"
         }
         return spatialSession.status == .scanning ? "Survey" : spatialSession.status.title
     }
 
     private var surveyConfidenceLabel: String {
-        if isFocusModeActive {
+        if captureState.isFocusActive {
             return "Capturing local detail"
         }
         if scanProgress.captureLabel == "Room understood" {
@@ -159,7 +163,7 @@ struct LiveCaptureView: View {
     }
 
     private var surveyCoverageLabel: String {
-        if isFocusModeActive {
+        if captureState.isFocusActive {
             return scanProgress.captureLabel
         }
         return scanProgress.hasGeometry ? scanProgress.captureLabel : "Needs another angle"
@@ -189,6 +193,7 @@ struct LiveCaptureView: View {
         }
         spatialSession.endedAt = nil
         spatialSession.status = .scanning
+        captureState = scanProgress.captureLabel == "Room understood" ? .roomUnderstood : .roomScanning
         recordingService.startRecording(visitID: visitID)
         syncPlacementStateForSession()
     }
@@ -213,7 +218,7 @@ struct LiveCaptureView: View {
         spatialSession.status = .completed
         spatialSession.endedAt = Date()
         didRequestSpatialStart = false
-        isFocusModeActive = false
+        captureState = .idle
         recordingService.stopRecording()
         livePlacementState = .unavailable
     }
@@ -222,6 +227,13 @@ struct LiveCaptureView: View {
         guard spatialSession.status == .scanning else {
             livePlacementState = .unavailable
             return
+        }
+        if !captureState.isFocusActive {
+            captureState = scanProgress.captureLabel == "Room understood" ? .roomUnderstood : .roomScanning
+        } else if captureState == .focusPreparing, scanProgress.capturePath == .focusPointCloud {
+            captureState = scanProgress.hasGeometry ? .focusCapturing : .focusPreparing
+        } else if captureState == .focusCapturing, scanProgress.captureLabel == "Local detail captured" {
+            captureState = .focusCaptured
         }
         if let placement = scanProgress.placement {
             livePlacementState = LivePlacementState(
@@ -286,21 +298,31 @@ struct LiveCaptureView: View {
     }
 
     private func toggleFocusMode() {
-        if isFocusModeActive {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                isFocusModeActive = false
-            }
+        if captureState.isFocusActive {
+            endFocusMode()
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } else {
             withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                isFocusModeActive = true
+                captureState = .focusPreparing
+                scanProgress = LiveSpatialScanProgress(capturePath: .focusPointCloud)
             }
-            createLiveEvidence(
-                .mark,
-                geometryCaptureMode: .focusPointCloud,
-                geometryDetailLevel: .local,
-                geometrySource: .arkitPointCloud
-            )
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        }
+    }
+
+    private func endFocusMode() {
+        withAnimation(.easeOut(duration: 0.16)) {
+            captureState = .focusEnding
+        }
+        createLiveEvidence(
+            .mark,
+            geometryCaptureMode: .focusPointCloud,
+            geometryDetailLevel: .local,
+            geometrySource: .arkitPointCloud
+        )
+        scanProgress = LiveSpatialScanProgress(capturePath: .roomPlan)
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+            captureState = .roomScanning
         }
     }
 

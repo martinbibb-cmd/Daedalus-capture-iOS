@@ -258,6 +258,7 @@ public enum GeometrySource: String, Codable, CaseIterable, Hashable, Sendable {
     case roomPlan
     case arkitSceneReconstruction
     case arkitPointCloud
+    case detectedBoundingBox
     case userMarked
 }
 
@@ -268,6 +269,11 @@ public struct GeometryEvidenceMetadata: Codable, Hashable, Sendable {
     public var linkedRoomID: UUID?
     public var linkedAreaID: UUID?
     public var linkedItemID: UUID?
+    public var linkedPhotoID: UUID?
+    public var itemType: String?
+    public var estimatedWidth: Double?
+    public var estimatedHeight: Double?
+    public var estimatedDepth: Double?
     public var capturedAt: Date
     public var needsReview: Bool
     public var confidence: SpatialConfidence
@@ -279,6 +285,11 @@ public struct GeometryEvidenceMetadata: Codable, Hashable, Sendable {
         linkedRoomID: UUID? = nil,
         linkedAreaID: UUID? = nil,
         linkedItemID: UUID? = nil,
+        linkedPhotoID: UUID? = nil,
+        itemType: String? = nil,
+        estimatedWidth: Double? = nil,
+        estimatedHeight: Double? = nil,
+        estimatedDepth: Double? = nil,
         capturedAt: Date = Date(),
         needsReview: Bool = true,
         confidence: SpatialConfidence = .unknown
@@ -289,6 +300,11 @@ public struct GeometryEvidenceMetadata: Codable, Hashable, Sendable {
         self.linkedRoomID = linkedRoomID
         self.linkedAreaID = linkedAreaID
         self.linkedItemID = linkedItemID
+        self.linkedPhotoID = linkedPhotoID
+        self.itemType = itemType
+        self.estimatedWidth = estimatedWidth
+        self.estimatedHeight = estimatedHeight
+        self.estimatedDepth = estimatedDepth
         self.capturedAt = capturedAt
         self.needsReview = needsReview
         self.confidence = confidence

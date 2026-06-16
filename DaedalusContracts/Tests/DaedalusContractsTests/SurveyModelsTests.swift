@@ -78,9 +78,14 @@ final class SurveyModelsTests: XCTestCase {
         let metadata = GeometryEvidenceMetadata(
             captureMode: .focusPointCloud,
             detailLevel: .local,
-            source: .arkitPointCloud,
+            source: .detectedBoundingBox,
             linkedAreaID: UUID(uuidString: "00000000-0000-0000-0000-000000000111"),
             linkedItemID: UUID(uuidString: "00000000-0000-0000-0000-000000000222"),
+            linkedPhotoID: UUID(uuidString: "00000000-0000-0000-0000-000000000333"),
+            itemType: "boiler",
+            estimatedWidth: 0.72,
+            estimatedHeight: 0.88,
+            estimatedDepth: 0.34,
             capturedAt: Date(timeIntervalSince1970: 1_720_000_000),
             needsReview: true,
             confidence: .high
@@ -100,8 +105,13 @@ final class SurveyModelsTests: XCTestCase {
 
         XCTAssertEqual(decoded.geometryMetadata?.captureMode, .focusPointCloud)
         XCTAssertEqual(decoded.geometryMetadata?.detailLevel, .local)
-        XCTAssertEqual(decoded.geometryMetadata?.source, .arkitPointCloud)
+        XCTAssertEqual(decoded.geometryMetadata?.source, .detectedBoundingBox)
         XCTAssertEqual(decoded.geometryMetadata?.linkedItemID, metadata.linkedItemID)
+        XCTAssertEqual(decoded.geometryMetadata?.linkedPhotoID, metadata.linkedPhotoID)
+        XCTAssertEqual(decoded.geometryMetadata?.itemType, "boiler")
+        XCTAssertEqual(decoded.geometryMetadata?.estimatedWidth, 0.72)
+        XCTAssertEqual(decoded.geometryMetadata?.estimatedHeight, 0.88)
+        XCTAssertEqual(decoded.geometryMetadata?.estimatedDepth, 0.34)
         XCTAssertEqual(decoded.geometryMetadata?.confidence, .high)
 
         let legacyJSON = """

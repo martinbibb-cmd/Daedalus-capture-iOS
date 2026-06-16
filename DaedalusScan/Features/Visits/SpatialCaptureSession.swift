@@ -83,6 +83,85 @@ enum LiveSpatialCapturePath: String, Codable, Hashable {
     case focusPointCloud
 }
 
+enum LiveCaptureState: String, Codable, CaseIterable, Hashable {
+    case idle
+    case roomScanning
+    case roomUnderstood
+    case focusPreparing
+    case focusCapturing
+    case focusCaptured
+    case focusEnding
+    case error
+
+    var isFocusActive: Bool {
+        switch self {
+        case .focusPreparing, .focusCapturing, .focusCaptured, .focusEnding:
+            return true
+        case .idle, .roomScanning, .roomUnderstood, .error:
+            return false
+        }
+    }
+}
+
+enum MeasuredObjectType: String, Codable, CaseIterable, Identifiable, Hashable {
+    case boiler
+    case cylinder
+    case radiator
+    case gasMeter
+    case electricMeter
+    case control
+    case pump
+    case valve
+    case cupboard
+    case other
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .boiler: return "Boiler"
+        case .cylinder: return "Cylinder"
+        case .radiator: return "Radiator"
+        case .gasMeter: return "Gas Meter"
+        case .electricMeter: return "Electric Meter"
+        case .control: return "Control"
+        case .pump: return "Pump"
+        case .valve: return "Valve"
+        case .cupboard: return "Cupboard"
+        case .other: return "Other"
+        }
+    }
+
+    var componentSubtype: SystemComponentSubtype {
+        switch self {
+        case .boiler:
+            return .unknownHeatSource
+        case .cylinder:
+            return .unventedCylinder
+        case .radiator:
+            return .radiatorUncontrolled
+        case .gasMeter:
+            return .gasMeter
+        case .electricMeter:
+            return .otherInfrastructure
+        case .control:
+            return .programmer
+        case .pump:
+            return .pump
+        case .valve:
+            return .zoneValve
+        case .cupboard, .other:
+            return .otherInfrastructure
+        }
+    }
+}
+
+struct EstimatedObjectDimensions: Codable, Hashable {
+    var width: Double
+    var height: Double
+    var depth: Double
+}
+
 struct LiveSpatialScanProgress: Codable, Hashable {
     var meshAnchorCount: Int
     var planeAnchorCount: Int

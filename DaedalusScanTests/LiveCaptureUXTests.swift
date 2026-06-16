@@ -95,6 +95,37 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertEqual(exportedEvidence.geometryMetadata?.source, .roomPlan)
     }
 
+    func testTappedObjectSavesEstimatedDimensionsAsReviewablePhotoEvidence() throws {
+        let harness = try makeHarness()
+        let linkedPhotoID = UUID(uuidString: "00000000-0000-0000-0000-000000000777")!
+        let componentID = try XCTUnwrap(
+            harness.viewModel.addDetectedObjectMeasurementEvidence(
+                to: harness.visitID,
+                itemType: .boiler,
+                dimensions: EstimatedObjectDimensions(width: 0.72, height: 0.88, depth: 0.34),
+                linkedPhotoID: linkedPhotoID,
+                confidence: .medium
+            )
+        )
+
+        let component = try XCTUnwrap(harness.viewModel.component(visitID: harness.visitID, componentID: componentID))
+        let evidence = try XCTUnwrap(component.evidence.first)
+        XCTAssertEqual(component.name, "Boiler")
+        XCTAssertEqual(component.componentAttributes["geometryCaptureMode"], GeometryCaptureMode.roomPlan.rawValue)
+        XCTAssertEqual(component.componentAttributes["geometrySource"], GeometrySource.detectedBoundingBox.rawValue)
+        XCTAssertEqual(component.componentAttributes["linkedPhotoID"], linkedPhotoID.uuidString)
+        XCTAssertEqual(evidence.reviewStatus, .needsReview)
+        XCTAssertEqual(evidence.geometryMetadata?.captureMode, .roomPlan)
+        XCTAssertEqual(evidence.geometryMetadata?.source, .detectedBoundingBox)
+        XCTAssertEqual(evidence.geometryMetadata?.detailLevel, .component)
+        XCTAssertEqual(evidence.geometryMetadata?.linkedPhotoID, linkedPhotoID)
+        XCTAssertEqual(evidence.geometryMetadata?.itemType, MeasuredObjectType.boiler.rawValue)
+        XCTAssertEqual(evidence.geometryMetadata?.estimatedWidth, 0.72)
+        XCTAssertEqual(evidence.geometryMetadata?.estimatedHeight, 0.88)
+        XCTAssertEqual(evidence.geometryMetadata?.estimatedDepth, 0.34)
+        XCTAssertEqual(evidence.geometryMetadata?.needsReview, true)
+    }
+
     func testLivePhotoAndSafetyUseEvidenceActionsWithoutClassification() throws {
         let harness = try makeHarness()
         let photoID = try XCTUnwrap(
@@ -334,6 +365,7 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertTrue(source.contains("Room understood"), "Live survey should expose clean room capture completion")
         XCTAssertTrue(source.contains("Needs another angle"), "Live survey should expose plain fallback guidance")
         XCTAssertTrue(source.contains("\"End\""), "Live survey should expose an explicit route out")
+        XCTAssertFalse(source.contains("Room understood\"), systemImage"), "Live survey should avoid duplicate Room understood status rows")
 
         let lifecycleSource = try sourceText(relativePath: "DaedalusScan/Features/Visits/TwinLifecycleViews.swift")
         XCTAssertTrue(lifecycleSource.contains("\"Resume Survey\""), "Review should expose a Resume Survey action")
@@ -375,6 +407,26 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertFalse(makeUIViewSource.contains("RoomCaptureView("), "Startup should not eagerly create RoomCaptureView before scanning")
         XCTAssertTrue(source.contains("ensureSceneView()"), "AR fallback/focus renderer should be lazy")
         XCTAssertTrue(source.contains("ensureRoomCaptureView()"), "RoomPlan renderer should be lazy")
+    }
+
+    func testCaptureStateMachineSeparatesRoomAndFocusModes() throws {
+        let sessionSource = try sourceText(relativePath: "DaedalusScan/Features/Visits/SpatialCaptureSession.swift")
+        for state in ["idle", "roomScanning", "roomUnderstood", "focusPreparing", "focusCapturing", "focusCaptured", "focusEnding", "error"] {
+            XCTAssertTrue(sessionSource.contains("case \(state)"), "Capture state should include \(state)")
+        }
+
+        let captureSource = try sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureView.swift")
+        XCTAssertTrue(captureSource.contains("captureState = .focusPreparing"))
+        XCTAssertTrue(captureSource.contains("captureState = .focusEnding"))
+        XCTAssertTrue(captureSource.contains("captureState = .roomScanning"))
+        XCTAssertFalse(captureSource.contains("@State private var isFocusModeActive"), "Focus mode should derive from explicit capture state")
+
+        let rendererSource = try sourceText(relativePath: "DaedalusScan/Platform/LiveSpatialCaptureView.swift")
+        XCTAssertTrue(rendererSource.contains("stopSessions()"), "Mode changes should stop the previous capture path")
+        XCTAssertTrue(rendererSource.contains("clearTransientOverlays()"), "Mode changes should clear stale overlays")
+        XCTAssertTrue(rendererSource.contains("roomCaptureView?.captureSession.stop()"), "Focus mode should stop RoomPlan")
+        XCTAssertTrue(rendererSource.contains("sceneView?.session.pause()"), "Room mode should pause ARKit focus capture")
+        XCTAssertTrue(rendererSource.contains("maximumCount: 1_500"), "Focus point rendering should be capped")
     }
 
     private struct Harness {

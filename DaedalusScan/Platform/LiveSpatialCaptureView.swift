@@ -8,7 +8,7 @@ import SwiftUI
 struct LiveSpatialCaptureView: UIViewRepresentable {
     @Binding var progress: LiveSpatialScanProgress
     let isScanning: Bool
-    let isFocusModeActive: Bool
+    let captureState: LiveCaptureState
 
     func makeCoordinator() -> Coordinator {
         Coordinator(progress: $progress)
@@ -18,13 +18,13 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
         let container = UIView(frame: .zero)
         context.coordinator.containerView = container
         context.coordinator.configureCaptureAvailability()
-        context.coordinator.setFocusMode(isFocusModeActive)
+        context.coordinator.setCaptureState(captureState)
         context.coordinator.setScanning(isScanning)
         return container
     }
 
     func updateUIView(_ uiView: UIView, context: Context) {
-        context.coordinator.setFocusMode(isFocusModeActive)
+        context.coordinator.setCaptureState(captureState)
         context.coordinator.setScanning(isScanning)
     }
 
@@ -35,7 +35,7 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
     final class Coordinator: NSObject, ARSCNViewDelegate {
         private var progress: Binding<LiveSpatialScanProgress>
         private var isRunning = false
-        private var isFocusModeActive = false
+        private var captureState: LiveCaptureState = .idle
         private var meshAnchorIDs = Set<String>()
         private var planeAnchorIDs = Set<String>()
         private var lastProgressUpdate = Date.distantPast
@@ -84,16 +84,22 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
             }
         }
 
-        func setFocusMode(_ enabled: Bool) {
-            guard enabled != isFocusModeActive else { return }
-            isFocusModeActive = enabled
+        func setCaptureState(_ state: LiveCaptureState) {
+            guard state != captureState else { return }
+            let oldState = captureState
+            captureState = state
             sceneView?.debugOptions = []
+            clearTransientOverlays()
             guard isRunning else { return }
-            runSurveySession(resetTracking: false, removeExistingAnchors: !enabled)
+            if oldState.isFocusActive != state.isFocusActive {
+                stopSessions()
+            }
+            runSurveySession(resetTracking: false, removeExistingAnchors: true)
         }
 
         func stopSessions() {
             sceneView?.session.pause()
+            clearTransientOverlays()
             #if canImport(RoomPlan)
             if #available(iOS 16.0, *) {
                 roomCaptureView?.captureSession.stop()
@@ -102,7 +108,7 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
         }
 
         private func runSurveySession(resetTracking: Bool = true, removeExistingAnchors: Bool = true) {
-            if isFocusModeActive {
+            if captureState.isFocusActive {
                 runARKitSession(
                     resetTracking: resetTracking,
                     removeExistingAnchors: removeExistingAnchors,
@@ -212,11 +218,13 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
 
             if let meshAnchor = anchor as? ARMeshAnchor {
                 node.geometry = nil
-                if isFocusModeActive {
+                if captureState.isFocusActive {
                     node.addChildNode(focusPointCloudNode(for: meshAnchor.geometry))
                 }
             } else if let planeAnchor = anchor as? ARPlaneAnchor {
-                node.addChildNode(planeOutlineNode(for: planeAnchor))
+                if !captureState.isFocusActive {
+                    node.addChildNode(planeOutlineNode(for: planeAnchor))
+                }
             }
         }
 
@@ -251,7 +259,7 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
         }
 
         private func focusPointCloudNode(for meshGeometry: ARMeshGeometry) -> SCNNode {
-            let vertices = sampledMeshVertices(from: meshGeometry, maximumCount: 220)
+            let vertices = sampledMeshVertices(from: meshGeometry, maximumCount: 1_500)
             guard !vertices.isEmpty else {
                 return SCNNode()
             }
@@ -297,8 +305,8 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
 
         private func outlineMaterial() -> SCNMaterial {
             let material = SCNMaterial()
-            material.diffuse.contents = UIColor.white.withAlphaComponent(isFocusModeActive ? 0.96 : 0.88)
-            material.emission.contents = UIColor.white.withAlphaComponent(isFocusModeActive ? 0.52 : 0.36)
+            material.diffuse.contents = UIColor.white.withAlphaComponent(0.88)
+            material.emission.contents = UIColor.white.withAlphaComponent(0.36)
             material.lightingModel = .constant
             material.isDoubleSided = true
             material.readsFromDepthBuffer = true
@@ -335,8 +343,17 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
                     y: Double(anchor.transform.columns.3.y),
                     z: Double(anchor.transform.columns.3.z)
                 ),
-                capturePath: isFocusModeActive ? .focusPointCloud : .arkitFallback
+                capturePath: captureState.isFocusActive ? .focusPointCloud : .arkitFallback
             )
+        }
+
+        private func clearTransientOverlays() {
+            meshAnchorIDs.removeAll()
+            planeAnchorIDs.removeAll()
+            sceneView?.scene.rootNode.childNodes.forEach { node in
+                node.geometry = nil
+                node.childNodes.forEach { $0.removeFromParentNode() }
+            }
         }
 
         private func publishARProgress(

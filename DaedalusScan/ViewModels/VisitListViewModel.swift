@@ -755,6 +755,86 @@ public final class VisitListViewModel: ObservableObject {
         return componentID
     }
 
+    @discardableResult
+    func addDetectedObjectMeasurementEvidence(
+        to visitID: UUID,
+        itemType: MeasuredObjectType,
+        dimensions: EstimatedObjectDimensions,
+        linkedRoomID: UUID? = nil,
+        linkedPhotoID: UUID? = nil,
+        placement: SpatialPlacement? = nil,
+        confidence: SpatialConfidence = .medium
+    ) -> UUID? {
+        guard let componentID = addSpatialObject(
+            to: visitID,
+            kind: itemType.componentSubtype.legacyKind,
+            subtype: itemType.componentSubtype,
+            areaID: linkedRoomID,
+            placement: placement ?? SpatialPlacement(captureState: .approximate, confidence: confidence)
+        ) else {
+            return nil
+        }
+        guard let visitIndex = indexOfVisit(visitID),
+              let componentIndex = indexOfComponent(componentID, in: visitIndex) else {
+            return componentID
+        }
+
+        let metadata = GeometryEvidenceMetadata(
+            captureMode: .roomPlan,
+            detailLevel: .component,
+            source: .detectedBoundingBox,
+            linkedRoomID: linkedRoomID,
+            linkedAreaID: linkedRoomID,
+            linkedItemID: componentID,
+            linkedPhotoID: linkedPhotoID,
+            itemType: itemType.rawValue,
+            estimatedWidth: dimensions.width,
+            estimatedHeight: dimensions.height,
+            estimatedDepth: dimensions.depth,
+            needsReview: true,
+            confidence: confidence
+        )
+        let note = [
+            "\(itemType.title) approximate measurement",
+            "Width: \(dimensions.width)",
+            "Height: \(dimensions.height)",
+            "Depth: \(dimensions.depth)"
+        ].joined(separator: "\n")
+
+        do {
+            let url = try repository.makeEvidenceFileURL(fileExtension: "txt", visitID: visitID, componentID: componentID)
+            try Data(note.utf8).write(to: url, options: .atomic)
+            let evidence = Evidence(
+                kind: .textNote,
+                localFileName: url.lastPathComponent,
+                reviewStatus: .needsReview,
+                reviewNotes: "\(itemType.title) estimated dimensions",
+                geometryMetadata: metadata
+            )
+            visits[visitIndex].components[componentIndex].evidence.append(evidence)
+        } catch {
+            errorMessage = error.localizedDescription
+            return componentID
+        }
+
+        visits[visitIndex].components[componentIndex].name = itemType.title
+        visits[visitIndex].components[componentIndex].reviewStatus = .needsReview
+        visits[visitIndex].components[componentIndex].componentAttributes["captureSource"] = "Room Mode"
+        visits[visitIndex].components[componentIndex].componentAttributes["geometryCaptureMode"] = GeometryCaptureMode.roomPlan.rawValue
+        visits[visitIndex].components[componentIndex].componentAttributes["geometryDetailLevel"] = GeometryDetailLevel.component.rawValue
+        visits[visitIndex].components[componentIndex].componentAttributes["geometrySource"] = GeometrySource.detectedBoundingBox.rawValue
+        visits[visitIndex].components[componentIndex].componentAttributes["itemType"] = itemType.rawValue
+        visits[visitIndex].components[componentIndex].componentAttributes["estimatedWidth"] = String(dimensions.width)
+        visits[visitIndex].components[componentIndex].componentAttributes["estimatedHeight"] = String(dimensions.height)
+        visits[visitIndex].components[componentIndex].componentAttributes["estimatedDepth"] = String(dimensions.depth)
+        if let linkedPhotoID {
+            visits[visitIndex].components[componentIndex].componentAttributes["linkedPhotoID"] = linkedPhotoID.uuidString
+        }
+        markLocalChanges(at: visitIndex)
+        persistChanges()
+        return componentID
+    }
+
     private func attachLiveVoicePlaceholder(toComponent componentID: UUID, in visitID: UUID) {
         guard let visitIndex = indexOfVisit(visitID),
               let componentIndex = indexOfComponent(componentID, in: visitIndex) else {
