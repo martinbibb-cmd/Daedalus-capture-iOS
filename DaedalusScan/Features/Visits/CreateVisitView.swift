@@ -32,7 +32,8 @@ struct CreateVisitView: View {
             Form {
                 Section("Property Twin") {
                     TextField("Property reference (required)", text: $reference)
-                        .textInputAutocapitalization(.characters)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                         .focused($focusedField, equals: .reference)
                         .submitLabel(.next)
                     LabeledContent("Twin Layers", value: "System · House · Home")

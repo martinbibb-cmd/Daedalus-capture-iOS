@@ -359,6 +359,24 @@ final class LiveCaptureUXTests: XCTestCase {
         }
     }
 
+    func testCreateVisitReferenceDoesNotForceCapsLock() throws {
+        let source = try sourceText(relativePath: "DaedalusScan/Features/Visits/CreateVisitView.swift")
+        XCTAssertTrue(source.contains(".textInputAutocapitalization(.never)"), "Visit reference input should preserve user casing")
+        XCTAssertFalse(source.contains("TextField(\"Property reference (required)\", text: $reference)\n                        .textInputAutocapitalization(.characters)"))
+    }
+
+    func testLiveSpatialCaptureDoesNotEagerlyCreateHeavyRenderers() throws {
+        let source = try sourceText(relativePath: "DaedalusScan/Platform/LiveSpatialCaptureView.swift")
+        let makeUIViewStart = try XCTUnwrap(source.range(of: "func makeUIView(context: Context) -> UIView"))
+        let makeUIViewEnd = try XCTUnwrap(source[makeUIViewStart.lowerBound...].range(of: "func updateUIView"))
+        let makeUIViewSource = String(source[makeUIViewStart.lowerBound..<makeUIViewEnd.lowerBound])
+
+        XCTAssertFalse(makeUIViewSource.contains("ARSCNView("), "Startup should not eagerly create ARSCNView before scanning/focus")
+        XCTAssertFalse(makeUIViewSource.contains("RoomCaptureView("), "Startup should not eagerly create RoomCaptureView before scanning")
+        XCTAssertTrue(source.contains("ensureSceneView()"), "AR fallback/focus renderer should be lazy")
+        XCTAssertTrue(source.contains("ensureRoomCaptureView()"), "RoomPlan renderer should be lazy")
+    }
+
     private struct Harness {
         let viewModel: VisitListViewModel
         let repository: VisitRepository

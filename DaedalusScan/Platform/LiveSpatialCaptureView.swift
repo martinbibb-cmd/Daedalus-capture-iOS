@@ -16,26 +16,8 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> UIView {
         let container = UIView(frame: .zero)
-
-        let arView = ARSCNView(frame: .zero)
-        arView.delegate = context.coordinator
-        arView.automaticallyUpdatesLighting = true
-        arView.scene = SCNScene()
-        arView.debugOptions = []
-        context.coordinator.sceneView = arView
-        context.coordinator.add(arView, to: container)
-
-        #if canImport(RoomPlan)
-        if #available(iOS 16.0, *), RoomCaptureSession.isSupported {
-            let roomView = RoomCaptureView(frame: .zero)
-            roomView.captureSession.delegate = context.coordinator
-            context.coordinator.roomCaptureView = roomView
-            context.coordinator.usesRoomPlan = true
-            context.coordinator.add(roomView, to: container)
-            arView.isHidden = true
-        }
-        #endif
-
+        context.coordinator.containerView = container
+        context.coordinator.configureCaptureAvailability()
         context.coordinator.setFocusMode(isFocusModeActive)
         context.coordinator.setScanning(isScanning)
         return container
@@ -58,6 +40,7 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
         private var planeAnchorIDs = Set<String>()
         private var lastProgressUpdate = Date.distantPast
         var usesRoomPlan = false
+        weak var containerView: UIView?
         weak var sceneView: ARSCNView?
         #if canImport(RoomPlan)
         @available(iOS 16.0, *)
@@ -66,6 +49,18 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
 
         init(progress: Binding<LiveSpatialScanProgress>) {
             self.progress = progress
+        }
+
+        func configureCaptureAvailability() {
+            #if canImport(RoomPlan)
+            if #available(iOS 16.0, *) {
+                usesRoomPlan = RoomCaptureSession.isSupported
+            } else {
+                usesRoomPlan = false
+            }
+            #else
+            usesRoomPlan = false
+            #endif
         }
 
         func add(_ child: UIView, to container: UIView) {
@@ -118,7 +113,7 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
             }
 
             #if canImport(RoomPlan)
-            if #available(iOS 16.0, *), usesRoomPlan, let roomCaptureView {
+            if #available(iOS 16.0, *), usesRoomPlan, let roomCaptureView = ensureRoomCaptureView() {
                 sceneView?.session.pause()
                 sceneView?.isHidden = true
                 roomCaptureView.isHidden = false
@@ -144,20 +139,21 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
             capturePath: LiveSpatialCapturePath
         ) {
             guard ARWorldTrackingConfiguration.isSupported else { return }
+            guard let sceneView = ensureSceneView() else { return }
             #if canImport(RoomPlan)
             if #available(iOS 16.0, *) {
                 roomCaptureView?.captureSession.stop()
                 roomCaptureView?.isHidden = true
             }
             #endif
-            sceneView?.isHidden = false
+            sceneView.isHidden = false
             let configuration = ARWorldTrackingConfiguration()
             configuration.planeDetection = [.horizontal, .vertical]
             if sceneReconstruction,
                ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
                 configuration.sceneReconstruction = .mesh
             }
-            sceneView?.debugOptions = []
+            sceneView.debugOptions = []
             var options: ARSession.RunOptions = []
             if resetTracking {
                 options.insert(.resetTracking)
@@ -165,9 +161,40 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
             if removeExistingAnchors {
                 options.insert(.removeExistingAnchors)
             }
-            sceneView?.session.run(configuration, options: options)
+            sceneView.session.run(configuration, options: options)
             publishARProgress(capturePath: capturePath)
         }
+
+        private func ensureSceneView() -> ARSCNView? {
+            if let sceneView {
+                return sceneView
+            }
+            guard let containerView else { return nil }
+            let arView = ARSCNView(frame: .zero)
+            arView.delegate = self
+            arView.automaticallyUpdatesLighting = true
+            arView.scene = SCNScene()
+            arView.debugOptions = []
+            arView.isHidden = true
+            sceneView = arView
+            add(arView, to: containerView)
+            return arView
+        }
+
+        #if canImport(RoomPlan)
+        @available(iOS 16.0, *)
+        private func ensureRoomCaptureView() -> RoomCaptureView? {
+            if let roomCaptureView {
+                return roomCaptureView
+            }
+            guard let containerView else { return nil }
+            let roomView = RoomCaptureView(frame: .zero)
+            roomView.captureSession.delegate = self
+            roomCaptureView = roomView
+            add(roomView, to: containerView)
+            return roomView
+        }
+        #endif
 
         func renderer(_ renderer: SCNSceneRenderer, didAdd node: SCNNode, for anchor: ARAnchor) {
             updateNode(node, for: anchor)
