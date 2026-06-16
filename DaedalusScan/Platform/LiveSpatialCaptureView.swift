@@ -7,11 +7,12 @@ import SwiftUI
 
 struct LiveSpatialCaptureView: UIViewRepresentable {
     @Binding var progress: LiveSpatialScanProgress
+    @Binding var aim: LiveSpatialAim
     let isScanning: Bool
     let captureState: LiveCaptureState
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(progress: $progress)
+        Coordinator(progress: $progress, aim: $aim)
     }
 
     func makeUIView(context: Context) -> UIView {
@@ -34,11 +35,14 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
 
     final class Coordinator: NSObject, ARSCNViewDelegate {
         private var progress: Binding<LiveSpatialScanProgress>
+        private var aim: Binding<LiveSpatialAim>
         private var isRunning = false
         private var captureState: LiveCaptureState = .idle
         private var meshAnchorIDs = Set<String>()
         private var planeAnchorIDs = Set<String>()
         private var lastProgressUpdate = Date.distantPast
+        private var lastAimUpdate = Date.distantPast
+        private var revealedMapPoints: [SpatialMapPoint] = []
         var usesRoomPlan = false
         weak var containerView: UIView?
         weak var sceneView: ARSCNView?
@@ -47,8 +51,9 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
         weak var roomCaptureView: RoomCaptureView?
         #endif
 
-        init(progress: Binding<LiveSpatialScanProgress>) {
+        init(progress: Binding<LiveSpatialScanProgress>, aim: Binding<LiveSpatialAim>) {
             self.progress = progress
+            self.aim = aim
         }
 
         func configureCaptureAvailability() {
@@ -203,11 +208,13 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
         #endif
 
         func renderer(_ renderer: SCNSceneRenderer, didAdd node: SCNNode, for anchor: ARAnchor) {
+            publishAimIfNeeded()
             updateNode(node, for: anchor)
             record(anchor: anchor)
         }
 
         func renderer(_ renderer: SCNSceneRenderer, didUpdate node: SCNNode, for anchor: ARAnchor) {
+            publishAimIfNeeded()
             updateNode(node, for: anchor)
             record(anchor: anchor)
         }
@@ -332,6 +339,7 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
             } else {
                 return
             }
+            appendMapPoints(from: anchor)
             guard Date().timeIntervalSince(lastProgressUpdate) >= 0.25 else {
                 return
             }
@@ -367,7 +375,8 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
                 lastAnchorID: anchorID,
                 lastKnownPosition: position,
                 lastUpdatedAt: Date(),
-                capturePath: capturePath
+                capturePath: capturePath,
+                revealedMapPoints: revealedMapPoints
             )
             DispatchQueue.main.async {
                 self.progress.wrappedValue = updated
@@ -378,11 +387,139 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
             let updated = LiveSpatialScanProgress(
                 roomElementCount: elementCount,
                 lastUpdatedAt: updatedAt,
-                capturePath: .roomPlan
+                capturePath: .roomPlan,
+                revealedMapPoints: revealedMapPoints
             )
             DispatchQueue.main.async {
                 self.progress.wrappedValue = updated
             }
+        }
+
+        private func publishAimIfNeeded() {
+            guard Date().timeIntervalSince(lastAimUpdate) >= 0.25 else {
+                return
+            }
+            lastAimUpdate = Date()
+            guard let sceneView else { return }
+
+            let devicePosition = sceneView.session.currentFrame.map { frame in
+                SpatialPosition(
+                    x: Double(frame.camera.transform.columns.3.x),
+                    y: Double(frame.camera.transform.columns.3.y),
+                    z: Double(frame.camera.transform.columns.3.z)
+                )
+            }
+            let center = CGPoint(x: sceneView.bounds.midX, y: sceneView.bounds.midY)
+            let targetPosition = centerRaycastTarget(in: sceneView, at: center)
+
+            DispatchQueue.main.async {
+                self.aim.wrappedValue = LiveSpatialAim(
+                    devicePosition: devicePosition,
+                    targetPosition: targetPosition,
+                    updatedAt: Date()
+                )
+            }
+        }
+
+        @available(iOS 16.0, *)
+        fileprivate func publishRoomPlanAimIfNeeded(from session: RoomCaptureSession) {
+            guard Date().timeIntervalSince(lastAimUpdate) >= 0.25 else {
+                return
+            }
+            lastAimUpdate = Date()
+            let arSession = session.arSession
+            guard let frame = arSession.currentFrame else { return }
+
+            let devicePosition = SpatialPosition(
+                x: Double(frame.camera.transform.columns.3.x),
+                y: Double(frame.camera.transform.columns.3.y),
+                z: Double(frame.camera.transform.columns.3.z)
+            )
+            let targetPosition = forwardRaycastTarget(in: arSession, frame: frame)
+
+            DispatchQueue.main.async {
+                self.aim.wrappedValue = LiveSpatialAim(
+                    devicePosition: devicePosition,
+                    targetPosition: targetPosition,
+                    updatedAt: Date()
+                )
+            }
+        }
+
+        private func centerRaycastTarget(in sceneView: ARSCNView, at point: CGPoint) -> SpatialPosition? {
+            if let query = sceneView.raycastQuery(from: point, allowing: .estimatedPlane, alignment: .any),
+               let result = sceneView.session.raycast(query).first {
+                return SpatialPosition(
+                    x: Double(result.worldTransform.columns.3.x),
+                    y: Double(result.worldTransform.columns.3.y),
+                    z: Double(result.worldTransform.columns.3.z)
+                )
+            }
+
+            guard let frame = sceneView.session.currentFrame else {
+                return nil
+            }
+            return forwardRaycastTarget(in: sceneView.session, frame: frame)
+        }
+
+        private func forwardRaycastTarget(in session: ARSession, frame: ARFrame) -> SpatialPosition {
+            let transform = frame.camera.transform
+            let origin = transform.columns.3
+            let forward = simd_float3(-transform.columns.2.x, -transform.columns.2.y, -transform.columns.2.z)
+            let queryOrigin = simd_float3(origin.x, origin.y, origin.z)
+            let query = ARRaycastQuery(origin: queryOrigin, direction: forward, allowing: .estimatedPlane, alignment: .any)
+            if let result = session.raycast(query).first {
+                return SpatialPosition(
+                    x: Double(result.worldTransform.columns.3.x),
+                    y: Double(result.worldTransform.columns.3.y),
+                    z: Double(result.worldTransform.columns.3.z)
+                )
+            }
+            let target = queryOrigin + forward * 1.5
+            return SpatialPosition(x: Double(target.x), y: Double(target.y), z: Double(target.z))
+        }
+
+        private func appendMapPoints(from anchor: ARAnchor) {
+            if let meshAnchor = anchor as? ARMeshAnchor {
+                let points = sampledMapPoints(from: meshAnchor, maximumCount: 18)
+                revealedMapPoints.append(contentsOf: points)
+            } else if let planeAnchor = anchor as? ARPlaneAnchor {
+                let origin = anchor.transform.columns.3
+                let width = Double(max(planeAnchor.planeExtent.width, 0.08))
+                let depth = Double(max(planeAnchor.planeExtent.height, 0.08))
+                revealedMapPoints.append(contentsOf: [
+                    SpatialMapPoint(x: Double(origin.x) - width / 2, z: Double(origin.z) - depth / 2),
+                    SpatialMapPoint(x: Double(origin.x) + width / 2, z: Double(origin.z) - depth / 2),
+                    SpatialMapPoint(x: Double(origin.x) + width / 2, z: Double(origin.z) + depth / 2),
+                    SpatialMapPoint(x: Double(origin.x) - width / 2, z: Double(origin.z) + depth / 2)
+                ])
+            }
+
+            if revealedMapPoints.count > 240 {
+                revealedMapPoints.removeFirst(revealedMapPoints.count - 240)
+            }
+        }
+
+        private func sampledMapPoints(from meshAnchor: ARMeshAnchor, maximumCount: Int) -> [SpatialMapPoint] {
+            let source = meshAnchor.geometry.vertices
+            guard source.count > 0 else { return [] }
+
+            let sampleCount = min(source.count, maximumCount)
+            let step = max(source.count / sampleCount, 1)
+            let basePointer = source.buffer.contents().advanced(by: source.offset)
+            var points: [SpatialMapPoint] = []
+            points.reserveCapacity(sampleCount)
+
+            for vertexIndex in stride(from: 0, to: source.count, by: step) {
+                guard points.count < sampleCount else { break }
+                let vertexPointer = basePointer.advanced(by: vertexIndex * source.stride)
+                let values = vertexPointer.assumingMemoryBound(to: Float.self)
+                let local = simd_float4(values[0], values[1], values[2], 1)
+                let world = meshAnchor.transform * local
+                points.append(SpatialMapPoint(x: Double(world.x), z: Double(world.z), intensity: captureState.isFocusActive ? 0.55 : 1.0))
+            }
+
+            return points
         }
     }
 }
@@ -391,6 +528,7 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
 @available(iOS 16.0, *)
 extension LiveSpatialCaptureView.Coordinator: RoomCaptureSessionDelegate {
     func captureSession(_ session: RoomCaptureSession, didUpdate room: CapturedRoom) {
+        publishRoomPlanAimIfNeeded(from: session)
         let elementCount = room.walls.count + room.doors.count + room.windows.count + room.openings.count + room.objects.count
         publishRoomPlanProgress(elementCount: elementCount)
     }

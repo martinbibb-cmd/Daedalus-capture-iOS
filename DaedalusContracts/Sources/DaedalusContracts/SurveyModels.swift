@@ -274,6 +274,8 @@ public struct GeometryEvidenceMetadata: Codable, Hashable, Sendable {
     public var estimatedWidth: Double?
     public var estimatedHeight: Double?
     public var estimatedDepth: Double?
+    public var devicePosition: SpatialPosition?
+    public var targetPosition: SpatialPosition?
     public var capturedAt: Date
     public var needsReview: Bool
     public var confidence: SpatialConfidence
@@ -290,6 +292,8 @@ public struct GeometryEvidenceMetadata: Codable, Hashable, Sendable {
         estimatedWidth: Double? = nil,
         estimatedHeight: Double? = nil,
         estimatedDepth: Double? = nil,
+        devicePosition: SpatialPosition? = nil,
+        targetPosition: SpatialPosition? = nil,
         capturedAt: Date = Date(),
         needsReview: Bool = true,
         confidence: SpatialConfidence = .unknown
@@ -305,6 +309,8 @@ public struct GeometryEvidenceMetadata: Codable, Hashable, Sendable {
         self.estimatedWidth = estimatedWidth
         self.estimatedHeight = estimatedHeight
         self.estimatedDepth = estimatedDepth
+        self.devicePosition = devicePosition
+        self.targetPosition = targetPosition
         self.capturedAt = capturedAt
         self.needsReview = needsReview
         self.confidence = confidence

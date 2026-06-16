@@ -86,6 +86,8 @@ final class SurveyModelsTests: XCTestCase {
             estimatedWidth: 0.72,
             estimatedHeight: 0.88,
             estimatedDepth: 0.34,
+            devicePosition: SpatialPosition(x: 1, y: 1.4, z: -0.5),
+            targetPosition: SpatialPosition(x: 2, y: 0.8, z: -1.5),
             capturedAt: Date(timeIntervalSince1970: 1_720_000_000),
             needsReview: true,
             confidence: .high
@@ -112,6 +114,8 @@ final class SurveyModelsTests: XCTestCase {
         XCTAssertEqual(decoded.geometryMetadata?.estimatedWidth, 0.72)
         XCTAssertEqual(decoded.geometryMetadata?.estimatedHeight, 0.88)
         XCTAssertEqual(decoded.geometryMetadata?.estimatedDepth, 0.34)
+        XCTAssertEqual(decoded.geometryMetadata?.devicePosition, metadata.devicePosition)
+        XCTAssertEqual(decoded.geometryMetadata?.targetPosition, metadata.targetPosition)
         XCTAssertEqual(decoded.geometryMetadata?.confidence, .high)
 
         let legacyJSON = """

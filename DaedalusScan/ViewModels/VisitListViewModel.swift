@@ -675,7 +675,9 @@ public final class VisitListViewModel: ObservableObject {
         geometryCaptureMode: GeometryCaptureMode = .photoOnly,
         geometryDetailLevel: GeometryDetailLevel = .component,
         geometrySource: GeometrySource = .userMarked,
-        geometryConfidence: SpatialConfidence = .unknown
+        geometryConfidence: SpatialConfidence = .unknown,
+        devicePosition: SpatialPosition? = nil,
+        targetPosition: SpatialPosition? = nil
     ) -> UUID? {
         guard let componentID = addSpatialObject(
             to: visitID,
@@ -729,6 +731,16 @@ public final class VisitListViewModel: ObservableObject {
         attributes["geometryCaptureMode"] = geometryCaptureMode.rawValue
         attributes["geometryDetailLevel"] = geometryDetailLevel.rawValue
         attributes["geometrySource"] = geometrySource.rawValue
+        if let devicePosition {
+            attributes["devicePositionX"] = String(devicePosition.x)
+            attributes["devicePositionY"] = String(devicePosition.y)
+            attributes["devicePositionZ"] = String(devicePosition.z)
+        }
+        if let targetPosition {
+            attributes["targetPositionX"] = String(targetPosition.x)
+            attributes["targetPositionY"] = String(targetPosition.y)
+            attributes["targetPositionZ"] = String(targetPosition.z)
+        }
         visits[visitIndex].components[componentIndex].componentAttributes = attributes
         visits[visitIndex].components[componentIndex].name = kind.title
         visits[visitIndex].components[componentIndex].reviewStatus = kind == .safety ? .needsAttention : .unreviewed
@@ -737,6 +749,8 @@ public final class VisitListViewModel: ObservableObject {
             detailLevel: geometryDetailLevel,
             source: geometrySource,
             linkedItemID: componentID,
+            devicePosition: devicePosition,
+            targetPosition: targetPosition,
             needsReview: true,
             confidence: geometryConfidence
         )
