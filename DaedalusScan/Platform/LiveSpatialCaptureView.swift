@@ -92,42 +92,113 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
         }
 
         private func updateNode(_ node: SCNNode, for anchor: ARAnchor) {
-            if anchor is ARMeshAnchor {
+            node.geometry = nil
+            node.childNodes.forEach { $0.removeFromParentNode() }
+
+            if let meshAnchor = anchor as? ARMeshAnchor {
                 node.geometry = nil
-                node.childNodes.forEach { $0.removeFromParentNode() }
                 if isFocusModeActive {
-                    node.addChildNode(focusMarkerNode())
+                    node.addChildNode(focusPointCloudNode(for: meshAnchor.geometry))
                 }
             } else if let planeAnchor = anchor as? ARPlaneAnchor {
-                let plane = SCNPlane(width: CGFloat(planeAnchor.planeExtent.width), height: CGFloat(planeAnchor.planeExtent.height))
-                node.geometry = plane
-                node.eulerAngles.x = -.pi / 2
-                applySurveyLineMaterial(to: node.geometry)
+                node.addChildNode(planeOutlineNode(for: planeAnchor))
             }
         }
 
-        private func applySurveyLineMaterial(to geometry: SCNGeometry?) {
-            guard let material = geometry?.firstMaterial else { return }
-            material.diffuse.contents = isFocusModeActive
-                ? UIColor.systemYellow.withAlphaComponent(0.22)
-                : UIColor.white.withAlphaComponent(0.16)
-            material.emission.contents = isFocusModeActive
-                ? UIColor.systemYellow.withAlphaComponent(0.10)
-                : UIColor.white.withAlphaComponent(0.06)
-            material.fillMode = .fill
+        private func planeOutlineNode(for planeAnchor: ARPlaneAnchor) -> SCNNode {
+            let width = CGFloat(max(planeAnchor.planeExtent.width, 0.08))
+            let height = CGFloat(max(planeAnchor.planeExtent.height, 0.08))
+            let centerX = CGFloat(planeAnchor.center.x)
+            let centerZ = CGFloat(planeAnchor.center.z)
+            let halfWidth = width / 2
+            let halfHeight = height / 2
+
+            let vertices = [
+                SCNVector3(centerX - halfWidth, 0, centerZ - halfHeight),
+                SCNVector3(centerX + halfWidth, 0, centerZ - halfHeight),
+                SCNVector3(centerX + halfWidth, 0, centerZ + halfHeight),
+                SCNVector3(centerX - halfWidth, 0, centerZ + halfHeight)
+            ]
+            let source = SCNGeometrySource(vertices: vertices)
+            let indices: [Int32] = [0, 1, 1, 2, 2, 3, 3, 0]
+            let element = indices.withUnsafeBufferPointer { pointer in
+                SCNGeometryElement(
+                    data: Data(buffer: pointer),
+                    primitiveType: .line,
+                    primitiveCount: 4,
+                    bytesPerIndex: MemoryLayout<Int32>.size
+                )
+            }
+            let geometry = SCNGeometry(sources: [source], elements: [element])
+            geometry.firstMaterial = outlineMaterial()
+
+            return SCNNode(geometry: geometry)
+        }
+
+        private func focusPointCloudNode(for meshGeometry: ARMeshGeometry) -> SCNNode {
+            let vertices = sampledMeshVertices(from: meshGeometry, maximumCount: 220)
+            guard !vertices.isEmpty else {
+                return SCNNode()
+            }
+
+            let source = SCNGeometrySource(vertices: vertices)
+            let indices = (0..<Int32(vertices.count)).map { $0 }
+            let element = indices.withUnsafeBufferPointer { pointer in
+                SCNGeometryElement(
+                    data: Data(buffer: pointer),
+                    primitiveType: .point,
+                    primitiveCount: vertices.count,
+                    bytesPerIndex: MemoryLayout<Int32>.size
+                )
+            }
+            element.pointSize = 5
+            element.minimumPointScreenSpaceRadius = 2
+            element.maximumPointScreenSpaceRadius = 7
+
+            let geometry = SCNGeometry(sources: [source], elements: [element])
+            geometry.firstMaterial = focusPointMaterial()
+            return SCNNode(geometry: geometry)
+        }
+
+        private func sampledMeshVertices(from meshGeometry: ARMeshGeometry, maximumCount: Int) -> [SCNVector3] {
+            let source = meshGeometry.vertices
+            guard source.count > 0 else { return [] }
+
+            let sampleCount = min(source.count, maximumCount)
+            let step = max(source.count / sampleCount, 1)
+            let basePointer = source.buffer.contents().advanced(by: source.offset)
+            var vertices: [SCNVector3] = []
+            vertices.reserveCapacity(sampleCount)
+
+            for vertexIndex in stride(from: 0, to: source.count, by: step) {
+                guard vertices.count < sampleCount else { break }
+                let vertexPointer = basePointer.advanced(by: vertexIndex * source.stride)
+                let values = vertexPointer.assumingMemoryBound(to: Float.self)
+                vertices.append(SCNVector3(values[0], values[1], values[2]))
+            }
+
+            return vertices
+        }
+
+        private func outlineMaterial() -> SCNMaterial {
+            let material = SCNMaterial()
+            material.diffuse.contents = UIColor.white.withAlphaComponent(isFocusModeActive ? 0.96 : 0.88)
+            material.emission.contents = UIColor.white.withAlphaComponent(isFocusModeActive ? 0.52 : 0.36)
+            material.lightingModel = .constant
             material.isDoubleSided = true
             material.readsFromDepthBuffer = true
             material.writesToDepthBuffer = false
+            return material
         }
 
-        private func focusMarkerNode() -> SCNNode {
-            let geometry = SCNSphere(radius: 0.035)
-            geometry.firstMaterial?.diffuse.contents = UIColor.systemYellow.withAlphaComponent(0.18)
-            geometry.firstMaterial?.emission.contents = UIColor.systemYellow.withAlphaComponent(0.08)
-            geometry.firstMaterial?.isDoubleSided = true
-
-            let node = SCNNode(geometry: geometry)
-            return node
+        private func focusPointMaterial() -> SCNMaterial {
+            let material = SCNMaterial()
+            material.diffuse.contents = UIColor.white.withAlphaComponent(0.92)
+            material.emission.contents = UIColor.white.withAlphaComponent(0.44)
+            material.lightingModel = .constant
+            material.readsFromDepthBuffer = true
+            material.writesToDepthBuffer = false
+            return material
         }
 
         private func record(anchor: ARAnchor) {
