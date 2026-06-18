@@ -4,12 +4,15 @@ import RoomPlan
 #endif
 import SceneKit
 import SwiftUI
+import UIKit
 
 struct LiveSpatialCaptureView: UIViewRepresentable {
     @Binding var progress: LiveSpatialScanProgress
     @Binding var aim: LiveSpatialAim
+    let snapshotRequestID: UUID?
     let isScanning: Bool
     let captureState: LiveCaptureState
+    let onSnapshotCaptured: (Data) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(progress: $progress, aim: $aim)
@@ -27,6 +30,7 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
     func updateUIView(_ uiView: UIView, context: Context) {
         context.coordinator.setCaptureState(captureState)
         context.coordinator.setScanning(isScanning)
+        context.coordinator.captureSnapshotIfNeeded(requestID: snapshotRequestID, onCaptured: onSnapshotCaptured)
     }
 
     static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
@@ -42,6 +46,7 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
         private var planeAnchorIDs = Set<String>()
         private var lastProgressUpdate = Date.distantPast
         private var lastAimUpdate = Date.distantPast
+        private var lastSnapshotRequestID: UUID?
         var usesRoomPlan = false
         weak var containerView: UIView?
         weak var sceneView: ARSCNView?
@@ -111,6 +116,15 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
             }
         }
 
+        func captureSnapshotIfNeeded(requestID: UUID?, onCaptured: @escaping (Data) -> Void) {
+            guard let requestID, requestID != lastSnapshotRequestID else { return }
+            lastSnapshotRequestID = requestID
+            Task { @MainActor in
+                guard let data = self.captureVisibleFrameData() else { return }
+                onCaptured(data)
+            }
+        }
+
         private func performSessionMutation(_ operation: @escaping @MainActor () -> Void) {
             Task { @MainActor in
                 operation()
@@ -125,6 +139,31 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
                 roomCaptureView?.captureSession.stop()
             }
             #endif
+        }
+
+        @MainActor
+        private func captureVisibleFrameData() -> Data? {
+            if let sceneView, !sceneView.isHidden {
+                return sceneView.snapshot().jpegData(compressionQuality: 0.86)
+            }
+            #if canImport(RoomPlan)
+            if #available(iOS 16.0, *),
+               let roomCaptureView,
+               !roomCaptureView.isHidden {
+                return render(view: roomCaptureView)?.jpegData(compressionQuality: 0.86)
+            }
+            #endif
+            guard let containerView else { return nil }
+            return render(view: containerView)?.jpegData(compressionQuality: 0.86)
+        }
+
+        @MainActor
+        private func render(view: UIView) -> UIImage? {
+            guard view.bounds.width > 1, view.bounds.height > 1 else { return nil }
+            let renderer = UIGraphicsImageRenderer(bounds: view.bounds)
+            return renderer.image { _ in
+                view.drawHierarchy(in: view.bounds, afterScreenUpdates: false)
+            }
         }
 
         private func runSurveySession(resetTracking: Bool = true, removeExistingAnchors: Bool = true) {

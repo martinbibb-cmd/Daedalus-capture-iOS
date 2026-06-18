@@ -16,6 +16,7 @@ struct LiveCaptureView: View {
     @State private var spatialAim = LiveSpatialAim.empty
     @State private var confirmation: LiveCaptureConfirmation?
     @State private var captureState: LiveCaptureState = .idle
+    @State private var snapshotRequestID: UUID?
     @State private var didRequestSpatialStart = false
 
     private var isFocusModeActive: Bool {
@@ -71,8 +72,10 @@ struct LiveCaptureView: View {
             LiveSpatialCaptureView(
                 progress: $scanProgress,
                 aim: $spatialAim,
+                snapshotRequestID: snapshotRequestID,
                 isScanning: spatialSession.status == .scanning,
-                captureState: captureState
+                captureState: captureState,
+                onSnapshotCaptured: saveCapturedFrame
             )
                 .ignoresSafeArea()
 
@@ -304,8 +307,12 @@ struct LiveCaptureView: View {
     }
 
     private func capAction() {
-        createLiveEvidence(.photo, photoData: nil)
+        snapshotRequestID = UUID()
         UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+    }
+
+    private func saveCapturedFrame(_ data: Data) {
+        createLiveEvidence(.photo, photoData: data)
     }
 
     private func endFocusMode() {
