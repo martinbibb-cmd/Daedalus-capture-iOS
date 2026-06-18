@@ -8,7 +8,6 @@ struct LiveCaptureView: View {
 
     @StateObject private var recordingService: ContinuousVisitRecordingService
     @State private var isPresentingReview = false
-    @State private var isPresentingPhotoCapture = false
 
     @State private var capturedEvidenceComponentID: UUID?
     @State private var spatialSession = SpatialCaptureSession()
@@ -51,11 +50,6 @@ struct LiveCaptureView: View {
                     }
                     .navigationDestination(isPresented: $isPresentingReview) {
                         CaptureReviewWorkspaceView(viewModel: viewModel, visitID: visitID, onResumeSurvey: resumeSurvey)
-                    }
-                    .sheet(isPresented: $isPresentingPhotoCapture) {
-                        CameraCaptureView { data in
-                            createLiveEvidence(.photo, photoData: data)
-                        }
                     }
             } else {
                 ContentUnavailableView("Property Twin not found", systemImage: "exclamationmark.triangle")
@@ -100,11 +94,20 @@ struct LiveCaptureView: View {
                     sessionStatus: surveyStatusTitle,
                     sessionColor: sessionStatusColor,
                     placementLabel: surveyConfidenceLabel,
-                    scanProgressLabel: surveyCoverageLabel,
                     onEnd: leaveSurvey
                 )
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
+
+                HStack {
+                    Spacer()
+                    LiveCaptureUtilityRail(
+                        onSafety: { createLiveEvidence(.safety) },
+                        onReview: pauseForReview
+                    )
+                    .padding(.trailing, 16)
+                    .padding(.top, 10)
+                }
 
                 Spacer()
 
@@ -118,15 +121,7 @@ struct LiveCaptureView: View {
                     .padding(.bottom, 12)
 
                 LiveCaptureControlBar(
-                    onPhoto: { isPresentingPhotoCapture = true },
-                    onVoiceNote: { createLiveEvidence(.voice) },
-                    onMark: { createLiveEvidence(.mark, geometryCaptureMode: .manual, geometryDetailLevel: .component, geometrySource: .userMarked) },
-                    onFocus: toggleFocusMode,
-                    onSafety: { createLiveEvidence(.safety) },
-                    onReview: pauseForReview,
-                    onCap: capAction,
-                    surveyCounts: LiveSurveyCounts(visit: visit),
-                    isFocusModeActive: isFocusModeActive
+                    onCapture: capAction
                 )
                 .padding(.horizontal, 16)
                 .padding(.bottom, 18)
@@ -163,13 +158,6 @@ struct LiveCaptureView: View {
             return "Building room outline"
         }
         return "Move around for more detail"
-    }
-
-    private var surveyCoverageLabel: String {
-        if captureState.isFocusActive {
-            return scanProgress.captureLabel
-        }
-        return scanProgress.hasGeometry ? scanProgress.captureLabel : "Needs another angle"
     }
 
     private var sessionStatusColor: Color {
@@ -403,17 +391,16 @@ private struct LiveCaptureStatusBar: View {
     let sessionStatus: String
     let sessionColor: Color
     let placementLabel: String
-    let scanProgressLabel: String
     let onEnd: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 7) {
                 HStack(spacing: 8) {
                     Circle()
-                        .fill(Color.red)
+                        .fill(sessionColor)
                         .frame(width: 9, height: 9)
-                    Text("Survey in progress")
+                    Text(sessionStatus)
                         .font(.caption.weight(.semibold))
                 }
                 .foregroundStyle(.white)
@@ -426,38 +413,25 @@ private struct LiveCaptureStatusBar: View {
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 7) {
-                Label(sessionStatus, systemImage: "dot.radiowaves.left.and.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(sessionColor)
-                Label(placementLabel, systemImage: "location")
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                Label(scanProgressLabel, systemImage: "cube.transparent")
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+            Text(placementLabel)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.white.opacity(0.88))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
 
-                Button(action: onEnd) {
-                    Text("End")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .background(Color.red.opacity(0.16), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(Color.red.opacity(0.72), lineWidth: 1)
-                        )
-                        .foregroundStyle(.red)
-                }
-                .accessibilityLabel("End survey")
+            Button(action: onEnd) {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.bold))
+                    .frame(width: 34, height: 34)
+                    .background(Color.black.opacity(0.32), in: Circle())
+                    .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 1))
+                    .foregroundStyle(.white)
             }
+            .accessibilityLabel("End survey")
         }
-        .padding(12)
-        .background(.black.opacity(0.34), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
@@ -553,85 +527,56 @@ private struct FocusCorner {
     let verticalEnd: CGPoint
 }
 
-private struct LiveCaptureControlBar: View {
-    let onPhoto: () -> Void
-    let onVoiceNote: () -> Void
-    let onMark: () -> Void
-    let onFocus: () -> Void
+private struct LiveCaptureUtilityRail: View {
     let onSafety: () -> Void
     let onReview: () -> Void
-    let onCap: () -> Void
-    let surveyCounts: LiveSurveyCounts
-    let isFocusModeActive: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    liveButton("Photo", systemImage: "camera.fill", action: onPhoto)
-                    liveButton("Voice Note", systemImage: "waveform", action: onVoiceNote)
-                    liveButton("Mark Item", systemImage: "mappin.and.ellipse", action: onMark)
-                }
-                HStack(spacing: 8) {
-                    liveButton(
-                        isFocusModeActive ? "Stop" : "Focus",
-                        systemImage: isFocusModeActive ? "xmark.circle.fill" : "scope",
-                        tint: isFocusModeActive ? .yellow : .white,
-                        action: onFocus
-                    )
-                    liveButton("Safety", systemImage: "exclamationmark.triangle.fill", tint: .red, action: onSafety)
-                    liveButton("Review", systemImage: "list.bullet.rectangle", action: onReview)
-                }
+        HStack(spacing: 10) {
+            Button(action: onSafety) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.headline.weight(.bold))
+                    .frame(width: 44, height: 44)
+                    .foregroundStyle(.red)
+                    .background(.black.opacity(0.38), in: Circle())
+                    .overlay(Circle().stroke(Color.red.opacity(0.55), lineWidth: 1))
             }
+            .accessibilityLabel("Safety hazard")
 
-            Spacer(minLength: 8)
+            Button(action: onReview) {
+                Image(systemName: "list.bullet.rectangle")
+                    .font(.headline.weight(.semibold))
+                    .frame(width: 44, height: 44)
+                    .foregroundStyle(.white)
+                    .background(.black.opacity(0.38), in: Circle())
+                    .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 1))
+            }
+            .accessibilityLabel("Review capture")
+        }
+        .buttonStyle(.plain)
+    }
+}
 
-            Button(action: onCap) {
+private struct LiveCaptureControlBar: View {
+    let onCapture: () -> Void
+
+    var body: some View {
+        HStack {
+            Spacer()
+            Button(action: onCapture) {
                 Circle()
                     .fill(Color.yellow)
                     .overlay(
                         Circle()
                             .stroke(Color.white.opacity(0.85), lineWidth: 2)
                     )
-                    .frame(width: 78, height: 78)
+                    .shadow(color: .black.opacity(0.28), radius: 10, y: 4)
+                    .frame(width: 86, height: 86)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(isFocusModeActive ? "Stop focus capture" : "Capture evidence")
+            .accessibilityLabel("Capture evidence")
+            Spacer()
         }
-        .padding(12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }
-
-    private func liveButton(
-        _ title: String,
-        systemImage: String,
-        tint: Color = .white,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            VStack(spacing: 5) {
-                Image(systemName: systemImage)
-                    .font(.title3.weight(.semibold))
-                Text(title)
-                    .font(.caption2.weight(.semibold))
-            }
-            .foregroundStyle(tint)
-            .frame(width: 76, height: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private struct LiveSurveyCounts {
-    let rooms: Int
-    let areas: Int
-    let items: Int
-
-    init(visit: Visit) {
-        rooms = visit.areas.count
-        areas = visit.areas.count
-        items = visit.components.count
     }
 }
 

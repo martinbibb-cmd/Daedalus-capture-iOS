@@ -359,11 +359,12 @@ final class LiveCaptureUXTests: XCTestCase {
             XCTAssertFalse(source.localizedCaseInsensitiveContains(term), "Live capture source contains banned term: \(term)")
         }
 
-        for required in ["\"Photo\"", "\"Voice Note\"", "\"Mark Item\"", "\"Focus\"", "\"Stop\"", "\"Safety\"", "\"Review\"", "\"Pause & Review\""] {
+        for required in ["\"Safety hazard\"", "\"Review capture\"", "\"Pause & Review\"", "\"Capture evidence\"", "\"End survey\""] {
             XCTAssertTrue(source.contains(required), "Live capture source should expose \(required)")
         }
         XCTAssertFalse(source.contains("\"CAP.\""), "Primary shutter should be a blank yellow dial")
         XCTAssertFalse(source.contains("LiveMiniTwinMapView"), "Live capture should not render a 2D mini-map panel")
+        XCTAssertTrue(source.contains("LiveCaptureUtilityRail"), "Hazard and review controls should be separate from the shutter dock")
         XCTAssertFalse(source.contains("Geometry not available yet"), "Live survey should not show unavailable geometry once surfaces are captured")
         XCTAssertFalse(source.contains("Room geometry active"), "Live survey should not claim fake room geometry")
         XCTAssertFalse(source.localizedCaseInsensitiveContains("Detected geometry"), "Normal survey should not expose diagnostic geometry labels")
@@ -372,8 +373,9 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertFalse(source.localizedCaseInsensitiveContains("feature points"), "Normal survey should not expose AR debug language")
         XCTAssertTrue(source.contains("Building room outline"), "Live survey should expose clean room capture progress")
         XCTAssertTrue(source.contains("Room understood"), "Live survey should expose clean room capture completion")
-        XCTAssertTrue(source.contains("Needs another angle"), "Live survey should expose plain fallback guidance")
-        XCTAssertTrue(source.contains("\"End\""), "Live survey should expose an explicit route out")
+        let sessionSource = try sourceText(relativePath: "DaedalusScan/Features/Visits/SpatialCaptureSession.swift")
+        XCTAssertTrue(sessionSource.contains("Needs another angle"), "Live survey state should retain plain fallback guidance")
+        XCTAssertTrue(source.contains("\"End survey\""), "Live survey should expose an explicit route out")
         XCTAssertFalse(source.contains("Room understood\"), systemImage"), "Live survey should avoid duplicate Room understood status rows")
 
         let lifecycleSource = try sourceText(relativePath: "DaedalusScan/Features/Visits/TwinLifecycleViews.swift")
@@ -420,8 +422,21 @@ final class LiveCaptureUXTests: XCTestCase {
 
     func testLiveCaptureSourceUsesCenterRaycastWithoutMiniTwinPanel() throws {
         let captureSource = try sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureView.swift")
+        let controlBarSource = try sourceBlock(
+            named: "private struct LiveCaptureControlBar",
+            endingBefore: "private struct LiveCaptureConfirmationView",
+            in: captureSource
+        )
         XCTAssertFalse(captureSource.contains("LiveMiniTwinMapView"), "Live capture should not render a 2D Mini Twin Map overlay")
         XCTAssertFalse(captureSource.contains("EvidenceMapPin"), "Live capture should not maintain 2D map pins")
+        XCTAssertFalse(controlBarSource.contains("\"Photo\""), "Bottom dock should not duplicate the shutter with a Photo mode")
+        XCTAssertFalse(controlBarSource.contains("\"Voice Note\""), "Bottom dock should not expose manual voice mode during continuous recording")
+        XCTAssertFalse(controlBarSource.contains("\"Mark Item\""), "Bottom dock should not expose manual pin mode")
+        XCTAssertFalse(controlBarSource.contains("\"Focus\""), "Bottom dock should not expose focus as a mode toggle")
+        XCTAssertFalse(controlBarSource.contains("\"Safety\""), "Hazard flag should live outside the shutter dock")
+        XCTAssertFalse(controlBarSource.contains("\"Review\""), "Review should live outside the shutter dock")
+        XCTAssertFalse(controlBarSource.contains("liveButton("), "Bottom dock should only render the primary shutter")
+        XCTAssertTrue(controlBarSource.contains("Button(action: onCapture)"), "Bottom dock should bind the primary shutter directly")
         XCTAssertTrue(captureSource.contains("spatialAim.targetPosition"), "Evidence should use the current target position")
         XCTAssertTrue(captureSource.contains("spatialAim.devicePosition"), "Evidence should use the current device position")
         XCTAssertFalse(captureSource.contains("\"CAP.\""), "The primary shutter control should not contain text")
@@ -494,5 +509,11 @@ final class LiveCaptureUXTests: XCTestCase {
         url.deleteLastPathComponent()
         url.deleteLastPathComponent()
         return try String(contentsOf: url.appendingPathComponent(relativePath), encoding: .utf8)
+    }
+
+    private func sourceBlock(named startMarker: String, endingBefore endMarker: String, in source: String) throws -> String {
+        let start = try XCTUnwrap(source.range(of: startMarker))
+        let end = try XCTUnwrap(source[start.lowerBound...].range(of: endMarker))
+        return String(source[start.lowerBound..<end.lowerBound])
     }
 }
