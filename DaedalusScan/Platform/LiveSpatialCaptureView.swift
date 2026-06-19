@@ -1,4 +1,5 @@
 import ARKit
+import CoreImage
 #if canImport(RoomPlan)
 import RoomPlan
 #endif
@@ -47,6 +48,7 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
         private var lastProgressUpdate = Date.distantPast
         private var lastAimUpdate = Date.distantPast
         private var lastSnapshotRequestID: UUID?
+        private let imageContext = CIContext()
         var usesRoomPlan = false
         weak var containerView: UIView?
         weak var sceneView: ARSCNView?
@@ -143,27 +145,28 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
 
         @MainActor
         private func captureVisibleFrameData() -> Data? {
-            if let sceneView, !sceneView.isHidden {
-                return sceneView.snapshot().jpegData(compressionQuality: 0.86)
-            }
             #if canImport(RoomPlan)
             if #available(iOS 16.0, *),
                let roomCaptureView,
-               !roomCaptureView.isHidden {
-                return render(view: roomCaptureView)?.jpegData(compressionQuality: 0.86)
+               !roomCaptureView.isHidden,
+               let frame = roomCaptureView.captureSession.arSession.currentFrame {
+                return jpegData(from: frame.capturedImage)
             }
             #endif
-            guard let containerView else { return nil }
-            return render(view: containerView)?.jpegData(compressionQuality: 0.86)
+            if let sceneView,
+               let frame = sceneView.session.currentFrame {
+                return jpegData(from: frame.capturedImage)
+            }
+            return nil
         }
 
-        @MainActor
-        private func render(view: UIView) -> UIImage? {
-            guard view.bounds.width > 1, view.bounds.height > 1 else { return nil }
-            let renderer = UIGraphicsImageRenderer(bounds: view.bounds)
-            return renderer.image { _ in
-                view.drawHierarchy(in: view.bounds, afterScreenUpdates: false)
+        private func jpegData(from pixelBuffer: CVPixelBuffer) -> Data? {
+            let image = CIImage(cvPixelBuffer: pixelBuffer)
+            guard let cgImage = imageContext.createCGImage(image, from: image.extent) else {
+                return nil
             }
+            return UIImage(cgImage: cgImage, scale: UIScreen.main.scale, orientation: .right)
+                .jpegData(compressionQuality: 0.86)
         }
 
         private func runSurveySession(resetTracking: Bool = true, removeExistingAnchors: Bool = true) {
