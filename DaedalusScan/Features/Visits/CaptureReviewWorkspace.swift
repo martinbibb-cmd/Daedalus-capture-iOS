@@ -155,6 +155,12 @@ struct CaptureReviewWorkspaceView: View {
     var onResumeSurvey: (() -> Void)?
 
     @State private var changeTarget: CaptureReviewCard?
+    @State private var areaDetailTarget: SuggestedAreaGroup?
+    @State private var areaRenameTarget: SuggestedAreaGroup?
+    @State private var areaReviewStates: [UUID: SuggestedAreaReviewState] = [:]
+    @State private var areaNames: [UUID: String] = [:]
+    @State private var areaMergeTargets: [UUID: UUID] = [:]
+    @State private var areaAuditTrails: [UUID: [String]] = [:]
     @State private var suggestionChangeTarget: CaptureSuggestion?
     @State private var suggestionReviewStates: [UUID: CaptureSuggestionReviewState] = [:]
     @State private var suggestionTitles: [UUID: String] = [:]
@@ -164,6 +170,7 @@ struct CaptureReviewWorkspaceView: View {
     var body: some View {
         if let visit = viewModel.visit(id: visitID) {
             let cards = visit.captureReviewCards
+            let areaGroups = reviewedAreaGroups(from: visit.suggestedAreaGroups)
             let suggestions = reviewedSuggestions(from: visit.captureSuggestionFoundation)
             List {
                 Section {
@@ -180,26 +187,31 @@ struct CaptureReviewWorkspaceView: View {
                     Text("Review confirms Capture evidence before export or handoff. Suggestions are weak until confirmed or changed.")
                 }
 
-                Section("Suggested Twin") {
+                Section("Suggested Areas") {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("This is what Daedalus thinks you captured.")
                             .font(.subheadline.weight(.semibold))
-                        Text("Suggestions are review artefacts. They are not components or confirmed twin facts until a surveyor confirms or changes them.")
+                        Text("Review the proposed property structure before reviewing individual evidence items.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 4)
 
-                    CaptureSuggestionGroupView(
-                        title: "Suggested Areas",
-                        systemImage: "square.dashed",
-                        suggestions: suggestions.filter { $0.kind == .area },
-                        onConfirm: { updateSuggestion($0, state: .confirmed) },
-                        onChange: { suggestionChangeTarget = $0 },
-                        onIgnore: { updateSuggestion($0, state: .ignored) },
-                        onMarkUnresolved: { updateSuggestion($0, state: .unresolved) }
-                    )
+                    ForEach(areaGroups) { area in
+                        SuggestedAreaGroupCardView(
+                            area: area,
+                            mergeCandidates: areaGroups.filter { $0.id != area.id && $0.reviewState != .merged },
+                            onOpen: { areaDetailTarget = area },
+                            onConfirm: { updateArea(area, state: .confirmed) },
+                            onRename: { areaRenameTarget = area },
+                            onMerge: { target in mergeArea(area, into: target) },
+                            onIgnore: { updateArea(area, state: .ignored) },
+                            onMarkUnresolved: { updateArea(area, state: .unresolved) }
+                        )
+                    }
+                }
 
+                Section("Suggested Objects") {
                     CaptureSuggestionGroupView(
                         title: "Suggested Objects",
                         systemImage: "shippingbox",
@@ -209,7 +221,9 @@ struct CaptureReviewWorkspaceView: View {
                         onIgnore: { updateSuggestion($0, state: .ignored) },
                         onMarkUnresolved: { updateSuggestion($0, state: .unresolved) }
                     )
+                }
 
+                Section("Special Objects") {
                     CaptureSuggestionGroupView(
                         title: "Special Objects",
                         systemImage: "mappin.and.ellipse",
@@ -289,6 +303,15 @@ struct CaptureReviewWorkspaceView: View {
                     )
                 }
             }
+            .sheet(item: $areaDetailTarget) { area in
+                SuggestedAreaDetailView(area: area)
+            }
+            .sheet(item: $areaRenameTarget) { area in
+                SuggestedAreaRenameSheet(area: area) { name in
+                    areaNames[area.id] = name
+                    updateArea(area, state: .renamed)
+                }
+            }
             .sheet(item: $suggestionChangeTarget) { suggestion in
                 CaptureSuggestionChangeSheet(suggestion: suggestion) { label in
                     suggestionTitles[suggestion.id] = label
@@ -305,6 +328,46 @@ struct CaptureReviewWorkspaceView: View {
         }
     }
 
+    private func reviewedAreaGroups(from areaGroups: [SuggestedAreaGroup]) -> [SuggestedAreaGroup] {
+        var groupsByID = Dictionary(uniqueKeysWithValues: areaGroups.map { area in
+            var updated = area
+            updated.name = areaNames[area.id] ?? area.name
+            updated.reviewState = areaReviewStates[area.id] ?? area.reviewState
+            updated.auditTrail += areaAuditTrails[area.id] ?? []
+            return (updated.id, updated)
+        })
+
+        for (sourceID, targetID) in areaMergeTargets {
+            guard var source = groupsByID[sourceID],
+                  var target = groupsByID[targetID] else {
+                continue
+            }
+            source.reviewState = .merged
+            target.evidenceLinks.append(contentsOf: source.evidenceLinks)
+            target.objectLinks.append(contentsOf: source.objectLinks)
+            target.auditTrail.append(contentsOf: source.auditTrail)
+            target.auditTrail.append("merged \(source.name) into \(target.name)")
+            groupsByID[sourceID] = source
+            groupsByID[targetID] = target
+        }
+
+        return groupsByID.values
+            .filter { $0.reviewState != .merged }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    private func updateArea(_ area: SuggestedAreaGroup, state: SuggestedAreaReviewState) {
+        areaReviewStates[area.id] = state
+        areaAuditTrails[area.id, default: []].append("\(state.rawValue):\(Date().formatted(date: .omitted, time: .standard))")
+    }
+
+    private func mergeArea(_ area: SuggestedAreaGroup, into target: SuggestedAreaGroup) {
+        areaMergeTargets[area.id] = target.id
+        areaReviewStates[area.id] = .merged
+        areaAuditTrails[area.id, default: []].append("merged into \(target.name)")
+        areaAuditTrails[target.id, default: []].append("accepted merge from \(area.name)")
+    }
+
     private func reviewedSuggestions(from suggestions: [CaptureSuggestion]) -> [CaptureSuggestion] {
         suggestions.map { suggestion in
             var updated = suggestion
@@ -316,6 +379,198 @@ struct CaptureReviewWorkspaceView: View {
 
     private func updateSuggestion(_ suggestion: CaptureSuggestion, state: CaptureSuggestionReviewState) {
         suggestionReviewStates[suggestion.id] = state
+    }
+}
+
+private struct SuggestedAreaGroupCardView: View {
+    let area: SuggestedAreaGroup
+    let mergeCandidates: [SuggestedAreaGroup]
+    let onOpen: () -> Void
+    let onConfirm: () -> Void
+    let onRename: () -> Void
+    let onMerge: (SuggestedAreaGroup) -> Void
+    let onIgnore: () -> Void
+    let onMarkUnresolved: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button(action: onOpen) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(area.name)
+                            .font(.headline)
+                        Text(area.category.title)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text(area.reviewState.title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(stateColor)
+                }
+            }
+            .buttonStyle(.plain)
+
+            HStack(spacing: 12) {
+                Label("\(area.evidenceCount)", systemImage: "paperclip")
+                Label("\(area.objectCount)", systemImage: "shippingbox")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Button("Confirm", action: onConfirm)
+                        .buttonStyle(.borderedProminent)
+                    Button("Rename", action: onRename)
+                        .buttonStyle(.bordered)
+                    Menu("Merge With...") {
+                        ForEach(mergeCandidates) { candidate in
+                            Button(candidate.name) { onMerge(candidate) }
+                        }
+                    }
+                    .disabled(mergeCandidates.isEmpty)
+                }
+                HStack(spacing: 8) {
+                    Button("Ignore", action: onIgnore)
+                        .buttonStyle(.bordered)
+                    Button("Mark Unresolved", action: onMarkUnresolved)
+                        .buttonStyle(.bordered)
+                }
+            }
+            .font(.caption.weight(.semibold))
+        }
+        .padding(.vertical, 8)
+    }
+
+    private var stateColor: Color {
+        switch area.reviewState {
+        case .confirmed, .renamed:
+            return .green
+        case .merged, .ignored:
+            return .secondary
+        case .unresolved:
+            return .red
+        case .suggested:
+            return .orange
+        }
+    }
+}
+
+private struct SuggestedAreaDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let area: SuggestedAreaGroup
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    LabeledContent("Category", value: area.category.title)
+                    LabeledContent("Evidence", value: "\(area.evidenceCount)")
+                    LabeledContent("Objects", value: "\(area.objectCount)")
+                    LabeledContent("Review State", value: area.reviewState.title)
+                }
+
+                Section("Objects") {
+                    if area.objectLinks.isEmpty {
+                        Text("No contained objects")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(area.objectLinks) { object in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(object.label)
+                                Text("\(object.evidenceCount) evidence items")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+
+                Section("Evidence") {
+                    if area.evidenceLinks.isEmpty {
+                        Text("No contained evidence")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(area.evidenceLinks) { evidence in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(evidence.label)
+                                Text(evidence.sourceDescription)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+
+                if !area.auditTrail.isEmpty {
+                    Section("Audit Trail") {
+                        ForEach(area.auditTrail, id: \.self) { entry in
+                            Text(entry)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            .navigationTitle(area.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+private struct SuggestedAreaRenameSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let area: SuggestedAreaGroup
+    let onSave: (String) -> Void
+
+    @State private var selectedName: String
+
+    init(area: SuggestedAreaGroup, onSave: @escaping (String) -> Void) {
+        self.area = area
+        self.onSave = onSave
+        _selectedName = State(initialValue: area.name)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Area Name") {
+                    Picker("Name", selection: $selectedName) {
+                        ForEach(Visit.allowedSuggestedAreaNames, id: \.self) { name in
+                            Text(name).tag(name)
+                        }
+                    }
+                }
+
+                Section("Original Area") {
+                    Text(area.name)
+                    Text("\(area.evidenceCount) evidence, \(area.objectCount) objects")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Rename Area")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave(selectedName)
+                        dismiss()
+                    }
+                }
+            }
+        }
     }
 }
 

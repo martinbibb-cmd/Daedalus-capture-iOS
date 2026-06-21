@@ -50,6 +50,113 @@ struct SuggestedArea: Identifiable, Equatable, Hashable {
     }
 }
 
+enum SuggestedAreaReviewState: String, CaseIterable, Hashable {
+    case suggested
+    case confirmed
+    case renamed
+    case merged
+    case ignored
+    case unresolved
+
+    var title: String {
+        switch self {
+        case .suggested: return "Suggested"
+        case .confirmed: return "Confirmed"
+        case .renamed: return "Renamed"
+        case .merged: return "Merged"
+        case .ignored: return "Ignored"
+        case .unresolved: return "Unresolved"
+        }
+    }
+}
+
+enum SuggestedAreaCategory: String, CaseIterable, Hashable {
+    case room
+    case circulation
+    case external
+    case serviceArea
+    case unresolved
+
+    var title: String {
+        switch self {
+        case .room: return "Room"
+        case .circulation: return "Circulation"
+        case .external: return "External"
+        case .serviceArea: return "Service Area"
+        case .unresolved: return "Unresolved"
+        }
+    }
+}
+
+struct SuggestedAreaEvidenceLink: Identifiable, Equatable, Hashable {
+    let id: UUID
+    let evidenceID: UUID
+    let label: String
+    let sourceDescription: String
+
+    init(
+        id: UUID = UUID(),
+        evidenceID: UUID,
+        label: String,
+        sourceDescription: String
+    ) {
+        self.id = id
+        self.evidenceID = evidenceID
+        self.label = label
+        self.sourceDescription = sourceDescription
+    }
+}
+
+struct SuggestedAreaObjectLink: Identifiable, Equatable, Hashable {
+    let id: UUID
+    let objectID: UUID
+    let label: String
+    let evidenceCount: Int
+
+    init(
+        id: UUID = UUID(),
+        objectID: UUID,
+        label: String,
+        evidenceCount: Int
+    ) {
+        self.id = id
+        self.objectID = objectID
+        self.label = label
+        self.evidenceCount = evidenceCount
+    }
+}
+
+struct SuggestedAreaGroup: Identifiable, Equatable, Hashable {
+    let id: UUID
+    var name: String
+    var category: SuggestedAreaCategory
+    var reviewState: SuggestedAreaReviewState
+    var evidenceLinks: [SuggestedAreaEvidenceLink]
+    var objectLinks: [SuggestedAreaObjectLink]
+    var auditTrail: [String]
+
+    var evidenceCount: Int { evidenceLinks.count }
+    var objectCount: Int { objectLinks.count }
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        category: SuggestedAreaCategory,
+        reviewState: SuggestedAreaReviewState = .suggested,
+        evidenceLinks: [SuggestedAreaEvidenceLink] = [],
+        objectLinks: [SuggestedAreaObjectLink] = [],
+        auditTrail: [String] = []
+    ) {
+        self.id = id
+        self.name = name
+        self.category = category
+        self.reviewState = reviewState
+        self.evidenceLinks = evidenceLinks
+        self.objectLinks = objectLinks
+        self.auditTrail = auditTrail
+    }
+}
+
 struct SuggestedObject: Identifiable, Equatable, Hashable {
     let id: UUID
     var name: String
@@ -145,6 +252,23 @@ struct CaptureSuggestion: Identifiable, Equatable, Hashable {
 }
 
 extension Visit {
+    static let allowedSuggestedAreaNames = [
+        "Kitchen",
+        "Utility",
+        "Hall",
+        "Landing",
+        "Lounge",
+        "Dining Room",
+        "Bedroom",
+        "Bathroom",
+        "Ensuite",
+        "Airing Cupboard",
+        "Loft",
+        "Garage",
+        "Outside",
+        "Unknown Area"
+    ]
+
     var captureSuggestionFoundation: [CaptureSuggestion] {
         var suggestions = suggestedAreas + suggestedObjects + suggestedSpecialObjects
         if suggestions.isEmpty {
@@ -165,20 +289,97 @@ extension Visit {
         return suggestions
     }
 
+    var suggestedAreaGroups: [SuggestedAreaGroup] {
+        var groupsByID: [UUID: SuggestedAreaGroup] = [:]
+        var groupIDsByRoomID: [UUID: UUID] = [:]
+        var groupIDsByLabel: [String: UUID] = [:]
+
+        for room in rooms {
+            let name = normalizedSuggestedAreaName(room.name)
+            let groupID = stableSuggestionID("area-group-room-\(room.id.uuidString)")
+            groupIDsByRoomID[room.id] = groupID
+            groupIDsByLabel[normalizedAreaKey(name)] = groupID
+            groupsByID[groupID] = SuggestedAreaGroup(
+                id: groupID,
+                name: name,
+                category: suggestedAreaCategory(for: name),
+                reviewState: room.reviewStatus.suggestedAreaReviewState,
+                evidenceLinks: room.evidence.map { evidence in
+                    SuggestedAreaEvidenceLink(
+                        id: stableSuggestionID("area-evidence-\(room.id.uuidString)-\(evidence.id.uuidString)"),
+                        evidenceID: evidence.id,
+                        label: evidence.kind.title,
+                        sourceDescription: room.name
+                    )
+                },
+                auditTrail: ["suggested from existing room data"]
+            )
+        }
+
+        for component in components.sorted(by: { $0.createdAtFallback < $1.createdAtFallback }) {
+            let groupID = suggestedAreaGroupID(
+                for: component,
+                groupsByID: &groupsByID,
+                groupIDsByRoomID: groupIDsByRoomID,
+                groupIDsByLabel: &groupIDsByLabel
+            )
+
+            groupsByID[groupID]?.objectLinks.append(
+                SuggestedAreaObjectLink(
+                    id: stableSuggestionID("area-object-\(groupID.uuidString)-\(component.id.uuidString)"),
+                    objectID: component.id,
+                    label: component.suggestedCaptureLabel,
+                    evidenceCount: component.evidence.count
+                )
+            )
+
+            groupsByID[groupID]?.evidenceLinks.append(
+                contentsOf: component.evidence.map { evidence in
+                    SuggestedAreaEvidenceLink(
+                        id: stableSuggestionID("area-evidence-\(groupID.uuidString)-\(evidence.id.uuidString)"),
+                        evidenceID: evidence.id,
+                        label: evidence.kind.title,
+                        sourceDescription: component.suggestedCaptureLabel
+                    )
+                }
+            )
+        }
+
+        if groupsByID.isEmpty {
+            let groupID = stableSuggestionID("area-group-placeholder-\(id.uuidString)")
+            groupsByID[groupID] = SuggestedAreaGroup(
+                id: groupID,
+                name: "Unknown Area",
+                category: .unresolved,
+                auditTrail: ["placeholder from empty capture sequence"]
+            )
+        }
+
+        return groupsByID.values.sorted { lhs, rhs in
+            if lhs.reviewState == .unresolved && rhs.reviewState != .unresolved {
+                return false
+            }
+            if lhs.reviewState != .unresolved && rhs.reviewState == .unresolved {
+                return true
+            }
+            return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+        }
+    }
+
     private var suggestedAreas: [CaptureSuggestion] {
-        rooms.map { room in
+        suggestedAreaGroups.map { group in
             CaptureSuggestion(
-                id: stableSuggestionID("area-\(room.id.uuidString)"),
+                id: stableSuggestionID("area-\(group.id.uuidString)"),
                 kind: .area,
-                title: room.name,
-                detail: room.spatialPlacement.captureState.title,
+                title: group.name,
+                detail: "\(group.category.title) - \(group.evidenceCount) evidence, \(group.objectCount) objects",
                 sources: [.spatialContext, .existingEvidence],
-                evidenceLabels: room.evidenceLabels,
-                reviewState: room.reviewStatus.captureSuggestionState,
+                evidenceLabels: group.evidenceLinks.map(\.label),
+                reviewState: group.reviewState.captureSuggestionState,
                 suggestedArea: SuggestedArea(
-                    id: room.id,
-                    name: room.name,
-                    context: room.spatialPlacement.confidence.title
+                    id: group.id,
+                    name: group.name,
+                    context: group.category.title
                 )
             )
         }
@@ -240,6 +441,62 @@ extension Visit {
     }
 }
 
+private extension Visit {
+    func suggestedAreaGroupID(
+        for component: SystemComponent,
+        groupsByID: inout [UUID: SuggestedAreaGroup],
+        groupIDsByRoomID: [UUID: UUID],
+        groupIDsByLabel: inout [String: UUID]
+    ) -> UUID {
+        if let roomID = relationships.first(where: {
+            $0.sourceComponentID == component.id &&
+                $0.relationship == .containedIn &&
+                $0.targetAreaID != nil
+        })?.targetAreaID,
+           let groupID = groupIDsByRoomID[roomID] {
+            return groupID
+        }
+
+        let rawLabel = component.spatialContext?.areaLabel ??
+            component.componentAttributes["location"] ??
+            "Unknown Area"
+        let name = normalizedSuggestedAreaName(rawLabel)
+        let labelKey = normalizedAreaKey(name)
+        if let groupID = groupIDsByLabel[labelKey] {
+            return groupID
+        }
+
+        let groupID = stableSuggestionID("area-group-label-\(labelKey)-\(id.uuidString)")
+        groupIDsByLabel[labelKey] = groupID
+        groupsByID[groupID] = SuggestedAreaGroup(
+            id: groupID,
+            name: name,
+            category: suggestedAreaCategory(for: name),
+            auditTrail: ["suggested from evidence cluster and spatial context"]
+        )
+        return groupID
+    }
+}
+
+private extension SuggestedAreaReviewState {
+    var captureSuggestionState: CaptureSuggestionReviewState {
+        switch self {
+        case .suggested:
+            return .suggested
+        case .confirmed:
+            return .confirmed
+        case .renamed:
+            return .changed
+        case .merged:
+            return .changed
+        case .ignored:
+            return .ignored
+        case .unresolved:
+            return .unresolved
+        }
+    }
+}
+
 private extension Optional where Wrapped == ReviewStatus {
     var captureSuggestionState: CaptureSuggestionReviewState {
         switch self {
@@ -254,6 +511,29 @@ private extension Optional where Wrapped == ReviewStatus {
         case .unreviewed, .needsReview, .draft, .rejected, .none:
             return .suggested
         }
+    }
+}
+
+private extension Optional where Wrapped == ReviewStatus {
+    var suggestedAreaReviewState: SuggestedAreaReviewState {
+        switch self {
+        case .confirmed:
+            return .confirmed
+        case .changed:
+            return .renamed
+        case .ignored:
+            return .ignored
+        case .needsAttention, .rejected:
+            return .unresolved
+        case .unreviewed, .needsReview, .draft, .none:
+            return .suggested
+        }
+    }
+}
+
+private extension SystemComponent {
+    var createdAtFallback: Date {
+        evidence.map(\.createdAt).min() ?? Date()
     }
 }
 
@@ -302,6 +582,57 @@ private extension SystemComponent {
         let labels = evidence.map(\.kind.title)
         return labels.isEmpty ? ["Spatial Marker"] : Array(Set(labels)).sorted()
     }
+}
+
+private func normalizedSuggestedAreaName(_ rawName: String) -> String {
+    let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return "Unknown Area" }
+
+    let lowercased = trimmed.lowercased()
+    let matches: [(String, String)] = [
+        ("kitchen", "Kitchen"),
+        ("utility", "Utility"),
+        ("hall", "Hall"),
+        ("landing", "Landing"),
+        ("lounge", "Lounge"),
+        ("living", "Lounge"),
+        ("dining", "Dining Room"),
+        ("bed", "Bedroom"),
+        ("bath", "Bathroom"),
+        ("ensuite", "Ensuite"),
+        ("airing", "Airing Cupboard"),
+        ("loft", "Loft"),
+        ("garage", "Garage"),
+        ("outside", "Outside"),
+        ("external", "Outside")
+    ]
+
+    if let match = matches.first(where: { lowercased.contains($0.0) }) {
+        return match.1
+    }
+    if Visit.allowedSuggestedAreaNames.contains(trimmed) {
+        return trimmed
+    }
+    return "Unknown Area"
+}
+
+private func suggestedAreaCategory(for name: String) -> SuggestedAreaCategory {
+    switch name {
+    case "Hall", "Landing":
+        return .circulation
+    case "Outside", "Garage":
+        return .external
+    case "Utility", "Airing Cupboard", "Loft":
+        return .serviceArea
+    case "Unknown Area":
+        return .unresolved
+    default:
+        return .room
+    }
+}
+
+private func normalizedAreaKey(_ name: String) -> String {
+    name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 }
 
 private func stableSuggestionID(_ value: String) -> UUID {
