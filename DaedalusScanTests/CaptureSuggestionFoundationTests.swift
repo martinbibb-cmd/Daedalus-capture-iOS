@@ -195,4 +195,79 @@ final class CaptureSuggestionFoundationTests: XCTestCase {
         XCTAssertEqual(area?.objectCount, 1)
         XCTAssertEqual(area?.evidenceCount, 1)
     }
+
+    func testAreaObjectGroupsRepresentAreaObjectEvidenceHierarchy() {
+        let kitchenID = UUID()
+        let boilerID = UUID()
+        let radiatorID = UUID()
+        let boilerEvidenceID = UUID()
+        let radiatorEvidenceID = UUID()
+        let visit = Visit(
+            reference: "Hierarchy",
+            twinKind: .system,
+            rooms: [Room(id: kitchenID, name: "Kitchen")],
+            relationships: [
+                SpatialRelationship(sourceComponentID: boilerID, relationship: .containedIn, targetAreaID: kitchenID),
+                SpatialRelationship(sourceComponentID: radiatorID, relationship: .containedIn, targetAreaID: kitchenID)
+            ],
+            components: [
+                SystemComponent(
+                    id: boilerID,
+                    kind: .boiler,
+                    componentAttributes: [
+                        "liveEvidenceKind": LiveCaptureEvidenceKind.photo.rawValue,
+                        "suggestedLabel": "Boiler"
+                    ],
+                    evidence: [Evidence(id: boilerEvidenceID, kind: .photo, localFileName: "boiler.jpg")]
+                ),
+                SystemComponent(
+                    id: radiatorID,
+                    kind: .radiator,
+                    componentAttributes: [
+                        "liveEvidenceKind": LiveCaptureEvidenceKind.photo.rawValue,
+                        "suggestedLabel": "Radiator"
+                    ],
+                    evidence: [Evidence(id: radiatorEvidenceID, kind: .textNote, localFileName: "radiator.txt")]
+                )
+            ]
+        )
+
+        let kitchen = visit.areaObjectGroups.first { $0.area.name == "Kitchen" }
+
+        XCTAssertEqual(kitchen?.objects.map(\.label), ["Boiler", "Radiator"])
+        XCTAssertEqual(kitchen?.specialObjects, [])
+        XCTAssertEqual(kitchen?.evidenceSummary.evidenceCount, 2)
+        XCTAssertEqual(kitchen?.objects.first?.evidenceSummary.evidenceLinks.map(\.evidenceID), [boilerEvidenceID])
+    }
+
+    func testAreaObjectGroupsPlaceSpecialObjectsWithinAreasWhenPossible() {
+        let hallID = UUID()
+        let loftMarkerID = UUID()
+        let evidenceID = UUID()
+        let visit = Visit(
+            reference: "Special hierarchy",
+            twinKind: .system,
+            rooms: [Room(id: hallID, name: "Hall")],
+            relationships: [
+                SpatialRelationship(sourceComponentID: loftMarkerID, relationship: .containedIn, targetAreaID: hallID)
+            ],
+            components: [
+                SystemComponent(
+                    id: loftMarkerID,
+                    kind: .other,
+                    componentAttributes: [
+                        "liveEvidenceKind": LiveCaptureEvidenceKind.mark.rawValue,
+                        "suggestedLabel": "Loft hatch marker"
+                    ],
+                    evidence: [Evidence(id: evidenceID, kind: .textNote, localFileName: "loft.txt")]
+                )
+            ]
+        )
+
+        let hall = visit.areaObjectGroups.first { $0.area.name == "Hall" }
+
+        XCTAssertEqual(hall?.objects, [])
+        XCTAssertEqual(hall?.specialObjects.map(\.specialObject), [.loftHatch])
+        XCTAssertEqual(hall?.specialObjects.first?.evidenceSummary.evidenceLinks.map(\.evidenceID), [evidenceID])
+    }
 }

@@ -161,6 +161,10 @@ struct CaptureReviewWorkspaceView: View {
     @State private var areaNames: [UUID: String] = [:]
     @State private var areaMergeTargets: [UUID: UUID] = [:]
     @State private var areaAuditTrails: [UUID: [String]] = [:]
+    @State private var objectChangeTarget: AreaObjectReviewSummary?
+    @State private var objectReviewStates: [UUID: CaptureSuggestionReviewState] = [:]
+    @State private var objectTitles: [UUID: String] = [:]
+    @State private var specialObjectReviewStates: [UUID: CaptureSuggestionReviewState] = [:]
     @State private var suggestionChangeTarget: CaptureSuggestion?
     @State private var suggestionReviewStates: [UUID: CaptureSuggestionReviewState] = [:]
     @State private var suggestionTitles: [UUID: String] = [:]
@@ -170,8 +174,7 @@ struct CaptureReviewWorkspaceView: View {
     var body: some View {
         if let visit = viewModel.visit(id: visitID) {
             let cards = visit.captureReviewCards
-            let areaGroups = reviewedAreaGroups(from: visit.suggestedAreaGroups)
-            let suggestions = reviewedSuggestions(from: visit.captureSuggestionFoundation)
+            let areaObjectGroups = reviewedAreaObjectGroups(from: visit.areaObjectGroups)
             List {
                 Section {
                     HStack {
@@ -197,42 +200,25 @@ struct CaptureReviewWorkspaceView: View {
                     }
                     .padding(.vertical, 4)
 
-                    ForEach(areaGroups) { area in
+                    ForEach(areaObjectGroups) { group in
                         SuggestedAreaGroupCardView(
-                            area: area,
-                            mergeCandidates: areaGroups.filter { $0.id != area.id && $0.reviewState != .merged },
-                            onOpen: { areaDetailTarget = area },
-                            onConfirm: { updateArea(area, state: .confirmed) },
-                            onRename: { areaRenameTarget = area },
-                            onMerge: { target in mergeArea(area, into: target) },
-                            onIgnore: { updateArea(area, state: .ignored) },
-                            onMarkUnresolved: { updateArea(area, state: .unresolved) }
+                            group: group,
+                            mergeCandidates: areaObjectGroups.filter { $0.area.id != group.area.id && $0.area.reviewState != .merged },
+                            onOpen: { areaDetailTarget = group.area },
+                            onConfirmArea: { updateArea(group.area, state: .confirmed) },
+                            onRenameArea: { areaRenameTarget = group.area },
+                            onMergeArea: { target in mergeArea(group.area, into: target.area) },
+                            onIgnoreArea: { updateArea(group.area, state: .ignored) },
+                            onMarkAreaUnresolved: { updateArea(group.area, state: .unresolved) },
+                            onConfirmObject: { updateObject($0, state: .confirmed) },
+                            onChangeObject: { objectChangeTarget = $0 },
+                            onIgnoreObject: { updateObject($0, state: .ignored) },
+                            onMarkObjectUnresolved: { updateObject($0, state: .unresolved) },
+                            onConfirmSpecialObject: { updateSpecialObject($0, state: .confirmed) },
+                            onIgnoreSpecialObject: { updateSpecialObject($0, state: .ignored) },
+                            onMarkSpecialObjectUnresolved: { updateSpecialObject($0, state: .unresolved) }
                         )
                     }
-                }
-
-                Section("Suggested Objects") {
-                    CaptureSuggestionGroupView(
-                        title: "Suggested Objects",
-                        systemImage: "shippingbox",
-                        suggestions: suggestions.filter { $0.kind == .object },
-                        onConfirm: { updateSuggestion($0, state: .confirmed) },
-                        onChange: { suggestionChangeTarget = $0 },
-                        onIgnore: { updateSuggestion($0, state: .ignored) },
-                        onMarkUnresolved: { updateSuggestion($0, state: .unresolved) }
-                    )
-                }
-
-                Section("Special Objects") {
-                    CaptureSuggestionGroupView(
-                        title: "Special Objects",
-                        systemImage: "mappin.and.ellipse",
-                        suggestions: suggestions.filter { $0.kind == .specialObject },
-                        onConfirm: { updateSuggestion($0, state: .confirmed) },
-                        onChange: { suggestionChangeTarget = $0 },
-                        onIgnore: { updateSuggestion($0, state: .ignored) },
-                        onMarkUnresolved: { updateSuggestion($0, state: .unresolved) }
-                    )
                 }
 
                 if cards.isEmpty {
@@ -304,12 +290,20 @@ struct CaptureReviewWorkspaceView: View {
                 }
             }
             .sheet(item: $areaDetailTarget) { area in
-                SuggestedAreaDetailView(area: area)
+                if let group = areaObjectGroups.first(where: { $0.area.id == area.id }) {
+                    SuggestedAreaDetailView(group: group)
+                }
             }
             .sheet(item: $areaRenameTarget) { area in
                 SuggestedAreaRenameSheet(area: area) { name in
                     areaNames[area.id] = name
                     updateArea(area, state: .renamed)
+                }
+            }
+            .sheet(item: $objectChangeTarget) { object in
+                AreaObjectChangeSheet(object: object) { label in
+                    objectTitles[object.objectID] = label
+                    updateObject(object, state: .changed)
                 }
             }
             .sheet(item: $suggestionChangeTarget) { suggestion in
@@ -326,6 +320,49 @@ struct CaptureReviewWorkspaceView: View {
         } else {
             ContentUnavailableView("Property Twin not found", systemImage: "exclamationmark.triangle")
         }
+    }
+
+    private func reviewedAreaObjectGroups(from groups: [AreaObjectGroup]) -> [AreaObjectGroup] {
+        var groupsByID = Dictionary(uniqueKeysWithValues: groups.map { group in
+            var updated = group
+            updated.area.name = areaNames[group.area.id] ?? group.area.name
+            updated.area.reviewState = areaReviewStates[group.area.id] ?? group.area.reviewState
+            updated.area.auditTrail += areaAuditTrails[group.area.id] ?? []
+            updated.objects = group.objects.map { object in
+                var updatedObject = object
+                updatedObject.label = objectTitles[object.objectID] ?? object.label
+                updatedObject.reviewState = objectReviewStates[object.objectID] ?? object.reviewState
+                return updatedObject
+            }
+            updated.specialObjects = group.specialObjects.map { specialObject in
+                var updatedSpecialObject = specialObject
+                let key = specialObject.linkedComponentID ?? specialObject.id
+                updatedSpecialObject.reviewState = specialObjectReviewStates[key] ?? specialObject.reviewState
+                return updatedSpecialObject
+            }
+            return (updated.area.id, updated)
+        })
+
+        for (sourceID, targetID) in areaMergeTargets {
+            guard var source = groupsByID[sourceID],
+                  var target = groupsByID[targetID] else {
+                continue
+            }
+            source.area.reviewState = .merged
+            target.area.evidenceLinks.append(contentsOf: source.area.evidenceLinks)
+            target.area.objectLinks.append(contentsOf: source.area.objectLinks)
+            target.area.auditTrail.append(contentsOf: source.area.auditTrail)
+            target.area.auditTrail.append("merged \(source.area.name) into \(target.area.name)")
+            target.objects.append(contentsOf: source.objects)
+            target.specialObjects.append(contentsOf: source.specialObjects)
+            target.evidenceSummary.evidenceLinks.append(contentsOf: source.evidenceSummary.evidenceLinks)
+            groupsByID[sourceID] = source
+            groupsByID[targetID] = target
+        }
+
+        return groupsByID.values
+            .filter { $0.area.reviewState != .merged }
+            .sorted { $0.area.name.localizedStandardCompare($1.area.name) == .orderedAscending }
     }
 
     private func reviewedAreaGroups(from areaGroups: [SuggestedAreaGroup]) -> [SuggestedAreaGroup] {
@@ -368,6 +405,14 @@ struct CaptureReviewWorkspaceView: View {
         areaAuditTrails[target.id, default: []].append("accepted merge from \(area.name)")
     }
 
+    private func updateObject(_ object: AreaObjectReviewSummary, state: CaptureSuggestionReviewState) {
+        objectReviewStates[object.objectID] = state
+    }
+
+    private func updateSpecialObject(_ specialObject: AreaSpecialObjectGroup, state: CaptureSuggestionReviewState) {
+        specialObjectReviewStates[specialObject.linkedComponentID ?? specialObject.id] = state
+    }
+
     private func reviewedSuggestions(from suggestions: [CaptureSuggestion]) -> [CaptureSuggestion] {
         suggestions.map { suggestion in
             var updated = suggestion
@@ -383,28 +428,35 @@ struct CaptureReviewWorkspaceView: View {
 }
 
 private struct SuggestedAreaGroupCardView: View {
-    let area: SuggestedAreaGroup
-    let mergeCandidates: [SuggestedAreaGroup]
+    let group: AreaObjectGroup
+    let mergeCandidates: [AreaObjectGroup]
     let onOpen: () -> Void
-    let onConfirm: () -> Void
-    let onRename: () -> Void
-    let onMerge: (SuggestedAreaGroup) -> Void
-    let onIgnore: () -> Void
-    let onMarkUnresolved: () -> Void
+    let onConfirmArea: () -> Void
+    let onRenameArea: () -> Void
+    let onMergeArea: (AreaObjectGroup) -> Void
+    let onIgnoreArea: () -> Void
+    let onMarkAreaUnresolved: () -> Void
+    let onConfirmObject: (AreaObjectReviewSummary) -> Void
+    let onChangeObject: (AreaObjectReviewSummary) -> Void
+    let onIgnoreObject: (AreaObjectReviewSummary) -> Void
+    let onMarkObjectUnresolved: (AreaObjectReviewSummary) -> Void
+    let onConfirmSpecialObject: (AreaSpecialObjectGroup) -> Void
+    let onIgnoreSpecialObject: (AreaSpecialObjectGroup) -> Void
+    let onMarkSpecialObjectUnresolved: (AreaSpecialObjectGroup) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             Button(action: onOpen) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(area.name)
+                        Text(group.area.name)
                             .font(.headline)
-                        Text(area.category.title)
+                        Text(group.area.category.title)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Text(area.reviewState.title)
+                    Text(group.area.reviewState.title)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(stateColor)
                 }
@@ -412,29 +464,55 @@ private struct SuggestedAreaGroupCardView: View {
             .buttonStyle(.plain)
 
             HStack(spacing: 12) {
-                Label("\(area.evidenceCount)", systemImage: "paperclip")
-                Label("\(area.objectCount)", systemImage: "shippingbox")
+                Label("\(group.evidenceSummary.evidenceCount)", systemImage: "paperclip")
+                Label("\(group.objects.count)", systemImage: "shippingbox")
+                Label("\(group.specialObjects.count)", systemImage: "mappin.and.ellipse")
             }
             .font(.caption)
             .foregroundStyle(.secondary)
 
+            if group.objects.isEmpty && group.specialObjects.isEmpty {
+                Text("Unresolved Objects")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(group.objects) { object in
+                    AreaObjectRowView(
+                        object: object,
+                        onConfirm: { onConfirmObject(object) },
+                        onChange: { onChangeObject(object) },
+                        onIgnore: { onIgnoreObject(object) },
+                        onMarkUnresolved: { onMarkObjectUnresolved(object) }
+                    )
+                }
+
+                ForEach(group.specialObjects) { specialObject in
+                    AreaSpecialObjectRowView(
+                        specialObject: specialObject,
+                        onConfirm: { onConfirmSpecialObject(specialObject) },
+                        onIgnore: { onIgnoreSpecialObject(specialObject) },
+                        onMarkUnresolved: { onMarkSpecialObjectUnresolved(specialObject) }
+                    )
+                }
+            }
+
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
-                    Button("Confirm", action: onConfirm)
+                    Button("Confirm", action: onConfirmArea)
                         .buttonStyle(.borderedProminent)
-                    Button("Rename", action: onRename)
+                    Button("Rename", action: onRenameArea)
                         .buttonStyle(.bordered)
                     Menu("Merge With...") {
                         ForEach(mergeCandidates) { candidate in
-                            Button(candidate.name) { onMerge(candidate) }
+                            Button(candidate.area.name) { onMergeArea(candidate) }
                         }
                     }
                     .disabled(mergeCandidates.isEmpty)
                 }
                 HStack(spacing: 8) {
-                    Button("Ignore", action: onIgnore)
+                    Button("Ignore", action: onIgnoreArea)
                         .buttonStyle(.bordered)
-                    Button("Mark Unresolved", action: onMarkUnresolved)
+                    Button("Mark Unresolved", action: onMarkAreaUnresolved)
                         .buttonStyle(.bordered)
                 }
             }
@@ -444,7 +522,7 @@ private struct SuggestedAreaGroupCardView: View {
     }
 
     private var stateColor: Color {
-        switch area.reviewState {
+        switch group.area.reviewState {
         case .confirmed, .renamed:
             return .green
         case .merged, .ignored:
@@ -457,30 +535,151 @@ private struct SuggestedAreaGroupCardView: View {
     }
 }
 
+private struct AreaObjectRowView: View {
+    let object: AreaObjectReviewSummary
+    let onConfirm: () -> Void
+    let onChange: () -> Void
+    let onIgnore: () -> Void
+    let onMarkUnresolved: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label(object.label, systemImage: "shippingbox")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(object.reviewState.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(stateColor)
+            }
+            HStack(spacing: 10) {
+                Label("\(object.evidenceSummary.evidenceCount)", systemImage: "paperclip")
+                ForEach(object.evidenceSummary.labels.prefix(2), id: \.self) { label in
+                    Text(label)
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                Button("Confirm", action: onConfirm)
+                    .buttonStyle(.borderedProminent)
+                Button("Change", action: onChange)
+                    .buttonStyle(.bordered)
+                Button("Ignore", action: onIgnore)
+                    .buttonStyle(.bordered)
+                Button("Mark Unresolved", action: onMarkUnresolved)
+                    .buttonStyle(.bordered)
+            }
+            .font(.caption.weight(.semibold))
+        }
+        .padding(.leading, 10)
+        .padding(.vertical, 6)
+    }
+
+    private var stateColor: Color {
+        switch object.reviewState {
+        case .confirmed, .changed:
+            return .green
+        case .ignored:
+            return .secondary
+        case .unresolved, .needsAttention:
+            return .red
+        case .suggested:
+            return .orange
+        }
+    }
+}
+
+private struct AreaSpecialObjectRowView: View {
+    let specialObject: AreaSpecialObjectGroup
+    let onConfirm: () -> Void
+    let onIgnore: () -> Void
+    let onMarkUnresolved: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label(specialObject.label, systemImage: "mappin.and.ellipse")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(specialObject.reviewState.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(stateColor)
+            }
+            Label("\(specialObject.evidenceSummary.evidenceCount)", systemImage: "paperclip")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                Button("Confirm", action: onConfirm)
+                    .buttonStyle(.borderedProminent)
+                Button("Ignore", action: onIgnore)
+                    .buttonStyle(.bordered)
+                Button("Mark Unresolved", action: onMarkUnresolved)
+                    .buttonStyle(.bordered)
+            }
+            .font(.caption.weight(.semibold))
+        }
+        .padding(.leading, 10)
+        .padding(.vertical, 6)
+    }
+
+    private var stateColor: Color {
+        switch specialObject.reviewState {
+        case .confirmed, .changed:
+            return .green
+        case .ignored:
+            return .secondary
+        case .unresolved, .needsAttention:
+            return .red
+        case .suggested:
+            return .orange
+        }
+    }
+}
+
 private struct SuggestedAreaDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
-    let area: SuggestedAreaGroup
+    let group: AreaObjectGroup
 
     var body: some View {
         NavigationStack {
             List {
                 Section {
-                    LabeledContent("Category", value: area.category.title)
-                    LabeledContent("Evidence", value: "\(area.evidenceCount)")
-                    LabeledContent("Objects", value: "\(area.objectCount)")
-                    LabeledContent("Review State", value: area.reviewState.title)
+                    LabeledContent("Category", value: group.area.category.title)
+                    LabeledContent("Evidence", value: "\(group.evidenceSummary.evidenceCount)")
+                    LabeledContent("Objects", value: "\(group.objects.count)")
+                    LabeledContent("Special Objects", value: "\(group.specialObjects.count)")
+                    LabeledContent("Review State", value: group.area.reviewState.title)
                 }
 
                 Section("Objects") {
-                    if area.objectLinks.isEmpty {
+                    if group.objects.isEmpty {
                         Text("No contained objects")
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(area.objectLinks) { object in
+                        ForEach(group.objects) { object in
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(object.label)
-                                Text("\(object.evidenceCount) evidence items")
+                                Text("\(object.evidenceSummary.evidenceCount) evidence items")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+
+                Section("Special Objects") {
+                    if group.specialObjects.isEmpty {
+                        Text("No special objects")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(group.specialObjects) { specialObject in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(specialObject.label)
+                                Text("\(specialObject.evidenceSummary.evidenceCount) evidence items")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -489,11 +688,11 @@ private struct SuggestedAreaDetailView: View {
                 }
 
                 Section("Evidence") {
-                    if area.evidenceLinks.isEmpty {
+                    if group.evidenceSummary.evidenceLinks.isEmpty {
                         Text("No contained evidence")
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(area.evidenceLinks) { evidence in
+                        ForEach(group.evidenceSummary.evidenceLinks) { evidence in
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(evidence.label)
                                 Text(evidence.sourceDescription)
@@ -504,9 +703,9 @@ private struct SuggestedAreaDetailView: View {
                     }
                 }
 
-                if !area.auditTrail.isEmpty {
+                if !group.area.auditTrail.isEmpty {
                     Section("Audit Trail") {
-                        ForEach(area.auditTrail, id: \.self) { entry in
+                        ForEach(group.area.auditTrail, id: \.self) { entry in
                             Text(entry)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -514,7 +713,7 @@ private struct SuggestedAreaDetailView: View {
                     }
                 }
             }
-            .navigationTitle(area.name)
+            .navigationTitle(group.area.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -568,6 +767,53 @@ private struct SuggestedAreaRenameSheet: View {
                         onSave(selectedName)
                         dismiss()
                     }
+                }
+            }
+        }
+    }
+}
+
+private struct AreaObjectChangeSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let object: AreaObjectReviewSummary
+    let onSave: (String) -> Void
+
+    @State private var label: String
+
+    init(object: AreaObjectReviewSummary, onSave: @escaping (String) -> Void) {
+        self.object = object
+        self.onSave = onSave
+        _label = State(initialValue: object.label)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Object") {
+                    TextField("Label", text: $label)
+                        .textInputAutocapitalization(.words)
+                }
+
+                Section("Supporting Evidence") {
+                    LabeledContent("Evidence", value: "\(object.evidenceSummary.evidenceCount)")
+                    ForEach(object.evidenceSummary.labels, id: \.self) { label in
+                        Text(label)
+                    }
+                }
+            }
+            .navigationTitle("Change Object")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave(label.trimmingCharacters(in: .whitespacesAndNewlines))
+                        dismiss()
+                    }
+                    .disabled(label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }

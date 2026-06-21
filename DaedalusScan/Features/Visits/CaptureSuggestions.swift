@@ -157,6 +157,88 @@ struct SuggestedAreaGroup: Identifiable, Equatable, Hashable {
     }
 }
 
+struct AreaEvidenceSummary: Equatable, Hashable {
+    var evidenceLinks: [SuggestedAreaEvidenceLink]
+
+    var evidenceCount: Int { evidenceLinks.count }
+    var labels: [String] {
+        Array(Set(evidenceLinks.map(\.label))).sorted()
+    }
+
+    init(evidenceLinks: [SuggestedAreaEvidenceLink] = []) {
+        self.evidenceLinks = evidenceLinks
+    }
+}
+
+struct AreaObjectReviewSummary: Identifiable, Equatable, Hashable {
+    let id: UUID
+    let objectID: UUID
+    var label: String
+    var reviewState: CaptureSuggestionReviewState
+    var evidenceSummary: AreaEvidenceSummary
+
+    init(
+        id: UUID = UUID(),
+        objectID: UUID,
+        label: String,
+        reviewState: CaptureSuggestionReviewState,
+        evidenceSummary: AreaEvidenceSummary
+    ) {
+        self.id = id
+        self.objectID = objectID
+        self.label = label
+        self.reviewState = reviewState
+        self.evidenceSummary = evidenceSummary
+    }
+}
+
+struct AreaSpecialObjectGroup: Identifiable, Equatable, Hashable {
+    let id: UUID
+    var specialObject: SpecialObject
+    var label: String
+    var reviewState: CaptureSuggestionReviewState
+    var evidenceSummary: AreaEvidenceSummary
+    var linkedComponentID: UUID?
+
+    init(
+        id: UUID = UUID(),
+        specialObject: SpecialObject,
+        label: String,
+        reviewState: CaptureSuggestionReviewState,
+        evidenceSummary: AreaEvidenceSummary,
+        linkedComponentID: UUID? = nil
+    ) {
+        self.id = id
+        self.specialObject = specialObject
+        self.label = label
+        self.reviewState = reviewState
+        self.evidenceSummary = evidenceSummary
+        self.linkedComponentID = linkedComponentID
+    }
+}
+
+struct AreaObjectGroup: Identifiable, Equatable, Hashable {
+    let id: UUID
+    var area: SuggestedAreaGroup
+    var objects: [AreaObjectReviewSummary]
+    var specialObjects: [AreaSpecialObjectGroup]
+    var evidenceSummary: AreaEvidenceSummary
+
+    init(
+        id: UUID = UUID(),
+        area: SuggestedAreaGroup,
+        objects: [AreaObjectReviewSummary] = [],
+        specialObjects: [AreaSpecialObjectGroup] = [],
+        evidenceSummary: AreaEvidenceSummary = AreaEvidenceSummary()
+    ) {
+        self.id = id
+        self.area = area
+        self.objects = objects
+        self.specialObjects = specialObjects
+        self.evidenceSummary = evidenceSummary
+    }
+}
+
 struct SuggestedObject: Identifiable, Equatable, Hashable {
     let id: UUID
     var name: String
@@ -366,6 +448,46 @@ extension Visit {
         }
     }
 
+    var areaObjectGroups: [AreaObjectGroup] {
+        suggestedAreaGroups.map { area in
+            let placedComponents = components.filter { component in
+                area.objectLinks.contains { $0.objectID == component.id }
+            }
+            let regularObjects = placedComponents
+                .filter { !$0.isSpatialSpecialObjectSuggestion }
+                .map { component in
+                    AreaObjectReviewSummary(
+                        id: stableSuggestionID("area-object-summary-\(area.id.uuidString)-\(component.id.uuidString)"),
+                        objectID: component.id,
+                        label: component.suggestedCaptureLabel,
+                        reviewState: component.captureReviewDecision.captureSuggestionState,
+                        evidenceSummary: AreaEvidenceSummary(evidenceLinks: component.areaEvidenceLinks(areaID: area.id))
+                    )
+                }
+            let specialObjects = placedComponents
+                .filter(\.isSpatialSpecialObjectSuggestion)
+                .map { component in
+                    let specialObject = component.suggestedSpecialObject
+                    return AreaSpecialObjectGroup(
+                        id: stableSuggestionID("area-special-summary-\(area.id.uuidString)-\(component.id.uuidString)"),
+                        specialObject: specialObject,
+                        label: specialObject.title,
+                        reviewState: component.captureReviewDecision.captureSuggestionState,
+                        evidenceSummary: AreaEvidenceSummary(evidenceLinks: component.areaEvidenceLinks(areaID: area.id)),
+                        linkedComponentID: component.id
+                    )
+                }
+
+            return AreaObjectGroup(
+                id: stableSuggestionID("area-object-group-\(area.id.uuidString)"),
+                area: area,
+                objects: regularObjects,
+                specialObjects: specialObjects,
+                evidenceSummary: AreaEvidenceSummary(evidenceLinks: area.evidenceLinks)
+            )
+        }
+    }
+
     private var suggestedAreas: [CaptureSuggestion] {
         suggestedAreaGroups.map { group in
             CaptureSuggestion(
@@ -425,7 +547,7 @@ extension Visit {
         }
 
         return spatialComponents.map { component in
-            let specialObject: SpecialObject = component.liveCaptureEvidenceKind == .safety ? .hiddenObjectMarker : .unresolvedSpecialObject
+            let specialObject = component.suggestedSpecialObject
             return CaptureSuggestion(
                 id: stableSuggestionID("special-\(component.id.uuidString)"),
                 kind: .specialObject,
@@ -532,6 +654,44 @@ private extension Optional where Wrapped == ReviewStatus {
 }
 
 private extension SystemComponent {
+    var isSpatialSpecialObjectSuggestion: Bool {
+        liveCaptureEvidenceKind == .mark || liveCaptureEvidenceKind == .safety
+    }
+
+    var suggestedSpecialObject: SpecialObject {
+        if liveCaptureEvidenceKind == .safety {
+            return .hiddenObjectMarker
+        }
+        let text = [
+            suggestedCaptureLabel,
+            componentAttributes["transcriptSnippet"] ?? "",
+            componentAttributes["voiceNoteTranscript"] ?? "",
+            spatialContext?.areaLabel ?? "",
+            spatialContext?.approximatePositionLabel ?? ""
+        ]
+        .joined(separator: " ")
+        .lowercased()
+
+        if text.contains("service cupboard") { return .serviceCupboard }
+        if text.contains("airing") { return .airingCupboard }
+        if text.contains("loft") { return .loftHatch }
+        if text.contains("flue") { return .flueExit }
+        if text.contains("door") { return .doorway }
+        if text.contains("external wall") { return .externalWall }
+        return .unresolvedSpecialObject
+    }
+
+    func areaEvidenceLinks(areaID: UUID) -> [SuggestedAreaEvidenceLink] {
+        evidence.map { evidence in
+            SuggestedAreaEvidenceLink(
+                id: stableSuggestionID("area-object-evidence-\(areaID.uuidString)-\(id.uuidString)-\(evidence.id.uuidString)"),
+                evidenceID: evidence.id,
+                label: evidence.kind.title,
+                sourceDescription: suggestedCaptureLabel
+            )
+        }
+    }
+
     var createdAtFallback: Date {
         evidence.map(\.createdAt).min() ?? Date()
     }
