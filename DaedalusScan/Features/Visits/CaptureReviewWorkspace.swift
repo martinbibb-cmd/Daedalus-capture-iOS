@@ -155,12 +155,16 @@ struct CaptureReviewWorkspaceView: View {
     var onResumeSurvey: (() -> Void)?
 
     @State private var changeTarget: CaptureReviewCard?
+    @State private var suggestionChangeTarget: CaptureSuggestion?
+    @State private var suggestionReviewStates: [UUID: CaptureSuggestionReviewState] = [:]
+    @State private var suggestionTitles: [UUID: String] = [:]
     @State private var isPresentingShareSheet = false
     @State private var shareURL: URL?
 
     var body: some View {
         if let visit = viewModel.visit(id: visitID) {
             let cards = visit.captureReviewCards
+            let suggestions = reviewedSuggestions(from: visit.captureSuggestionFoundation)
             List {
                 Section {
                     HStack {
@@ -174,6 +178,47 @@ struct CaptureReviewWorkspaceView: View {
                     }
                 } footer: {
                     Text("Review confirms Capture evidence before export or handoff. Suggestions are weak until confirmed or changed.")
+                }
+
+                Section("Suggested Twin") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("This is what Daedalus thinks you captured.")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Suggestions are review artefacts. They are not components or confirmed twin facts until a surveyor confirms or changes them.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+
+                    CaptureSuggestionGroupView(
+                        title: "Suggested Areas",
+                        systemImage: "square.dashed",
+                        suggestions: suggestions.filter { $0.kind == .area },
+                        onConfirm: { updateSuggestion($0, state: .confirmed) },
+                        onChange: { suggestionChangeTarget = $0 },
+                        onIgnore: { updateSuggestion($0, state: .ignored) },
+                        onMarkUnresolved: { updateSuggestion($0, state: .unresolved) }
+                    )
+
+                    CaptureSuggestionGroupView(
+                        title: "Suggested Objects",
+                        systemImage: "shippingbox",
+                        suggestions: suggestions.filter { $0.kind == .object },
+                        onConfirm: { updateSuggestion($0, state: .confirmed) },
+                        onChange: { suggestionChangeTarget = $0 },
+                        onIgnore: { updateSuggestion($0, state: .ignored) },
+                        onMarkUnresolved: { updateSuggestion($0, state: .unresolved) }
+                    )
+
+                    CaptureSuggestionGroupView(
+                        title: "Special Objects",
+                        systemImage: "mappin.and.ellipse",
+                        suggestions: suggestions.filter { $0.kind == .specialObject },
+                        onConfirm: { updateSuggestion($0, state: .confirmed) },
+                        onChange: { suggestionChangeTarget = $0 },
+                        onIgnore: { updateSuggestion($0, state: .ignored) },
+                        onMarkUnresolved: { updateSuggestion($0, state: .unresolved) }
+                    )
                 }
 
                 if cards.isEmpty {
@@ -244,6 +289,12 @@ struct CaptureReviewWorkspaceView: View {
                     )
                 }
             }
+            .sheet(item: $suggestionChangeTarget) { suggestion in
+                CaptureSuggestionChangeSheet(suggestion: suggestion) { label in
+                    suggestionTitles[suggestion.id] = label
+                    updateSuggestion(suggestion, state: .changed)
+                }
+            }
             .sheet(isPresented: $isPresentingShareSheet) {
                 if let shareURL {
                     ActivityView(url: shareURL)
@@ -251,6 +302,140 @@ struct CaptureReviewWorkspaceView: View {
             }
         } else {
             ContentUnavailableView("Property Twin not found", systemImage: "exclamationmark.triangle")
+        }
+    }
+
+    private func reviewedSuggestions(from suggestions: [CaptureSuggestion]) -> [CaptureSuggestion] {
+        suggestions.map { suggestion in
+            var updated = suggestion
+            updated.reviewState = suggestionReviewStates[suggestion.id] ?? suggestion.reviewState
+            updated.title = suggestionTitles[suggestion.id] ?? suggestion.title
+            return updated
+        }
+    }
+
+    private func updateSuggestion(_ suggestion: CaptureSuggestion, state: CaptureSuggestionReviewState) {
+        suggestionReviewStates[suggestion.id] = state
+    }
+}
+
+private struct CaptureSuggestionGroupView: View {
+    let title: String
+    let systemImage: String
+    let suggestions: [CaptureSuggestion]
+    let onConfirm: (CaptureSuggestion) -> Void
+    let onChange: (CaptureSuggestion) -> Void
+    let onIgnore: (CaptureSuggestion) -> Void
+    let onMarkUnresolved: (CaptureSuggestion) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+
+            if suggestions.isEmpty {
+                Text("No suggestions yet")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(suggestions) { suggestion in
+                    CaptureSuggestionCardView(
+                        suggestion: suggestion,
+                        onConfirm: { onConfirm(suggestion) },
+                        onChange: { onChange(suggestion) },
+                        onIgnore: { onIgnore(suggestion) },
+                        onMarkUnresolved: { onMarkUnresolved(suggestion) }
+                    )
+                }
+            }
+        }
+        .padding(.vertical, 8)
+    }
+}
+
+private struct CaptureSuggestionCardView: View {
+    let suggestion: CaptureSuggestion
+    let onConfirm: () -> Void
+    let onChange: () -> Void
+    let onIgnore: () -> Void
+    let onMarkUnresolved: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Daedalus thinks this is:")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(suggestion.title)
+                        .font(.headline)
+                    if !suggestion.detail.isEmpty {
+                        Text(suggestion.detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                Text(suggestion.reviewState.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(stateColor)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Evidence:")
+                    .font(.caption.weight(.semibold))
+                ForEach(suggestion.evidenceLabels, id: \.self) { label in
+                    Label(label, systemImage: "paperclip")
+                }
+                ForEach(suggestion.sources, id: \.self) { source in
+                    Label(source.title, systemImage: sourceSystemImage(source))
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                Button("Confirm", action: onConfirm)
+                    .buttonStyle(.borderedProminent)
+                Button("Change", action: onChange)
+                    .buttonStyle(.bordered)
+                Button("Ignore", action: onIgnore)
+                    .buttonStyle(.bordered)
+                Button("Mark Unresolved", action: onMarkUnresolved)
+                    .buttonStyle(.bordered)
+            }
+            .font(.caption.weight(.semibold))
+        }
+        .padding(10)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var stateColor: Color {
+        switch suggestion.reviewState {
+        case .confirmed, .changed:
+            return .green
+        case .ignored:
+            return .secondary
+        case .unresolved, .needsAttention:
+            return .red
+        case .suggested:
+            return .orange
+        }
+    }
+
+    private func sourceSystemImage(_ source: CaptureSuggestionSource) -> String {
+        switch source {
+        case .machineVision:
+            return "camera.viewfinder"
+        case .transcript:
+            return "text.quote"
+        case .spatialContext:
+            return "location"
+        case .manualTap:
+            return "hand.tap"
+        case .existingEvidence:
+            return "doc.text"
         }
     }
 }
@@ -387,6 +572,57 @@ private struct PhotoThumbnail: View {
             return "exclamationmark.triangle.fill"
         case .measurement:
             return "ruler"
+        }
+    }
+}
+
+private struct CaptureSuggestionChangeSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let suggestion: CaptureSuggestion
+    let onSave: (String) -> Void
+
+    @State private var label: String
+
+    init(suggestion: CaptureSuggestion, onSave: @escaping (String) -> Void) {
+        self.suggestion = suggestion
+        self.onSave = onSave
+        _label = State(initialValue: suggestion.title)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Changed Suggestion") {
+                    TextField("Label", text: $label)
+                        .textInputAutocapitalization(.words)
+                }
+
+                Section("Original Suggestion") {
+                    Text("Daedalus thinks this is:")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(suggestion.title)
+                    if !suggestion.detail.isEmpty {
+                        Text(suggestion.detail)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("Change Suggestion")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave(label.trimmingCharacters(in: .whitespacesAndNewlines))
+                        dismiss()
+                    }
+                    .disabled(label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
         }
     }
 }
