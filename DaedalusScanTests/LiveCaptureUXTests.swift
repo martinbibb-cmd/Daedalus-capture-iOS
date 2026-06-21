@@ -382,6 +382,22 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertTrue(lifecycleSource.contains("\"Resume Survey\""), "Review should expose a Resume Survey action")
     }
 
+    func testLiveCaptureSourceShowsSuggestionConfirmationCardAndReviewLink() throws {
+        let source = try sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureView.swift")
+
+        XCTAssertTrue(source.contains("\"Captured Suggestion\""))
+        XCTAssertTrue(source.contains("\"What was observed:\""))
+        XCTAssertTrue(source.contains("\"Daedalus thinks this is:\""))
+        XCTAssertTrue(source.contains("\"Area:\""))
+        XCTAssertTrue(source.contains("\"Status:\""))
+        XCTAssertTrue(source.contains("\"Needs Confirmation\""))
+        XCTAssertTrue(source.contains("\"Confirm\""))
+        XCTAssertTrue(source.contains("\"Mark Unresolved\""))
+        XCTAssertTrue(source.contains("\"Review Later\""))
+        XCTAssertTrue(source.contains("confirmationState.recentEvents"))
+        XCTAssertTrue(source.contains("reviewLiveCaptureLater"))
+    }
+
     func testCaptureSourceDoesNotIntroduceBannedBoundaryBehaviours() throws {
         let source = try sourceText(relativePath: "DaedalusScan/ViewModels/VisitListViewModel.swift") +
             sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureEvidence.swift") +
