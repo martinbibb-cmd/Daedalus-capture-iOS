@@ -1,0 +1,14 @@
+name: Runner Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - name: Say hello
+        run: |
+          echo "Hello from Unraid runner"
+          hostname
+          whoami
