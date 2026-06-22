@@ -47,11 +47,11 @@ public enum CaptureMode: String, Codable, CaseIterable, Hashable, Sendable {
     public var title: String {
         switch self {
         case .create:
-            return "Create Twin"
+            return "Start Property Capture"
         case .verify:
-            return "Verify Twin"
+            return "Verify Property"
         case .update:
-            return "Update Twin"
+            return "Update Property"
         }
     }
 
@@ -335,6 +335,9 @@ public struct EvidenceTranscriptReference: Codable, Hashable, Sendable {
 
 public struct Evidence: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
+    public var propertyID: UUID?
+    public var workingTwinID: UUID?
+    public var captureSessionID: UUID?
     public var kind: EvidenceKind
     public var localFileName: String
     public var createdAt: Date
@@ -349,6 +352,9 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
 
     public init(
         id: UUID = UUID(),
+        propertyID: UUID? = nil,
+        workingTwinID: UUID? = nil,
+        captureSessionID: UUID? = nil,
         kind: EvidenceKind,
         localFileName: String,
         createdAt: Date = Date(),
@@ -360,6 +366,9 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
         embeddedData: Data? = nil
     ) {
         self.id = id
+        self.propertyID = propertyID
+        self.workingTwinID = workingTwinID
+        self.captureSessionID = captureSessionID
         self.kind = kind
         self.localFileName = localFileName
         self.createdAt = createdAt
@@ -373,6 +382,9 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id
+        case propertyID
+        case workingTwinID
+        case captureSessionID
         case kind
         case localFileName
         case createdAt
@@ -387,6 +399,9 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
+        propertyID = try container.decodeIfPresent(UUID.self, forKey: .propertyID)
+        workingTwinID = try container.decodeIfPresent(UUID.self, forKey: .workingTwinID)
+        captureSessionID = try container.decodeIfPresent(UUID.self, forKey: .captureSessionID)
         kind = try container.decode(EvidenceKind.self, forKey: .kind)
         localFileName = try container.decode(String.self, forKey: .localFileName)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
@@ -401,6 +416,9 @@ public struct Evidence: Codable, Hashable, Identifiable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
+        try container.encodeIfPresent(propertyID, forKey: .propertyID)
+        try container.encodeIfPresent(workingTwinID, forKey: .workingTwinID)
+        try container.encodeIfPresent(captureSessionID, forKey: .captureSessionID)
         try container.encode(kind, forKey: .kind)
         try container.encode(localFileName, forKey: .localFileName)
         try container.encode(createdAt, forKey: .createdAt)
@@ -1250,8 +1268,105 @@ public struct SystemComponent: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+public struct PropertyIdentity: Codable, Hashable, Identifiable, Sendable {
+    public let id: UUID
+    public var reference: String
+    public var customerName: String
+    public var addressLine: String
+    public var postcode: String
+    public var createdAt: Date
+
+    public init(
+        id: UUID = UUID(),
+        reference: String,
+        customerName: String = "",
+        addressLine: String = "",
+        postcode: String = "",
+        createdAt: Date = Date()
+    ) {
+        self.id = id
+        self.reference = reference
+        self.customerName = customerName
+        self.addressLine = addressLine
+        self.postcode = postcode
+        self.createdAt = createdAt
+    }
+}
+
+public struct WorkingTwin: Codable, Hashable, Identifiable, Sendable {
+    public let id: UUID
+    public var propertyID: UUID
+    public var version: Int
+    public var repositoryState: TwinRepositoryState
+    public var lifecycleStage: TwinLifecycleStage
+    public var createdAt: Date
+    public var lastMergedAt: Date?
+
+    public init(
+        id: UUID = UUID(),
+        propertyID: UUID,
+        version: Int = 1,
+        repositoryState: TwinRepositoryState = .localWorkingCopy,
+        lifecycleStage: TwinLifecycleStage = .capture,
+        createdAt: Date = Date(),
+        lastMergedAt: Date? = nil
+    ) {
+        self.id = id
+        self.propertyID = propertyID
+        self.version = max(1, version)
+        self.repositoryState = repositoryState
+        self.lifecycleStage = lifecycleStage
+        self.createdAt = createdAt
+        self.lastMergedAt = lastMergedAt
+    }
+}
+
+public struct SurveyCaptureSession: Codable, Hashable, Identifiable, Sendable {
+    public let id: UUID
+    public var propertyID: UUID
+    public var workingTwinID: UUID
+    public var createdAt: Date
+    public var mode: CaptureMode
+    public var isOffline: Bool
+
+    public init(
+        id: UUID = UUID(),
+        propertyID: UUID,
+        workingTwinID: UUID,
+        createdAt: Date = Date(),
+        mode: CaptureMode = .create,
+        isOffline: Bool = true
+    ) {
+        self.id = id
+        self.propertyID = propertyID
+        self.workingTwinID = workingTwinID
+        self.createdAt = createdAt
+        self.mode = mode
+        self.isOffline = isOffline
+    }
+}
+
+public struct PropertyRootMetadata: Codable, Hashable, Sendable {
+    public var property: PropertyIdentity
+    public var workingTwin: WorkingTwin
+    public var captureSession: SurveyCaptureSession
+
+    public init(
+        property: PropertyIdentity,
+        workingTwin: WorkingTwin,
+        captureSession: SurveyCaptureSession
+    ) {
+        self.property = property
+        self.workingTwin = workingTwin
+        self.captureSession = captureSession
+    }
+}
+
 public struct Visit: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
+    public var propertyIdentity: PropertyIdentity
+    public var workingTwin: WorkingTwin
+    public var captureSession: SurveyCaptureSession
     public var reference: String
     public var createdAt: Date
     public var twinKind: TwinKind
@@ -1286,8 +1401,19 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         set { rooms = newValue }
     }
 
+    public var propertyRootMetadata: PropertyRootMetadata {
+        PropertyRootMetadata(
+            property: propertyIdentity,
+            workingTwin: workingTwin,
+            captureSession: captureSession
+        )
+    }
+
     public init(
         id: UUID = UUID(),
+        propertyIdentity: PropertyIdentity? = nil,
+        workingTwin: WorkingTwin? = nil,
+        captureSession: SurveyCaptureSession? = nil,
         reference: String,
         createdAt: Date = Date(),
         twinKind: TwinKind,
@@ -1315,7 +1441,32 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         recordings: [VisitRecording] = [],
         transcripts: [Transcript] = []
     ) {
+        let resolvedPropertyIdentity = propertyIdentity ?? PropertyIdentity(
+            reference: reference,
+            customerName: customerName,
+            addressLine: addressLine,
+            postcode: postcode,
+            createdAt: createdAt
+        )
+        let resolvedWorkingTwin = workingTwin ?? WorkingTwin(
+            propertyID: resolvedPropertyIdentity.id,
+            version: twinVersion,
+            repositoryState: repositoryState,
+            lifecycleStage: lifecycleStage,
+            createdAt: createdAt,
+            lastMergedAt: lastMergedAt
+        )
+        let resolvedCaptureSession = captureSession ?? SurveyCaptureSession(
+            propertyID: resolvedPropertyIdentity.id,
+            workingTwinID: resolvedWorkingTwin.id,
+            createdAt: createdAt,
+            mode: captureMode,
+            isOffline: true
+        )
         self.id = id
+        self.propertyIdentity = resolvedPropertyIdentity
+        self.workingTwin = resolvedWorkingTwin
+        self.captureSession = resolvedCaptureSession
         self.reference = reference
         self.createdAt = createdAt
         self.twinKind = twinKind
@@ -1346,6 +1497,9 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id
+        case propertyIdentity
+        case workingTwin
+        case captureSession
         case reference
         case createdAt
         case twinKind
@@ -1418,11 +1572,36 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         changeSetCounters = try container.decodeIfPresent([String: Int].self, forKey: .changeSetCounters) ?? [:]
         recordings = try container.decodeIfPresent([VisitRecording].self, forKey: .recordings) ?? []
         transcripts = try container.decodeIfPresent([Transcript].self, forKey: .transcripts) ?? []
+        propertyIdentity = try container.decodeIfPresent(PropertyIdentity.self, forKey: .propertyIdentity) ?? PropertyIdentity(
+            reference: reference,
+            customerName: customerName,
+            addressLine: addressLine,
+            postcode: postcode,
+            createdAt: createdAt
+        )
+        workingTwin = try container.decodeIfPresent(WorkingTwin.self, forKey: .workingTwin) ?? WorkingTwin(
+            propertyID: propertyIdentity.id,
+            version: twinVersion,
+            repositoryState: repositoryState,
+            lifecycleStage: lifecycleStage,
+            createdAt: createdAt,
+            lastMergedAt: lastMergedAt
+        )
+        captureSession = try container.decodeIfPresent(SurveyCaptureSession.self, forKey: .captureSession) ?? SurveyCaptureSession(
+            propertyID: propertyIdentity.id,
+            workingTwinID: workingTwin.id,
+            createdAt: createdAt,
+            mode: captureMode,
+            isOffline: true
+        )
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
+        try container.encode(propertyIdentity, forKey: .propertyIdentity)
+        try container.encode(workingTwin, forKey: .workingTwin)
+        try container.encode(captureSession, forKey: .captureSession)
         try container.encode(reference, forKey: .reference)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(twinKind, forKey: .twinKind)
@@ -1465,21 +1644,26 @@ public struct VisitPackage: Codable, Hashable, Sendable {
     public var schemaVersion: Int
     public var exportedAt: Date
     public var visits: [Visit]
+    public var propertyRoots: [PropertyRootMetadata]
 
     public init(
         metadata: VisitPackageMetadata? = nil,
         schemaVersion: Int = VisitPackageMetadata.currentSchemaVersion,
         exportedAt: Date = Date(),
-        visits: [Visit]
+        visits: [Visit],
+        propertyRoots: [PropertyRootMetadata]? = nil
     ) {
+        let resolvedPropertyRoots = propertyRoots ?? visits.map(\.propertyRootMetadata)
         let resolvedMetadata = metadata ?? VisitPackageMetadata(
             schemaVersion: schemaVersion,
-            createdAt: exportedAt
+            createdAt: exportedAt,
+            propertyRoots: resolvedPropertyRoots
         )
         self.metadata = resolvedMetadata
         self.schemaVersion = resolvedMetadata.schemaVersion
         self.exportedAt = resolvedMetadata.createdAt
         self.visits = visits
+        self.propertyRoots = resolvedPropertyRoots
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1487,16 +1671,21 @@ public struct VisitPackage: Codable, Hashable, Sendable {
         case schemaVersion
         case exportedAt
         case visits
+        case propertyRoots
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         visits = try container.decode([Visit].self, forKey: .visits)
+        propertyRoots = try container.decodeIfPresent([PropertyRootMetadata].self, forKey: .propertyRoots) ?? visits.map(\.propertyRootMetadata)
 
         if let metadata = try container.decodeIfPresent(VisitPackageMetadata.self, forKey: .metadata) {
             self.metadata = metadata
             schemaVersion = metadata.schemaVersion
             exportedAt = metadata.createdAt
+            if propertyRoots.isEmpty {
+                propertyRoots = metadata.propertyRoots
+            }
             return
         }
 
@@ -1509,17 +1698,19 @@ public struct VisitPackage: Codable, Hashable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         let metadataToEncode = metadata ?? VisitPackageMetadata(
             schemaVersion: schemaVersion,
-            createdAt: exportedAt
+            createdAt: exportedAt,
+            propertyRoots: propertyRoots
         )
         try container.encode(metadataToEncode, forKey: .metadata)
         try container.encode(metadataToEncode.schemaVersion, forKey: .schemaVersion)
         try container.encode(metadataToEncode.createdAt, forKey: .exportedAt)
         try container.encode(visits, forKey: .visits)
+        try container.encode(propertyRoots, forKey: .propertyRoots)
     }
 }
 
 public struct VisitPackageMetadata: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 4
     public static let canonicalSource = "Daedalus Capture"
 
     public var packageID: UUID
@@ -1528,6 +1719,7 @@ public struct VisitPackageMetadata: Codable, Hashable, Sendable {
     public var exportedByApp: String
     public var appVersion: String?
     public var source: String
+    public var propertyRoots: [PropertyRootMetadata]
 
     public init(
         packageID: UUID = UUID(),
@@ -1535,7 +1727,8 @@ public struct VisitPackageMetadata: Codable, Hashable, Sendable {
         createdAt: Date = Date(),
         exportedByApp: String = canonicalSource,
         appVersion: String? = nil,
-        source: String = canonicalSource
+        source: String = canonicalSource,
+        propertyRoots: [PropertyRootMetadata] = []
     ) {
         self.packageID = packageID
         self.schemaVersion = schemaVersion
@@ -1543,6 +1736,28 @@ public struct VisitPackageMetadata: Codable, Hashable, Sendable {
         self.exportedByApp = exportedByApp
         self.appVersion = appVersion
         self.source = source
+        self.propertyRoots = propertyRoots
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case packageID
+        case schemaVersion
+        case createdAt
+        case exportedByApp
+        case appVersion
+        case source
+        case propertyRoots
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        packageID = try container.decode(UUID.self, forKey: .packageID)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        exportedByApp = try container.decode(String.self, forKey: .exportedByApp)
+        appVersion = try container.decodeIfPresent(String.self, forKey: .appVersion)
+        source = try container.decodeIfPresent(String.self, forKey: .source) ?? Self.canonicalSource
+        propertyRoots = try container.decodeIfPresent([PropertyRootMetadata].self, forKey: .propertyRoots) ?? []
     }
 }
 

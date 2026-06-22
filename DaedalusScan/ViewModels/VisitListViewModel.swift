@@ -250,6 +250,7 @@ public final class VisitListViewModel: ObservableObject {
             visits[visitIndex].twinVersion += 1
             visits[visitIndex].lastMergedAt = Date()
         }
+        syncWorkingTwinLifecycle(at: visitIndex)
         persistChanges()
     }
 
@@ -818,12 +819,15 @@ public final class VisitListViewModel: ObservableObject {
         do {
             let url = try repository.makeEvidenceFileURL(fileExtension: "txt", visitID: visitID, componentID: componentID)
             try Data(note.utf8).write(to: url, options: .atomic)
-            let evidence = Evidence(
+            let evidence = linkedEvidence(
+                Evidence(
                 kind: .textNote,
                 localFileName: url.lastPathComponent,
                 reviewStatus: .needsReview,
                 reviewNotes: "\(itemType.title) estimated dimensions",
                 geometryMetadata: metadata
+                ),
+                for: visitIndex
             )
             visits[visitIndex].components[componentIndex].evidence.append(evidence)
         } catch {
@@ -875,7 +879,8 @@ public final class VisitListViewModel: ObservableObject {
             status: .pending,
             rawTranscript: ""
         )
-        let evidence = Evidence(
+        let evidence = linkedEvidence(
+            Evidence(
             kind: .voiceNote,
             localFileName: localFileName,
             reviewStatus: .unreviewed,
@@ -886,6 +891,8 @@ public final class VisitListViewModel: ObservableObject {
                     sourceRecordingID: recording.id
                 )
             ]
+            ),
+            for: visitIndex
         )
 
         visits[visitIndex].recordings.append(recording)
@@ -1459,7 +1466,7 @@ public final class VisitListViewModel: ObservableObject {
             return
         }
 
-        visits[visitIndex].rooms[roomIndex].evidence.insert(evidence, at: 0)
+        visits[visitIndex].rooms[roomIndex].evidence.insert(linkedEvidence(evidence, for: visitIndex), at: 0)
         markLocalChanges(at: visitIndex)
         persistChanges()
     }
@@ -1470,9 +1477,18 @@ public final class VisitListViewModel: ObservableObject {
             return
         }
 
-        visits[visitIndex].components[componentIndex].evidence.insert(evidence, at: 0)
+        visits[visitIndex].components[componentIndex].evidence.insert(linkedEvidence(evidence, for: visitIndex), at: 0)
         markLocalChanges(at: visitIndex)
         persistChanges()
+    }
+
+    private func linkedEvidence(_ evidence: Evidence, for visitIndex: Int) -> Evidence {
+        guard visits.indices.contains(visitIndex) else { return evidence }
+        var linked = evidence
+        linked.propertyID = linked.propertyID ?? visits[visitIndex].propertyIdentity.id
+        linked.workingTwinID = linked.workingTwinID ?? visits[visitIndex].workingTwin.id
+        linked.captureSessionID = linked.captureSessionID ?? visits[visitIndex].captureSession.id
+        return linked
     }
 
     private func markEvidenceBundleNeedsReview(componentIndex: Int, visitIndex: Int) {
@@ -1591,6 +1607,16 @@ public final class VisitListViewModel: ObservableObject {
             visits[visitIndex].repositoryState != .readyToMerge {
             visits[visitIndex].repositoryState = .hasLocalChanges
         }
+        syncWorkingTwinLifecycle(at: visitIndex)
+    }
+
+    private func syncWorkingTwinLifecycle(at visitIndex: Int) {
+        guard visits.indices.contains(visitIndex) else { return }
+        visits[visitIndex].workingTwin.repositoryState = visits[visitIndex].repositoryState
+        visits[visitIndex].workingTwin.lifecycleStage = visits[visitIndex].lifecycleStage
+        visits[visitIndex].workingTwin.version = visits[visitIndex].twinVersion
+        visits[visitIndex].workingTwin.lastMergedAt = visits[visitIndex].lastMergedAt
+        visits[visitIndex].captureSession.mode = visits[visitIndex].captureMode
     }
 
     private func repositoryState(for stage: TwinLifecycleStage) -> TwinRepositoryState {

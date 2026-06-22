@@ -190,7 +190,24 @@ struct CaptureReviewWorkspaceView: View {
                     Text("Review confirms Capture evidence before export or handoff. Suggestions are weak until confirmed or changed.")
                 }
 
-                Section("Suggested Areas") {
+                Section("Property") {
+                    LabeledContent("Reference", value: visit.propertyIdentity.reference)
+                    if !visit.propertyIdentity.addressLine.isEmpty {
+                        LabeledContent("Address", value: visit.propertyIdentity.addressLine)
+                    }
+                    if !visit.propertyIdentity.postcode.isEmpty {
+                        LabeledContent("Postcode", value: visit.propertyIdentity.postcode)
+                    }
+                }
+
+                Section("Working Twin") {
+                    LabeledContent("ID", value: visit.workingTwin.id.uuidString)
+                    LabeledContent("State", value: visit.workingTwin.repositoryState.title)
+                    LabeledContent("Lifecycle", value: visit.workingTwin.lifecycleStage.title)
+                    LabeledContent("Capture Session", value: visit.captureSession.id.uuidString)
+                }
+
+                Section("Areas") {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("This is what Daedalus thinks you captured.")
                             .font(.subheadline.weight(.semibold))
@@ -219,6 +236,11 @@ struct CaptureReviewWorkspaceView: View {
                             onMarkSpecialObjectUnresolved: { updateSpecialObject($0, state: .unresolved) }
                         )
                     }
+                }
+
+                Section("Objects") {
+                    LabeledContent("Spatial objects", value: "\(visit.components.count)")
+                    LabeledContent("Review objects", value: "\(areaObjectGroups.reduce(0) { $0 + $1.objects.count + $1.specialObjects.count })")
                 }
 
                 if cards.isEmpty {
@@ -318,7 +340,7 @@ struct CaptureReviewWorkspaceView: View {
                 }
             }
         } else {
-            ContentUnavailableView("Property Twin not found", systemImage: "exclamationmark.triangle")
+            ContentUnavailableView("Property not found", systemImage: "exclamationmark.triangle")
         }
     }
 

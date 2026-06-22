@@ -30,7 +30,7 @@ struct CreateVisitView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Property Twin") {
+                Section("Property") {
                     TextField("Property reference (required)", text: $reference)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -96,7 +96,7 @@ struct CreateVisitView: View {
                     }
                 }
             }
-            .navigationTitle("New Property Twin")
+            .navigationTitle("New Property")
             .onSubmit {
                 advanceFocus()
             }
@@ -114,7 +114,7 @@ struct CreateVisitView: View {
                         if isCreating {
                             ProgressView()
                         } else {
-                            Text("Create")
+                            Text("Start Capture")
                         }
                     }
                     .disabled(reference.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isCreating)

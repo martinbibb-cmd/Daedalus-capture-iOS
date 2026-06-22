@@ -28,7 +28,7 @@ struct PropertyTwinHomeView: View {
                     }
                     .padding(.vertical, 4)
                 } header: {
-                    Text("Property Twin")
+                    Text("Property")
                 }
 
                 Section {
@@ -53,7 +53,7 @@ struct PropertyTwinHomeView: View {
                     NavigationLink {
                         MergeModeView(viewModel: viewModel, visitID: visitID)
                     } label: {
-                        Label("Merge Twin", systemImage: "arrow.triangle.merge")
+                            Label("Merge Working Twin", systemImage: "arrow.triangle.merge")
                     }
                 } header: {
                     Text("Finish")
@@ -104,7 +104,7 @@ struct PropertyTwinHomeView: View {
                     Text("Status")
                 }
             }
-            .navigationTitle("Property Twin")
+            .navigationTitle("Property")
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $isPresentingCaptureLite) {
                 CaptureLiteSheet(areas: visit.areas) { request in
@@ -125,13 +125,13 @@ struct PropertyTwinHomeView: View {
                         Button {
                             onRequestLeave()
                         } label: {
-                            Label("Property Twins", systemImage: "chevron.left")
+                            Label("Properties", systemImage: "chevron.left")
                         }
                     }
                 }
             }
         } else {
-            ContentUnavailableView("Property Twin not found", systemImage: "exclamationmark.triangle")
+            ContentUnavailableView("Property not found", systemImage: "exclamationmark.triangle")
         }
     }
 
@@ -181,7 +181,7 @@ private struct SurveyPrimaryActionRow: View {
         case .readyToMerge, .merged:
             return "Open Survey"
         default:
-            return "Start Survey"
+            return "Start Property Capture"
         }
     }
 
@@ -324,11 +324,11 @@ struct TwinOverviewView: View {
             let markers = visit.componentMarkers(matching: markerFilter)
             List {
                 Section {
-                    LabeledContent("Property Twin", value: visit.reference)
+                    LabeledContent("Property", value: visit.reference)
                     LabeledContent("State", value: visit.repositoryState.title)
                     LabeledContent("Lifecycle", value: visit.lifecycleStage.title)
                 } header: {
-                    Text("Property Twin")
+                    Text("Working Twin")
                 }
 
                 Section {
