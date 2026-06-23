@@ -61,7 +61,6 @@ struct LiveCaptureView: View {
     @ViewBuilder
     private func cameraFirstCapture(visit: Visit) -> some View {
         liveCaptureSurface(visit: visit)
-            .ignoresSafeArea()
             .onAppear {
                 requestSpatialSessionStart()
             }
@@ -92,16 +91,6 @@ struct LiveCaptureView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                LiveCaptureStatusBar(
-                    reference: visit.reference,
-                    sessionStatus: surveyStatusTitle,
-                    sessionColor: sessionStatusColor,
-                    placementLabel: surveyConfidenceLabel,
-                    onEnd: leaveSurvey
-                )
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-
                 HStack {
                     Spacer()
                     LiveCaptureUtilityRail(
@@ -131,14 +120,27 @@ struct LiveCaptureView: View {
                 )
                     .padding(.horizontal, 16)
                     .padding(.bottom, 12)
-
-                LiveCaptureControlBar(
-                    onCapture: capAction
-                )
-                .padding(.horizontal, 16)
-                .padding(.bottom, 18)
             }
-
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            LiveCaptureStatusBar(
+                reference: visit.reference,
+                sessionStatus: surveyStatusTitle,
+                sessionColor: sessionStatusColor,
+                placementLabel: surveyConfidenceLabel,
+                onEnd: leaveSurvey
+            )
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 8)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            LiveCaptureControlBar(
+                onCapture: capAction
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 10)
         }
         .onChange(of: scanProgress) { _, _ in
             syncPlacementStateForSession()
@@ -426,44 +428,78 @@ private struct LiveCaptureStatusBar: View {
     let onEnd: () -> Void
 
     var body: some View {
+        ViewThatFits(in: .horizontal) {
+            horizontalLayout
+            compactLayout
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .background(.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var horizontalLayout: some View {
         HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(sessionColor)
-                        .frame(width: 9, height: 9)
-                    Text(sessionStatus)
-                        .font(.caption.weight(.semibold))
-                }
-                .foregroundStyle(.white)
+            titleBlock
 
-                Text(reference)
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-            }
-
-            Spacer()
+            Spacer(minLength: 8)
 
             Text(placementLabel)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.white.opacity(0.88))
                 .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .minimumScaleFactor(0.7)
 
-            Button(action: onEnd) {
-                Image(systemName: "xmark")
-                    .font(.caption.weight(.bold))
-                    .frame(width: 34, height: 34)
-                    .background(Color.black.opacity(0.32), in: Circle())
-                    .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 1))
-                    .foregroundStyle(.white)
-            }
-            .accessibilityLabel("End survey")
+            endButton
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var compactLayout: some View {
+        HStack(alignment: .center, spacing: 10) {
+            titleBlock
+
+            Spacer(minLength: 8)
+
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(placementLabel)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+                endButton
+            }
+        }
+    }
+
+    private var titleBlock: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(sessionColor)
+                    .frame(width: 9, height: 9)
+                Text(sessionStatus)
+                    .font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(.white)
+
+            Text(reference)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+    }
+
+    private var endButton: some View {
+        Button(action: onEnd) {
+            Image(systemName: "xmark")
+                .font(.caption.weight(.bold))
+                .frame(width: 34, height: 34)
+                .background(Color.black.opacity(0.32), in: Circle())
+                .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 1))
+                .foregroundStyle(.white)
+        }
+        .accessibilityLabel("End survey")
     }
 }
 

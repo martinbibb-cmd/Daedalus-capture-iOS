@@ -412,6 +412,34 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertFalse(source.contains("\"Property Twin"), "User-facing root labels should use Property or Working Twin, not Property Twin")
     }
 
+    func testLiveCaptureControlsRespectSafeAreaAndNarrowWidths() throws {
+        let source = try sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureView.swift")
+        let surfaceSource = try sourceBlock(
+            named: "private func liveCaptureSurface",
+            endingBefore: "private var currentPlacementMetadata",
+            in: source
+        )
+        let cameraSource = try sourceBlock(
+            named: "private func cameraFirstCapture",
+            endingBefore: "private func liveCaptureSurface",
+            in: source
+        )
+        let statusBarSource = try sourceBlock(
+            named: "private struct LiveCaptureStatusBar",
+            endingBefore: "private struct LiveSurveyCoverageOverlay",
+            in: source
+        )
+
+        XCTAssertTrue(surfaceSource.contains(".safeAreaInset(edge: .top"), "Top capture controls should stay below the Dynamic Island/status area")
+        XCTAssertTrue(surfaceSource.contains(".safeAreaInset(edge: .bottom"), "Shutter controls should stay above the home indicator")
+        XCTAssertTrue(surfaceSource.contains("LiveSpatialCaptureView("))
+        XCTAssertTrue(surfaceSource.contains(".ignoresSafeArea()"), "Camera and scrim should still fill the whole screen")
+        XCTAssertFalse(cameraSource.contains(".ignoresSafeArea()"), "The whole control surface must not ignore safe areas")
+        XCTAssertTrue(statusBarSource.contains("ViewThatFits(in: .horizontal)"), "Header should adapt before clipping on narrow or zoomed displays")
+        XCTAssertTrue(statusBarSource.contains(".frame(maxWidth: .infinity)"), "Header background should stay inside the safe-area width")
+        XCTAssertTrue(statusBarSource.contains(".minimumScaleFactor(0.72)"), "Property references should scale instead of pushing controls off screen")
+    }
+
     func testCaptureSourceDoesNotIntroduceBannedBoundaryBehaviours() throws {
         let source = try sourceText(relativePath: "DaedalusScan/ViewModels/VisitListViewModel.swift") +
             sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureEvidence.swift") +
