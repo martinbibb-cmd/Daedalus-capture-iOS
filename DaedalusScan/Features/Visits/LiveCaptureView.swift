@@ -14,7 +14,7 @@ struct LiveCaptureView: View {
     @State private var livePlacementState = LivePlacementState.unavailable
     @State private var scanProgress = LiveSpatialScanProgress.empty
     @State private var spatialAim = LiveSpatialAim.empty
-    @State private var confirmation: LiveCaptureConfirmation?
+    @State private var confirmationState = LiveCaptureConfirmationState()
     @State private var captureState: LiveCaptureState = .idle
     @State private var snapshotRequestID: UUID?
     @State private var didRequestSpatialStart = false
@@ -114,12 +114,21 @@ struct LiveCaptureView: View {
 
                 Spacer()
 
-                if let confirmation {
-                    LiveCaptureConfirmationView(confirmation: confirmation)
+                if let event = confirmationState.activeEvent {
+                    LiveCaptureConfirmationView(
+                        event: event,
+                        onConfirm: { confirmLiveCapture(event) },
+                        onMarkUnresolved: { markLiveCaptureUnresolved(event) },
+                        onReviewLater: reviewLiveCaptureLater
+                    )
                         .padding(.bottom, 18)
                 }
 
-                LiveCaptureMiniTimeline(visit: visit, scanProgress: scanProgress)
+                LiveCaptureMiniTimeline(
+                    events: confirmationState.recentEvents,
+                    visit: visit,
+                    scanProgress: scanProgress
+                )
                     .padding(.horizontal, 16)
                     .padding(.bottom, 12)
 
@@ -283,12 +292,10 @@ struct LiveCaptureView: View {
 
         let hapticStyle: UIImpactFeedbackGenerator.FeedbackStyle = kind == .safety ? .heavy : .medium
         UIImpactFeedbackGenerator(style: hapticStyle).impactOccurred()
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-            confirmation = LiveCaptureConfirmation(kind: kind, anchored: currentPlacementMetadata != nil)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-            withAnimation(.easeOut(duration: 0.18)) {
-                confirmation = nil
+        if let componentID,
+           let event = viewModel.visit(id: visitID)?.captureConfirmationEvent(for: componentID) {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                confirmationState.record(event)
             }
         }
     }
@@ -375,6 +382,29 @@ struct LiveCaptureView: View {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
+    private func confirmLiveCapture(_ event: CaptureConfirmationEvent) {
+        guard let componentID = event.preview.linkedComponentID else { return }
+        viewModel.setCaptureReviewDecision(
+            .confirmed,
+            componentID: componentID,
+            visitID: visitID,
+            reviewedLabel: event.preview.suggestedTitle
+        )
+        confirmationState.update(componentID: componentID, status: .confirmed)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    private func markLiveCaptureUnresolved(_ event: CaptureConfirmationEvent) {
+        guard let componentID = event.preview.linkedComponentID else { return }
+        viewModel.setCaptureReviewDecision(.needsAttention, componentID: componentID, visitID: visitID)
+        confirmationState.update(componentID: componentID, status: .unresolved)
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+    }
+
+    private func reviewLiveCaptureLater() {
+        pauseForReview()
+    }
+
     private func leaveSurvey() {
         completeSpatialSession()
         dismiss()
@@ -386,11 +416,6 @@ struct LiveCaptureView: View {
         requestSpatialSessionStart()
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
-}
-
-private struct LiveCaptureConfirmation: Equatable {
-    var kind: LiveCaptureEvidenceKind
-    var anchored: Bool
 }
 
 private struct LiveCaptureStatusBar: View {
@@ -588,24 +613,119 @@ private struct LiveCaptureControlBar: View {
 }
 
 private struct LiveCaptureConfirmationView: View {
-    let confirmation: LiveCaptureConfirmation
+    let event: CaptureConfirmationEvent
+    let onConfirm: () -> Void
+    let onMarkUnresolved: () -> Void
+    let onReviewLater: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: confirmation.kind == .safety ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-            Text("\(confirmation.kind.title) saved")
-            Text(confirmation.anchored ? "linked to room" : "needs another angle")
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Captured Suggestion", systemImage: systemImage)
+                    .font(.caption.weight(.semibold))
+                Spacer()
+                Text(event.type.title)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.78))
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("What was observed:")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.72))
+                Text(event.preview.observedEvidence.joined(separator: ", "))
+                    .font(.subheadline.weight(.semibold))
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Daedalus thinks this is:")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.72))
+                Text(event.preview.suggestedTitle)
+                    .font(.title3.weight(.bold))
+            }
+
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Area:")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.72))
+                    Text(event.preview.areaName)
+                        .font(.subheadline.weight(.semibold))
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("Status:")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.72))
+                    Text(statusTitle)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(statusColor)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Button("Confirm", action: onConfirm)
+                    .buttonStyle(.borderedProminent)
+                Button("Mark Unresolved", action: onMarkUnresolved)
+                    .buttonStyle(.bordered)
+                Button("Review Later", action: onReviewLater)
+                    .buttonStyle(.bordered)
+            }
+            .font(.caption.weight(.semibold))
         }
-        .font(.subheadline.weight(.semibold))
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(confirmation.kind == .safety ? Color.red.opacity(0.92) : Color.black.opacity(0.72), in: Capsule())
+        .padding(14)
+        .background(Color.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.white.opacity(0.18), lineWidth: 1)
+        )
         .foregroundStyle(.white)
+        .padding(.horizontal, 16)
+    }
+
+    private var systemImage: String {
+        switch event.type {
+        case .objectSuggestion: return "shippingbox"
+        case .areaSuggestion: return "square.dashed"
+        case .specialObjectSuggestion: return "mappin.and.ellipse"
+        case .unresolvedCapture: return "questionmark.diamond"
+        case .evidenceAttached: return "paperclip"
+        case .relationshipSuggestion: return "point.3.connected.trianglepath.dotted"
+        }
+    }
+
+    private var statusTitle: String {
+        switch event.preview.status {
+        case .suggested:
+            return "Needs Confirmation"
+        case .confirmed:
+            return "Confirmed"
+        case .changed:
+            return "Changed"
+        case .ignored:
+            return "Ignored"
+        case .unresolved, .needsAttention:
+            return "Unresolved"
+        }
+    }
+
+    private var statusColor: Color {
+        switch event.preview.status {
+        case .confirmed, .changed:
+            return .green
+        case .unresolved, .needsAttention:
+            return .red
+        case .ignored:
+            return .secondary
+        case .suggested:
+            return .yellow
+        }
     }
 }
 
 private struct LiveCaptureMiniTimeline: View {
+    let events: [CaptureConfirmationEvent]
     let visit: Visit
     let scanProgress: LiveSpatialScanProgress
 
@@ -615,7 +735,26 @@ private struct LiveCaptureMiniTimeline: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if entries.isEmpty {
+            if !events.isEmpty {
+                ForEach(areaSections, id: \.areaName) { section in
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(section.areaName)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.white.opacity(0.88))
+                        ForEach(section.events) { event in
+                            HStack(spacing: 8) {
+                                Text("•")
+                                Text("\(event.preview.suggestedTitle) suggestion")
+                                Spacer()
+                                Text(shortStatus(for: event.preview.status))
+                                    .foregroundStyle(.white.opacity(0.76))
+                            }
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.white)
+                        }
+                    }
+                }
+            } else if entries.isEmpty {
                 Text(scanProgress.hasGeometry ? scanProgress.captureLabel : "Move around for more detail")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.white.opacity(0.84))
@@ -638,13 +777,40 @@ private struct LiveCaptureMiniTimeline: View {
         .background(.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
+    private var areaSections: [(areaName: String, events: [CaptureConfirmationEvent])] {
+        var sections: [(String, [CaptureConfirmationEvent])] = []
+        for event in events.prefix(5) {
+            if let index = sections.firstIndex(where: { $0.0 == event.preview.areaName }) {
+                sections[index].1.append(event)
+            } else {
+                sections.append((event.preview.areaName, [event]))
+            }
+        }
+        return sections
+    }
+
+    private func shortStatus(for state: CaptureSuggestionReviewState) -> String {
+        switch state {
+        case .suggested:
+            return "needs confirmation"
+        case .confirmed:
+            return "confirmed"
+        case .changed:
+            return "changed"
+        case .ignored:
+            return "ignored"
+        case .unresolved, .needsAttention:
+            return "unresolved"
+        }
+    }
+
     private func anchorText(for entry: EvidenceTimelineEntry) -> String {
         guard let spatialContext = entry.spatialContext, !spatialContext.isEmpty else {
             return "needs another angle"
         }
         if spatialContext.localizedCaseInsensitiveContains("geometry") ||
             spatialContext.localizedCaseInsensitiveContains("anchor") {
-            return "linked to room"
+            return "area suggested"
         }
         return "evidence linked"
     }

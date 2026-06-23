@@ -31,9 +31,9 @@ public struct VisitListView: View {
             List {
                 if viewModel.visits.isEmpty {
                     ContentUnavailableView(
-                        "No Property Twins",
+                        "No Properties",
                         systemImage: "tray",
-                        description: Text("Create or pull a Property Twin to begin capture.")
+                        description: Text("Create a Property to start offline capture.")
                     )
                 } else if filteredVisits.isEmpty {
                     ContentUnavailableView.search(text: searchText)
@@ -51,7 +51,7 @@ public struct VisitListView: View {
                 }
             }
             .searchable(text: $searchText, prompt: "Search property, customer, postcode")
-            .navigationTitle("Property Twins")
+            .navigationTitle("Properties")
             .navigationDestination(for: UUID.self) { visitID in
                 PropertyTwinHomeView(
                     viewModel: viewModel,
@@ -65,15 +65,15 @@ public struct VisitListView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Menu("Property Twin") {
-                        Button("Export Twin Package") {
+                    Menu("Property") {
+                        Button("Export Capture Package") {
                             if let url = viewModel.makeExportTempURL() {
                                 shareURL = url
                                 isPresentingShareSheet = true
                             }
                         }
 
-                        Button("Import Twin Package") {
+                        Button("Import Capture Package") {
                             isPresentingImport = true
                         }
                     }
@@ -83,7 +83,7 @@ public struct VisitListView: View {
                     Button {
                         isPresentingCreateVisit = true
                     } label: {
-                        Label("New Property Twin", systemImage: "plus")
+                        Label("Start Property Capture", systemImage: "plus")
                     }
                 }
             }
@@ -155,7 +155,7 @@ public struct VisitListView: View {
             ),
             titleVisibility: .visible
         ) {
-            Button("Replace existing Property Twin") {
+            Button("Replace existing Property") {
                 viewModel.replaceExistingVisitForPendingImport()
             }
             Button("Keep both") {
@@ -167,9 +167,9 @@ public struct VisitListView: View {
         } message: {
             if let conflict = viewModel.pendingImportConflict {
                 if conflict.conflictCount == 1 {
-                    Text("Imported Property Twin \"\(conflict.sampleReference)\" already exists locally.")
+                    Text("Imported Property \"\(conflict.sampleReference)\" already exists locally.")
                 } else {
-                    Text("\(conflict.conflictCount) imported Property Twins already exist locally.")
+                    Text("\(conflict.conflictCount) imported Properties already exist locally.")
                 }
             }
         }

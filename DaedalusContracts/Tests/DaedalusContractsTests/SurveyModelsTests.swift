@@ -289,11 +289,13 @@ final class SurveyModelsTests: XCTestCase {
         let decoded = try decoder.decode(VisitPackage.self, from: data)
 
         XCTAssertNotNil(decoded.metadata)
-        XCTAssertEqual(decoded.metadata?.schemaVersion, 3)
+        XCTAssertEqual(decoded.metadata?.schemaVersion, 4)
         XCTAssertEqual(decoded.metadata?.source, "Daedalus Capture")
         XCTAssertEqual(decoded.metadata?.exportedByApp, "Daedalus Capture")
-        XCTAssertEqual(decoded.schemaVersion, 3)
+        XCTAssertEqual(decoded.schemaVersion, 4)
         XCTAssertEqual(decoded.exportedAt, decoded.metadata?.createdAt)
+        XCTAssertEqual(decoded.propertyRoots.first?.property.reference, "VIS-META")
+        XCTAssertEqual(decoded.metadata?.propertyRoots.first?.workingTwin.propertyID, decoded.propertyRoots.first?.property.id)
     }
 
     func testVisitPackageDecodesLegacyPayloadWithoutMetadata() throws {
@@ -407,9 +409,9 @@ final class SurveyModelsTests: XCTestCase {
         XCTAssertEqual(visits[0].sectionStatuses, [:])
     }
 
-    func testCaptureModeUsesTwinLifecycleLanguage() {
+    func testCaptureModeUsesPropertyLifecycleLanguage() {
         XCTAssertEqual(CaptureMode.allCases, [.create, .verify, .update])
-        XCTAssertEqual(CaptureMode.allCases.map(\.title), ["Create Twin", "Verify Twin", "Update Twin"])
+        XCTAssertEqual(CaptureMode.allCases.map(\.title), ["Start Property Capture", "Verify Property", "Update Property"])
     }
 
     func testCaptureModeDecodesLegacySurveyValues() throws {

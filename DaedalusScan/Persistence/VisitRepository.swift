@@ -12,7 +12,7 @@ enum VisitPackageImportError: LocalizedError {
         case let .unsupportedSchemaVersion(version):
             return "This package was created with an unsupported schema version (\(version))."
         case .conflictResolutionRequired:
-            return "This package conflicts with existing Property Twins. Choose how to continue import."
+            return "This package conflicts with existing Properties. Choose how to continue import."
         }
     }
 }
@@ -220,6 +220,9 @@ public final class VisitRepository {
 
         return Visit(
             id: visit.id,
+            propertyIdentity: visit.propertyIdentity,
+            workingTwin: visit.workingTwin,
+            captureSession: visit.captureSession,
             reference: visit.reference,
             createdAt: visit.createdAt,
             twinKind: visit.twinKind,

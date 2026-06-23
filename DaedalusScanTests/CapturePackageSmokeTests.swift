@@ -3,6 +3,62 @@ import XCTest
 
 @MainActor
 final class CapturePackageSmokeTests: XCTestCase {
+    func testOfflineCaptureCreatesPropertyRootedSurveyPackage() throws {
+        let sourceDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DaedalusPropertyRootedCapture-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: sourceDirectory)
+        }
+
+        let repository = VisitRepository(storageDirectory: sourceDirectory)
+        let viewModel = VisitListViewModel(repository: repository)
+        let visitID = try XCTUnwrap(
+            viewModel.createVisit(
+                reference: "PROP-001",
+                customerName: "Offline Customer",
+                addressLine: "1 Local Lane",
+                postcode: "ab1 2cd"
+            )
+        )
+
+        viewModel.addRoom(to: visitID, named: "Plant Room")
+        let areaID = try XCTUnwrap(viewModel.visit(id: visitID)?.areas.first?.id)
+        let componentID = try XCTUnwrap(
+            viewModel.addAREvidenceCapture(
+                to: visitID,
+                subtype: .combiBoiler,
+                areaID: areaID,
+                placement: SpatialPlacement(captureState: .areaReferenceOnly, confidence: .low),
+                photoData: Data([0xFF, 0xD8, 0xFF]),
+                voiceNoteText: "Boiler photographed offline.",
+                includeGeometry: true,
+                floorLevel: "Ground floor",
+                geometryID: "plant-wall",
+                approximatePositionLabel: "North wall"
+            )
+        )
+
+        let visit = try XCTUnwrap(viewModel.visit(id: visitID))
+        XCTAssertEqual(visit.propertyIdentity.reference, "PROP-001")
+        XCTAssertEqual(visit.propertyIdentity.postcode, "AB1 2CD")
+        XCTAssertEqual(visit.workingTwin.propertyID, visit.propertyIdentity.id)
+        XCTAssertEqual(visit.captureSession.propertyID, visit.propertyIdentity.id)
+        XCTAssertEqual(visit.captureSession.workingTwinID, visit.workingTwin.id)
+        XCTAssertTrue(visit.captureSession.isOffline)
+
+        let evidence = try XCTUnwrap(viewModel.component(visitID: visitID, componentID: componentID)?.evidence)
+        XCTAssertFalse(evidence.isEmpty)
+        XCTAssertTrue(evidence.allSatisfy { $0.propertyID == visit.propertyIdentity.id })
+        XCTAssertTrue(evidence.allSatisfy { $0.workingTwinID == visit.workingTwin.id })
+        XCTAssertTrue(evidence.allSatisfy { $0.captureSessionID == visit.captureSession.id })
+
+        let package = try repository.exportPackage(visits: [visit])
+        XCTAssertEqual(package.schemaVersion, 4)
+        XCTAssertEqual(package.propertyRoots.first?.property, visit.propertyIdentity)
+        XCTAssertEqual(package.metadata?.propertyRoots.first?.workingTwin.id, visit.workingTwin.id)
+        XCTAssertEqual(package.visits.first?.propertyRootMetadata.captureSession.id, visit.captureSession.id)
+    }
+
     func testEndToEndCapturePackageSurvivesExportImportRoundTrip() throws {
         let sourceDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("DaedalusPackageSmokeSource-\(UUID().uuidString)", isDirectory: true)

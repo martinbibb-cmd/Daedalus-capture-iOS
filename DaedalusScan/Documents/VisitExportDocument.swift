@@ -13,7 +13,7 @@ struct VisitExportDocument: FileDocument {
     let data: Data
 
     static let empty = VisitExportDocument(
-        data: Data(#"{"captured_at":"1970-01-01T00:00:00Z","observations":[],"packageId":"00000000-0000-0000-0000-000000000000","packageVersion":3,"propertyRef":"empty","relationships":[],"visitId":"00000000-0000-0000-0000-000000000000"}"#.utf8)
+        data: Data(#"{"captured_at":"1970-01-01T00:00:00Z","observations":[],"packageId":"00000000-0000-0000-0000-000000000000","packageVersion":4,"propertyRef":"empty","propertyRoots":[],"relationships":[],"visitId":"00000000-0000-0000-0000-000000000000"}"#.utf8)
     )
 
     private init(data: Data) {
