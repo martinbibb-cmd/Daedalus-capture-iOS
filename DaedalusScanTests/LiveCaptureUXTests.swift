@@ -429,15 +429,19 @@ final class LiveCaptureUXTests: XCTestCase {
             endingBefore: "private struct LiveSurveyCoverageOverlay",
             in: source
         )
+        let spatialSource = try sourceText(relativePath: "DaedalusScan/Platform/LiveSpatialCaptureView.swift")
 
         XCTAssertTrue(surfaceSource.contains(".safeAreaInset(edge: .top"), "Top capture controls should stay below the Dynamic Island/status area")
         XCTAssertTrue(surfaceSource.contains(".safeAreaInset(edge: .bottom"), "Shutter controls should stay above the home indicator")
+        XCTAssertTrue(surfaceSource.contains(".frame(maxWidth: 320)"), "Top capture banner should be capped so it cannot span off screen")
         XCTAssertTrue(surfaceSource.contains("LiveSpatialCaptureView("))
         XCTAssertTrue(surfaceSource.contains(".ignoresSafeArea()"), "Camera and scrim should still fill the whole screen")
         XCTAssertFalse(cameraSource.contains(".ignoresSafeArea()"), "The whole control surface must not ignore safe areas")
-        XCTAssertTrue(statusBarSource.contains("ViewThatFits(in: .horizontal)"), "Header should adapt before clipping on narrow or zoomed displays")
-        XCTAssertTrue(statusBarSource.contains(".frame(maxWidth: .infinity)"), "Header background should stay inside the safe-area width")
-        XCTAssertTrue(statusBarSource.contains(".minimumScaleFactor(0.72)"), "Property references should scale instead of pushing controls off screen")
+        XCTAssertTrue(statusBarSource.contains(".minimumScaleFactor(0.65)"), "Property references should scale instead of pushing controls off screen")
+        XCTAssertTrue(statusBarSource.contains(".minimumScaleFactor(0.58)"), "Placement labels should shrink before widening the banner")
+        XCTAssertTrue(spatialSource.contains("addRoomCaptureView"), "RoomPlan's native overlay needs horizontal safe-area margins")
+        XCTAssertTrue(spatialSource.contains("container.safeAreaLayoutGuide.leadingAnchor, constant: 12"))
+        XCTAssertTrue(spatialSource.contains("container.safeAreaLayoutGuide.trailingAnchor, constant: -12"))
     }
 
     func testCaptureSourceDoesNotIntroduceBannedBoundaryBehaviours() throws {

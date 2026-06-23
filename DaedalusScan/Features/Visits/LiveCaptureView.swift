@@ -123,14 +123,18 @@ struct LiveCaptureView: View {
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            LiveCaptureStatusBar(
-                reference: visit.reference,
-                sessionStatus: surveyStatusTitle,
-                sessionColor: sessionStatusColor,
-                placementLabel: surveyConfidenceLabel,
-                onEnd: leaveSurvey
-            )
-            .padding(.horizontal, 12)
+            HStack {
+                Spacer(minLength: 20)
+                LiveCaptureStatusBar(
+                    reference: visit.reference,
+                    sessionStatus: surveyStatusTitle,
+                    sessionColor: sessionStatusColor,
+                    placementLabel: surveyConfidenceLabel,
+                    onEnd: leaveSurvey
+                )
+                .frame(maxWidth: 320)
+                Spacer(minLength: 20)
+            }
             .padding(.top, 8)
             .padding(.bottom, 8)
         }
@@ -428,66 +432,40 @@ private struct LiveCaptureStatusBar: View {
     let onEnd: () -> Void
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            horizontalLayout
-            compactLayout
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity)
-        .background(.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }
-
-    private var horizontalLayout: some View {
-        HStack(alignment: .center, spacing: 12) {
-            titleBlock
-
-            Spacer(minLength: 8)
-
-            Text(placementLabel)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.white.opacity(0.88))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-
-            endButton
-        }
-    }
-
-    private var compactLayout: some View {
-        HStack(alignment: .center, spacing: 10) {
-            titleBlock
-
-            Spacer(minLength: 8)
-
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(placementLabel)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.88))
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 10) {
+                Text(reference)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.65)
+
+                Spacer(minLength: 8)
+
                 endButton
             }
-        }
-    }
 
-    private var titleBlock: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 8) {
+            HStack(alignment: .center, spacing: 8) {
                 Circle()
                     .fill(sessionColor)
                     .frame(width: 9, height: 9)
                 Text(sessionStatus)
                     .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                Spacer(minLength: 8)
+                Text(placementLabel)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.58)
             }
             .foregroundStyle(.white)
-
-            Text(reference)
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private var endButton: some View {

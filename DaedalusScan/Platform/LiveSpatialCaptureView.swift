@@ -85,6 +85,17 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
             ])
         }
 
+        func addRoomCaptureView(_ child: UIView, to container: UIView) {
+            child.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(child)
+            NSLayoutConstraint.activate([
+                child.leadingAnchor.constraint(equalTo: container.safeAreaLayoutGuide.leadingAnchor, constant: 12),
+                child.trailingAnchor.constraint(equalTo: container.safeAreaLayoutGuide.trailingAnchor, constant: -12),
+                child.topAnchor.constraint(equalTo: container.safeAreaLayoutGuide.topAnchor),
+                child.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+            ])
+        }
+
         func setScanning(_ enabled: Bool) {
             guard enabled != isRunning else { return }
             isRunning = enabled
@@ -259,7 +270,7 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
             let roomView = RoomCaptureView(frame: .zero)
             roomView.captureSession.delegate = self
             roomCaptureView = roomView
-            add(roomView, to: containerView)
+            addRoomCaptureView(roomView, to: containerView)
             return roomView
         }
         #endif
