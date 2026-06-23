@@ -54,7 +54,7 @@ enum WorkingTwinWarningKind: Equatable, Identifiable {
         case .leaveWithUncommittedEvidence:
             return "This Working Twin contains captured evidence that has not been merged."
         case .pullWouldReplaceLocalChanges:
-            return "Pulling the Property Twin may replace local captured evidence that has not been merged."
+            return "Pulling the Working Twin may replace local captured evidence that has not been merged."
         case .mergeWithUnreviewedEvidence:
             return "Some captured evidence still needs review. Confirm the evidence or continue merge knowing those review states will be preserved."
         }

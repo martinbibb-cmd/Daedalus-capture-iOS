@@ -53,7 +53,7 @@ struct LiveCaptureView: View {
                         CaptureReviewWorkspaceView(viewModel: viewModel, visitID: visitID, onResumeSurvey: resumeSurvey)
                     }
             } else {
-                ContentUnavailableView("Property Twin not found", systemImage: "exclamationmark.triangle")
+                ContentUnavailableView("Property not found", systemImage: "exclamationmark.triangle")
             }
         }
     }

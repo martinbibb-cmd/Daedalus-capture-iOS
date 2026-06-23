@@ -214,16 +214,188 @@ public struct UnifiedPropertyTwin: Codable, Hashable, Sendable {
     }
 }
 
+public enum PropertyRootContractAuthority {
+    public static let propertyIsRootIdentity = true
+    public static let usersOrganisationsWorkspacesBillingAndSubscriptionsAreNotRoots = true
+    public static let binaryMediaEmbeddedInStructuredData = false
+    public static let aiOutputAuthoritativeTruth = false
+}
+
+public struct EvidenceReferenceMetadata: Codable, Hashable, Identifiable, Sendable {
+    public enum MediaType: String, Codable, CaseIterable, Sendable {
+        case photo
+        case video
+        case audio
+        case document
+        case text
+        case other
+    }
+
+    public var id: String { evidenceRef }
+    public var propertyID: String
+    public var propertyRef: String
+    public var evidenceRef: String
+    public var twinRef: String
+    public var sessionRef: String?
+    public var mediaRef: String
+    public var mediaType: MediaType
+    public var contentType: String?
+    public var contentHash: String?
+    public var aiGenerated: Bool
+    public var binaryEmbedded: Bool { false }
+    public var authoritativeTruth: Bool { false }
+
+    public init(
+        propertyID: String,
+        propertyRef: String,
+        evidenceRef: String,
+        twinRef: String,
+        sessionRef: String? = nil,
+        mediaRef: String,
+        mediaType: MediaType = .photo,
+        contentType: String? = nil,
+        contentHash: String? = nil,
+        aiGenerated: Bool = false
+    ) {
+        self.propertyID = propertyID
+        self.propertyRef = propertyRef
+        self.evidenceRef = evidenceRef
+        self.twinRef = twinRef
+        self.sessionRef = sessionRef
+        self.mediaRef = mediaRef
+        self.mediaType = mediaType
+        self.contentType = contentType
+        self.contentHash = contentHash
+        self.aiGenerated = aiGenerated
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind
+        case propertyID = "property_id"
+        case propertyRef = "property_ref"
+        case ownershipRoot = "ownership_root"
+        case evidenceRef = "evidence_ref"
+        case twinRef = "twin_ref"
+        case sessionRef = "session_ref"
+        case mediaRef = "media_ref"
+        case mediaType = "media_type"
+        case contentType = "content_type"
+        case contentHash = "content_hash"
+        case binaryEmbedded = "binary_embedded"
+        case aiGenerated = "ai_generated"
+        case authoritativeTruth = "authoritative_truth"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        propertyID = try container.decode(String.self, forKey: .propertyID)
+        propertyRef = try container.decode(String.self, forKey: .propertyRef)
+        evidenceRef = try container.decode(String.self, forKey: .evidenceRef)
+        twinRef = try container.decode(String.self, forKey: .twinRef)
+        sessionRef = try container.decodeIfPresent(String.self, forKey: .sessionRef)
+        mediaRef = try container.decode(String.self, forKey: .mediaRef)
+        mediaType = try container.decodeIfPresent(MediaType.self, forKey: .mediaType) ?? .photo
+        contentType = try container.decodeIfPresent(String.self, forKey: .contentType)
+        contentHash = try container.decodeIfPresent(String.self, forKey: .contentHash)
+        aiGenerated = try container.decodeIfPresent(Bool.self, forKey: .aiGenerated) ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode("EvidenceReferenceMetadata", forKey: .kind)
+        try container.encode(propertyID, forKey: .propertyID)
+        try container.encode(propertyRef, forKey: .propertyRef)
+        try container.encode("PropertyIdentity", forKey: .ownershipRoot)
+        try container.encode(evidenceRef, forKey: .evidenceRef)
+        try container.encode(twinRef, forKey: .twinRef)
+        try container.encodeIfPresent(sessionRef, forKey: .sessionRef)
+        try container.encode(mediaRef, forKey: .mediaRef)
+        try container.encode(mediaType, forKey: .mediaType)
+        try container.encodeIfPresent(contentType, forKey: .contentType)
+        try container.encodeIfPresent(contentHash, forKey: .contentHash)
+        try container.encode(false, forKey: .binaryEmbedded)
+        try container.encode(aiGenerated, forKey: .aiGenerated)
+        try container.encode(false, forKey: .authoritativeTruth)
+    }
+}
+
+public struct AuthoritativeTwin: Codable, Hashable, Identifiable, Sendable {
+    public var id: String { twinRef }
+    public var propertyID: String
+    public var propertyRef: String
+    public var twinRef: String
+    public var committedAt: Date
+
+    public init(propertyID: String, propertyRef: String, twinRef: String, committedAt: Date) {
+        self.propertyID = propertyID
+        self.propertyRef = propertyRef
+        self.twinRef = twinRef
+        self.committedAt = committedAt
+    }
+}
+
+public struct PropertyRootReferenceRecord: Codable, Hashable, Identifiable, Sendable {
+    public enum Kind: String, Codable, Sendable {
+        case commit = "Commit"
+        case merge = "Merge"
+        case archiveSnapshot = "ArchiveSnapshot"
+        case accessGrant = "AccessGrant"
+        case custodianChange = "CustodianChange"
+    }
+
+    public var id: String
+    public var kind: Kind
+    public var propertyID: String
+    public var propertyRef: String
+    public var attachmentPointOnly: Bool
+    public var transfersTwinOwnership: Bool
+    public var aiOutputAuthoritative: Bool
+
+    public init(
+        id: String,
+        kind: Kind,
+        propertyID: String,
+        propertyRef: String,
+        attachmentPointOnly: Bool = false,
+        transfersTwinOwnership: Bool = false,
+        aiOutputAuthoritative: Bool = false
+    ) {
+        self.id = id
+        self.kind = kind
+        self.propertyID = propertyID
+        self.propertyRef = propertyRef
+        self.attachmentPointOnly = attachmentPointOnly
+        self.transfersTwinOwnership = transfersTwinOwnership
+        self.aiOutputAuthoritative = aiOutputAuthoritative
+    }
+}
+
+public typealias Commit = PropertyRootReferenceRecord
+public typealias Merge = PropertyRootReferenceRecord
+public typealias ArchiveSnapshot = PropertyRootReferenceRecord
+public typealias AccessGrant = PropertyRootReferenceRecord
+public typealias CustodianChange = PropertyRootReferenceRecord
+
 public struct DaedalusPackage: Codable, Hashable, Sendable {
-    public static let currentPackageVersion = 3
+    public static let currentPackageVersion = 4
 
     public var packageVersion: Int
     public var packageID: UUID
     public var visitID: UUID
     public var propertyRef: String
     public var createdAt: Date
+    public var propertyIdentity: PropertyIdentity
+    public var workingTwin: WorkingTwin?
+    public var authoritativeTwin: AuthoritativeTwin?
+    public var surveyCaptureSession: SurveyCaptureSession?
+    public var evidence: [EvidenceReferenceMetadata]
     public var observations: [DaedalusObservation]
     public var relationships: [DaedalusRelationship]
+    public var commits: [PropertyRootReferenceRecord]
+    public var merges: [PropertyRootReferenceRecord]
+    public var archiveSnapshots: [PropertyRootReferenceRecord]
+    public var accessGrants: [PropertyRootReferenceRecord]
+    public var custodianChanges: [PropertyRootReferenceRecord]
     public var waterSupplyObservations: [WaterSupplyObservation]
     public var servicePointObservations: [ServicePointObservation]
 
@@ -233,18 +405,39 @@ public struct DaedalusPackage: Codable, Hashable, Sendable {
         visitID: UUID,
         propertyRef: String,
         createdAt: Date = Date(),
+        propertyIdentity: PropertyIdentity? = nil,
+        workingTwin: WorkingTwin? = nil,
+        authoritativeTwin: AuthoritativeTwin? = nil,
+        surveyCaptureSession: SurveyCaptureSession? = nil,
+        evidence: [EvidenceReferenceMetadata] = [],
         observations: [DaedalusObservation],
         relationships: [DaedalusRelationship] = [],
+        commits: [PropertyRootReferenceRecord] = [],
+        merges: [PropertyRootReferenceRecord] = [],
+        archiveSnapshots: [PropertyRootReferenceRecord] = [],
+        accessGrants: [PropertyRootReferenceRecord] = [],
+        custodianChanges: [PropertyRootReferenceRecord] = [],
         waterSupplyObservations: [WaterSupplyObservation] = [],
         servicePointObservations: [ServicePointObservation] = []
     ) {
+        let resolvedPropertyIdentity = propertyIdentity ?? PropertyIdentity(reference: propertyRef, createdAt: createdAt)
         self.packageVersion = packageVersion
         self.packageID = packageID
         self.visitID = visitID
         self.propertyRef = propertyRef
         self.createdAt = createdAt
+        self.propertyIdentity = resolvedPropertyIdentity
+        self.workingTwin = workingTwin
+        self.authoritativeTwin = authoritativeTwin
+        self.surveyCaptureSession = surveyCaptureSession
+        self.evidence = evidence
         self.observations = observations
         self.relationships = relationships
+        self.commits = commits
+        self.merges = merges
+        self.archiveSnapshots = archiveSnapshots
+        self.accessGrants = accessGrants
+        self.custodianChanges = custodianChanges
         self.waterSupplyObservations = waterSupplyObservations
         self.servicePointObservations = servicePointObservations
     }
@@ -254,9 +447,20 @@ public struct DaedalusPackage: Codable, Hashable, Sendable {
         case packageID = "packageId"
         case visitID = "visitId"
         case propertyRef
-        case createdAt = "captured_at"
+        case createdAt = "exportedAt"
+        case legacyCreatedAt = "captured_at"
+        case propertyIdentity
+        case workingTwin
+        case authoritativeTwin
+        case surveyCaptureSession
+        case evidence
         case observations
         case relationships
+        case commits
+        case merges
+        case archiveSnapshots
+        case accessGrants
+        case custodianChanges
         case waterSupplyObservations
         case servicePointObservations
     }
@@ -267,11 +471,48 @@ public struct DaedalusPackage: Codable, Hashable, Sendable {
         packageID = try container.decode(UUID.self, forKey: .packageID)
         visitID = try container.decode(UUID.self, forKey: .visitID)
         propertyRef = try container.decode(String.self, forKey: .propertyRef)
-        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
+            ?? container.decode(Date.self, forKey: .legacyCreatedAt)
+        propertyIdentity = try container.decodeIfPresent(PropertyIdentity.self, forKey: .propertyIdentity) ?? PropertyIdentity(
+            reference: propertyRef,
+            createdAt: createdAt
+        )
+        workingTwin = try container.decodeIfPresent(WorkingTwin.self, forKey: .workingTwin)
+        authoritativeTwin = try container.decodeIfPresent(AuthoritativeTwin.self, forKey: .authoritativeTwin)
+        surveyCaptureSession = try container.decodeIfPresent(SurveyCaptureSession.self, forKey: .surveyCaptureSession)
+        evidence = try container.decodeIfPresent([EvidenceReferenceMetadata].self, forKey: .evidence) ?? []
         observations = try container.decode([DaedalusObservation].self, forKey: .observations)
         relationships = try container.decodeIfPresent([DaedalusRelationship].self, forKey: .relationships) ?? []
+        commits = try container.decodeIfPresent([PropertyRootReferenceRecord].self, forKey: .commits) ?? []
+        merges = try container.decodeIfPresent([PropertyRootReferenceRecord].self, forKey: .merges) ?? []
+        archiveSnapshots = try container.decodeIfPresent([PropertyRootReferenceRecord].self, forKey: .archiveSnapshots) ?? []
+        accessGrants = try container.decodeIfPresent([PropertyRootReferenceRecord].self, forKey: .accessGrants) ?? []
+        custodianChanges = try container.decodeIfPresent([PropertyRootReferenceRecord].self, forKey: .custodianChanges) ?? []
         waterSupplyObservations = try container.decodeIfPresent([WaterSupplyObservation].self, forKey: .waterSupplyObservations) ?? []
         servicePointObservations = try container.decodeIfPresent([ServicePointObservation].self, forKey: .servicePointObservations) ?? []
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(packageVersion, forKey: .packageVersion)
+        try container.encode(packageID, forKey: .packageID)
+        try container.encode(visitID, forKey: .visitID)
+        try container.encode(propertyRef, forKey: .propertyRef)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(propertyIdentity, forKey: .propertyIdentity)
+        try container.encodeIfPresent(workingTwin, forKey: .workingTwin)
+        try container.encodeIfPresent(authoritativeTwin, forKey: .authoritativeTwin)
+        try container.encodeIfPresent(surveyCaptureSession, forKey: .surveyCaptureSession)
+        try container.encode(evidence, forKey: .evidence)
+        try container.encode(observations, forKey: .observations)
+        try container.encode(relationships, forKey: .relationships)
+        try container.encode(commits, forKey: .commits)
+        try container.encode(merges, forKey: .merges)
+        try container.encode(archiveSnapshots, forKey: .archiveSnapshots)
+        try container.encode(accessGrants, forKey: .accessGrants)
+        try container.encode(custodianChanges, forKey: .custodianChanges)
+        try container.encode(waterSupplyObservations, forKey: .waterSupplyObservations)
+        try container.encode(servicePointObservations, forKey: .servicePointObservations)
     }
 }
 
@@ -807,6 +1048,9 @@ public func validateEvidenceReferences(_ packageData: DaedalusPackage) -> [Packa
 
 public func validateTwinIntegrity(_ packageData: DaedalusPackage) -> [PackageValidationIssue] {
     var issues: [PackageValidationIssue] = []
+    if packageData.packageVersion >= 4 {
+        issues.append(contentsOf: validatePropertyRootIntegrity(packageData))
+    }
     issues.append(
         contentsOf: duplicateIDIssues(
             ids: packageData.observations.map(\.observationID),
@@ -940,6 +1184,125 @@ public func validateTwinIntegrity(_ packageData: DaedalusPackage) -> [PackageVal
     return issues
 }
 
+public func validatePropertyRootIntegrity(_ packageData: DaedalusPackage) -> [PackageValidationIssue] {
+    guard packageData.packageVersion >= 4 else { return [] }
+
+    var issues: [PackageValidationIssue] = []
+    let propertyID = packageData.propertyIdentity.propertyID
+    let propertyRef = packageData.propertyIdentity.propertyRef
+
+    if packageData.propertyIdentity.propertyRef != packageData.propertyRef {
+        issues.append(
+            PackageValidationIssue(
+                path: "propertyIdentity.property_ref",
+                code: "propertyRoot.propertyRef.mismatch",
+                message: "PropertyIdentity property_ref must match package propertyRef."
+            )
+        )
+    }
+
+    if let workingTwin = packageData.workingTwin {
+        if workingTwin.propertyID.uuidString != propertyID {
+            issues.append(
+                PackageValidationIssue(
+                    path: "workingTwin.property_id",
+                    code: "propertyRoot.workingTwin.propertyID.mismatch",
+                    message: "WorkingTwin must belong to PropertyIdentity."
+                )
+            )
+        }
+        if workingTwin.propertyRef != propertyRef {
+            issues.append(
+                PackageValidationIssue(
+                    path: "workingTwin.property_ref",
+                    code: "propertyRoot.workingTwin.propertyRef.mismatch",
+                    message: "WorkingTwin property_ref must match PropertyIdentity."
+                )
+            )
+        }
+        if workingTwin.repositoryState == .authoritativeCloudTwin {
+            issues.append(
+                PackageValidationIssue(
+                    path: "workingTwin.authoritative",
+                    code: "propertyRoot.workingTwin.authoritative",
+                    message: "WorkingTwin must not be authoritative."
+                )
+            )
+        }
+    }
+
+    if let session = packageData.surveyCaptureSession {
+        if session.propertyID.uuidString != propertyID {
+            issues.append(
+                PackageValidationIssue(
+                    path: "surveyCaptureSession.property_id",
+                    code: "propertyRoot.captureSession.propertyID.mismatch",
+                    message: "SurveyCaptureSession must belong to PropertyIdentity."
+                )
+            )
+        }
+        if session.propertyRef != propertyRef {
+            issues.append(
+                PackageValidationIssue(
+                    path: "surveyCaptureSession.property_ref",
+                    code: "propertyRoot.captureSession.propertyRef.mismatch",
+                    message: "SurveyCaptureSession property_ref must match PropertyIdentity."
+                )
+            )
+        }
+        if let workingTwin = packageData.workingTwin, session.workingTwinID != workingTwin.id {
+            issues.append(
+                PackageValidationIssue(
+                    path: "surveyCaptureSession.working_twin_ref",
+                    code: "propertyRoot.captureSession.workingTwin.mismatch",
+                    message: "SurveyCaptureSession must link to the package WorkingTwin."
+                )
+            )
+        }
+    }
+
+    for (index, evidence) in packageData.evidence.enumerated() {
+        if evidence.propertyID != propertyID {
+            issues.append(
+                PackageValidationIssue(
+                    path: "evidence[\(index)].property_id",
+                    code: "propertyRoot.evidence.propertyID.mismatch",
+                    message: "Evidence must link to PropertyIdentity."
+                )
+            )
+        }
+        if evidence.propertyRef != propertyRef {
+            issues.append(
+                PackageValidationIssue(
+                    path: "evidence[\(index)].property_ref",
+                    code: "propertyRoot.evidence.propertyRef.mismatch",
+                    message: "Evidence property_ref must match PropertyIdentity."
+                )
+            )
+        }
+        if let workingTwin = packageData.workingTwin, evidence.twinRef != workingTwin.twinRef {
+            issues.append(
+                PackageValidationIssue(
+                    path: "evidence[\(index)].twin_ref",
+                    code: "propertyRoot.evidence.twinRef.mismatch",
+                    message: "Evidence must link to WorkingTwin."
+                )
+            )
+        }
+        if let session = packageData.surveyCaptureSession, evidence.sessionRef != session.sessionRef {
+            issues.append(
+                PackageValidationIssue(
+                    path: "evidence[\(index)].session_ref",
+                    code: "propertyRoot.evidence.sessionRef.mismatch",
+                    message: "Evidence must link to SurveyCaptureSession."
+                )
+            )
+        }
+    }
+
+    return issues
+}
+
 public func validateDaedalusPackage(_ packageData: DaedalusPackage) -> PackageValidationResult {
     let issues = validateEvidenceReferences(packageData) + validateTwinIntegrity(packageData)
     return PackageValidationResult(valid: issues.isEmpty, issues: issues)
@@ -957,6 +1320,10 @@ public enum DaedalusPackageExporter {
             visitID: visit.id,
             propertyRef: visit.reference,
             createdAt: createdAt,
+            propertyIdentity: visit.propertyIdentity,
+            workingTwin: visit.workingTwin,
+            surveyCaptureSession: visit.captureSession,
+            evidence: evidenceReferences(from: visit),
             observations: observations(from: visit, source: source),
             relationships: visit.relationships.compactMap { $0.exportedDaedalusRelationship(source: source, visit: visit) },
             waterSupplyObservations: visit.waterSupplyObservations.map { $0.exportedDaedalusWaterObservation(source: source, visit: visit) },
@@ -975,6 +1342,28 @@ public enum DaedalusPackageExporter {
         }
         let homeObservation = visit.exportedHomeObservation(source: source)
         return areaObservations + assetObservations + roomEvidence + componentEvidence + [homeObservation].compactMap { $0 }
+    }
+
+    private static func evidenceReferences(from visit: Visit) -> [EvidenceReferenceMetadata] {
+        let propertyID = visit.propertyIdentity.propertyID
+        let propertyRef = visit.propertyIdentity.propertyRef
+        let twinRef = visit.workingTwin.twinRef
+        let sessionRef = visit.captureSession.sessionRef
+        let roomEvidence = visit.rooms.flatMap(\.evidence)
+        let componentEvidence = visit.components.flatMap(\.evidence)
+
+        return (roomEvidence + componentEvidence).map { evidence in
+            EvidenceReferenceMetadata(
+                propertyID: propertyID,
+                propertyRef: propertyRef,
+                evidenceRef: evidence.id.uuidString,
+                twinRef: twinRef,
+                sessionRef: sessionRef,
+                mediaRef: evidence.localFileName,
+                mediaType: evidence.kind.exportedMediaType,
+                contentType: evidence.kind.exportedContentType
+            )
+        }
     }
 }
 
@@ -1297,6 +1686,28 @@ private extension EvidenceKind {
             return "voice evidence"
         case .textNote:
             return "text evidence"
+        }
+    }
+
+    var exportedMediaType: EvidenceReferenceMetadata.MediaType {
+        switch self {
+        case .photo:
+            return .photo
+        case .voiceNote:
+            return .audio
+        case .textNote:
+            return .text
+        }
+    }
+
+    var exportedContentType: String {
+        switch self {
+        case .photo:
+            return "image/jpeg"
+        case .voiceNote:
+            return "audio/mp4"
+        case .textNote:
+            return "text/plain"
         }
     }
 

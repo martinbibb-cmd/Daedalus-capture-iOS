@@ -60,7 +60,7 @@ struct SurveySectionCaptureView: View {
             if visit != nil {
                 captureShell
             } else {
-                ContentUnavailableView("Property Twin not found", systemImage: "exclamationmark.triangle")
+                ContentUnavailableView("Property not found", systemImage: "exclamationmark.triangle")
             }
         }
         .navigationBarTitleDisplayMode(.inline)

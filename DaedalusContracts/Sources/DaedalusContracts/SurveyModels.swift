@@ -1291,11 +1291,56 @@ public struct PropertyIdentity: Codable, Hashable, Identifiable, Sendable {
         self.postcode = postcode
         self.createdAt = createdAt
     }
+
+    public var propertyID: String { id.uuidString }
+    public var propertyRef: String { reference }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind
+        case id
+        case propertyID = "property_id"
+        case propertyRef = "property_ref"
+        case reference
+        case rootEntity = "root_entity"
+        case canExistWithoutUsers = "can_exist_without_users"
+        case customerName
+        case addressLine
+        case postcode
+        case createdAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let id = try container.decodeIfPresent(UUID.self, forKey: .id) {
+            self.id = id
+        } else if let propertyID = try container.decodeIfPresent(String.self, forKey: .propertyID),
+                  let uuid = UUID(uuidString: propertyID) {
+            self.id = uuid
+        } else {
+            self.id = UUID()
+        }
+        reference = try container.decodeIfPresent(String.self, forKey: .reference)
+            ?? container.decode(String.self, forKey: .propertyRef)
+        customerName = try container.decodeIfPresent(String.self, forKey: .customerName) ?? ""
+        addressLine = try container.decodeIfPresent(String.self, forKey: .addressLine) ?? ""
+        postcode = try container.decodeIfPresent(String.self, forKey: .postcode) ?? ""
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date(timeIntervalSince1970: 0)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode("PropertyIdentity", forKey: .kind)
+        try container.encode(propertyID, forKey: .propertyID)
+        try container.encode(propertyRef, forKey: .propertyRef)
+        try container.encode("property", forKey: .rootEntity)
+        try container.encode(true, forKey: .canExistWithoutUsers)
+    }
 }
 
 public struct WorkingTwin: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public var propertyID: UUID
+    public var propertyRef: String
     public var version: Int
     public var repositoryState: TwinRepositoryState
     public var lifecycleStage: TwinLifecycleStage
@@ -1305,6 +1350,7 @@ public struct WorkingTwin: Codable, Hashable, Identifiable, Sendable {
     public init(
         id: UUID = UUID(),
         propertyID: UUID,
+        propertyRef: String = "",
         version: Int = 1,
         repositoryState: TwinRepositoryState = .localWorkingCopy,
         lifecycleStage: TwinLifecycleStage = .capture,
@@ -1313,17 +1359,78 @@ public struct WorkingTwin: Codable, Hashable, Identifiable, Sendable {
     ) {
         self.id = id
         self.propertyID = propertyID
+        self.propertyRef = propertyRef
         self.version = max(1, version)
         self.repositoryState = repositoryState
         self.lifecycleStage = lifecycleStage
         self.createdAt = createdAt
         self.lastMergedAt = lastMergedAt
     }
+
+    public var twinRef: String { id.uuidString }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind
+        case id
+        case propertyID = "property_id"
+        case propertyRef = "property_ref"
+        case twinRef = "twin_ref"
+        case ownershipRoot = "ownership_root"
+        case authoritative
+        case working
+        case aiAuthoritative = "ai_authoritative"
+        case source
+        case version
+        case repositoryState
+        case lifecycleStage
+        case createdAt
+        case lastMergedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let id = try container.decodeIfPresent(UUID.self, forKey: .id) {
+            self.id = id
+        } else if let twinRef = try container.decodeIfPresent(String.self, forKey: .twinRef),
+                  let uuid = UUID(uuidString: twinRef) {
+            self.id = uuid
+        } else {
+            self.id = UUID()
+        }
+        if let propertyID = try container.decodeIfPresent(UUID.self, forKey: .propertyID) {
+            self.propertyID = propertyID
+        } else if let propertyID = try container.decodeIfPresent(String.self, forKey: .propertyID),
+                  let uuid = UUID(uuidString: propertyID) {
+            self.propertyID = uuid
+        } else {
+            self.propertyID = UUID()
+        }
+        propertyRef = try container.decodeIfPresent(String.self, forKey: .propertyRef) ?? ""
+        version = max(1, try container.decodeIfPresent(Int.self, forKey: .version) ?? 1)
+        repositoryState = try container.decodeIfPresent(TwinRepositoryState.self, forKey: .repositoryState) ?? .localWorkingCopy
+        lifecycleStage = try container.decodeIfPresent(TwinLifecycleStage.self, forKey: .lifecycleStage) ?? .capture
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date(timeIntervalSince1970: 0)
+        lastMergedAt = try container.decodeIfPresent(Date.self, forKey: .lastMergedAt)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode("WorkingTwin", forKey: .kind)
+        try container.encode(propertyID.uuidString, forKey: .propertyID)
+        try container.encode(propertyRef, forKey: .propertyRef)
+        try container.encode(twinRef, forKey: .twinRef)
+        try container.encode("PropertyIdentity", forKey: .ownershipRoot)
+        try container.encode(false, forKey: .authoritative)
+        try container.encode(true, forKey: .working)
+        try container.encode(false, forKey: .aiAuthoritative)
+        try container.encode("survey_capture", forKey: .source)
+    }
 }
 
 public struct SurveyCaptureSession: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public var propertyID: UUID
+    public var propertyRef: String
     public var workingTwinID: UUID
     public var createdAt: Date
     public var mode: CaptureMode
@@ -1332,6 +1439,7 @@ public struct SurveyCaptureSession: Codable, Hashable, Identifiable, Sendable {
     public init(
         id: UUID = UUID(),
         propertyID: UUID,
+        propertyRef: String = "",
         workingTwinID: UUID,
         createdAt: Date = Date(),
         mode: CaptureMode = .create,
@@ -1339,10 +1447,74 @@ public struct SurveyCaptureSession: Codable, Hashable, Identifiable, Sendable {
     ) {
         self.id = id
         self.propertyID = propertyID
+        self.propertyRef = propertyRef
         self.workingTwinID = workingTwinID
         self.createdAt = createdAt
         self.mode = mode
         self.isOffline = isOffline
+    }
+
+    public var sessionRef: String { id.uuidString }
+    public var workingTwinRef: String { workingTwinID.uuidString }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind
+        case id
+        case propertyID = "property_id"
+        case propertyRef = "property_ref"
+        case sessionRef = "session_ref"
+        case workingTwinID
+        case workingTwinRef = "working_twin_ref"
+        case ownershipRoot = "ownership_root"
+        case temporary
+        case authoritative
+        case createdAt
+        case mode
+        case isOffline
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let id = try container.decodeIfPresent(UUID.self, forKey: .id) {
+            self.id = id
+        } else if let sessionRef = try container.decodeIfPresent(String.self, forKey: .sessionRef),
+                  let uuid = UUID(uuidString: sessionRef) {
+            self.id = uuid
+        } else {
+            self.id = UUID()
+        }
+        if let propertyID = try container.decodeIfPresent(UUID.self, forKey: .propertyID) {
+            self.propertyID = propertyID
+        } else if let propertyID = try container.decodeIfPresent(String.self, forKey: .propertyID),
+                  let uuid = UUID(uuidString: propertyID) {
+            self.propertyID = uuid
+        } else {
+            self.propertyID = UUID()
+        }
+        propertyRef = try container.decodeIfPresent(String.self, forKey: .propertyRef) ?? ""
+        if let workingTwinID = try container.decodeIfPresent(UUID.self, forKey: .workingTwinID) {
+            self.workingTwinID = workingTwinID
+        } else if let workingTwinRef = try container.decodeIfPresent(String.self, forKey: .workingTwinRef),
+                  let uuid = UUID(uuidString: workingTwinRef) {
+            self.workingTwinID = uuid
+        } else {
+            self.workingTwinID = UUID()
+        }
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date(timeIntervalSince1970: 0)
+        mode = try container.decodeIfPresent(CaptureMode.self, forKey: .mode) ?? .create
+        isOffline = try container.decodeIfPresent(Bool.self, forKey: .isOffline) ?? true
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode("SurveyCaptureSession", forKey: .kind)
+        try container.encode(propertyID.uuidString, forKey: .propertyID)
+        try container.encode(propertyRef, forKey: .propertyRef)
+        try container.encode(sessionRef, forKey: .sessionRef)
+        try container.encode(workingTwinRef, forKey: .workingTwinRef)
+        try container.encode("PropertyIdentity", forKey: .ownershipRoot)
+        try container.encode(true, forKey: .temporary)
+        try container.encode(false, forKey: .authoritative)
     }
 }
 
@@ -1450,6 +1622,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         )
         let resolvedWorkingTwin = workingTwin ?? WorkingTwin(
             propertyID: resolvedPropertyIdentity.id,
+            propertyRef: resolvedPropertyIdentity.reference,
             version: twinVersion,
             repositoryState: repositoryState,
             lifecycleStage: lifecycleStage,
@@ -1458,6 +1631,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         )
         let resolvedCaptureSession = captureSession ?? SurveyCaptureSession(
             propertyID: resolvedPropertyIdentity.id,
+            propertyRef: resolvedPropertyIdentity.reference,
             workingTwinID: resolvedWorkingTwin.id,
             createdAt: createdAt,
             mode: captureMode,
@@ -1581,6 +1755,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         )
         workingTwin = try container.decodeIfPresent(WorkingTwin.self, forKey: .workingTwin) ?? WorkingTwin(
             propertyID: propertyIdentity.id,
+            propertyRef: propertyIdentity.reference,
             version: twinVersion,
             repositoryState: repositoryState,
             lifecycleStage: lifecycleStage,
@@ -1589,6 +1764,7 @@ public struct Visit: Codable, Hashable, Identifiable, Sendable {
         )
         captureSession = try container.decodeIfPresent(SurveyCaptureSession.self, forKey: .captureSession) ?? SurveyCaptureSession(
             propertyID: propertyIdentity.id,
+            propertyRef: propertyIdentity.reference,
             workingTwinID: workingTwin.id,
             createdAt: createdAt,
             mode: captureMode,

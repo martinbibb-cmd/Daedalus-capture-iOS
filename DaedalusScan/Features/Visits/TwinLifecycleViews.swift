@@ -401,7 +401,7 @@ struct TwinOverviewView: View {
             .navigationTitle("Twin Overview")
             .navigationBarTitleDisplayMode(.inline)
         } else {
-            ContentUnavailableView("Property Twin not found", systemImage: "exclamationmark.triangle")
+            ContentUnavailableView("Property not found", systemImage: "exclamationmark.triangle")
         }
     }
 }
@@ -493,7 +493,7 @@ struct StageModeView: View {
             .navigationTitle("Review Survey")
             .navigationBarTitleDisplayMode(.inline)
         } else {
-            ContentUnavailableView("Property Twin not found", systemImage: "exclamationmark.triangle")
+            ContentUnavailableView("Property not found", systemImage: "exclamationmark.triangle")
         }
     }
 
@@ -586,7 +586,7 @@ struct MergeModeView: View {
             let summary = visit.mergeSummary
             List {
                 Section {
-                    LabeledContent("Property Twin", value: visit.reference)
+                    LabeledContent("Property", value: visit.reference)
                     LabeledContent("Current state", value: visit.repositoryState.title)
                     LabeledContent("Version", value: "\(summary.currentVersion) -> \(summary.nextVersion)")
                 } header: {
@@ -614,7 +614,7 @@ struct MergeModeView: View {
                             .foregroundStyle(.green)
                     }
                     if summary.confirmedEvidence + summary.needsReviewEvidence == 0 {
-                        Label("Property Twin has no evidence", systemImage: "paperclip.badge.ellipsis")
+                        Label("Property has no evidence", systemImage: "paperclip.badge.ellipsis")
                             .foregroundStyle(.orange)
                     }
                 } header: {
@@ -632,7 +632,7 @@ struct MergeModeView: View {
             .navigationTitle("Merge Twin")
             .navigationBarTitleDisplayMode(.inline)
         } else {
-            ContentUnavailableView("Property Twin not found", systemImage: "exclamationmark.triangle")
+            ContentUnavailableView("Property not found", systemImage: "exclamationmark.triangle")
         }
     }
 }
@@ -657,7 +657,7 @@ struct EvidenceTimelineView: View {
             .navigationTitle("Evidence Timeline")
             .navigationBarTitleDisplayMode(.inline)
         } else {
-            ContentUnavailableView("Property Twin not found", systemImage: "exclamationmark.triangle")
+            ContentUnavailableView("Property not found", systemImage: "exclamationmark.triangle")
         }
     }
 }

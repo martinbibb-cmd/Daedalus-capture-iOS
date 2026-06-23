@@ -398,6 +398,20 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertTrue(source.contains("reviewLiveCaptureLater"))
     }
 
+    func testUserFacingCaptureLanguageUsesPropertyRootTerms() throws {
+        let source = try sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureView.swift") +
+            sourceText(relativePath: "DaedalusScan/Features/Visits/VisitDetailView.swift") +
+            sourceText(relativePath: "DaedalusScan/Features/Visits/TwinLifecycleViews.swift") +
+            sourceText(relativePath: "DaedalusScan/Features/Visits/SurveySectionCaptureView.swift") +
+            sourceText(relativePath: "DaedalusScan/Features/Visits/AttachEvidenceSheet.swift") +
+            sourceText(relativePath: "DaedalusScan/Features/Visits/CaptureSessionState.swift")
+
+        XCTAssertTrue(source.contains("\"Property not found\""))
+        XCTAssertTrue(source.contains("\"Working Twin Context\""))
+        XCTAssertTrue(source.contains("\"Review Capture\""))
+        XCTAssertFalse(source.contains("\"Property Twin"), "User-facing root labels should use Property or Working Twin, not Property Twin")
+    }
+
     func testCaptureSourceDoesNotIntroduceBannedBoundaryBehaviours() throws {
         let source = try sourceText(relativePath: "DaedalusScan/ViewModels/VisitListViewModel.swift") +
             sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureEvidence.swift") +

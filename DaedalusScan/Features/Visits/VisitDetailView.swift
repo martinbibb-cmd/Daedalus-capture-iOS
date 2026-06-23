@@ -28,7 +28,7 @@ struct VisitDetailView: View {
                     Button {
                         isPresentingContext = true
                     } label: {
-                        Label("Property Twin Context", systemImage: "slider.horizontal.3")
+                        Label("Working Twin Context", systemImage: "slider.horizontal.3")
                     }
 
                     Button {
@@ -103,7 +103,7 @@ struct VisitDetailView: View {
                 VisitContextSheet(viewModel: viewModel, visitID: visitID)
             }
         } else {
-            Text("Property Twin not found")
+            Text("Property not found")
                 .foregroundStyle(.secondary)
         }
     }
@@ -148,7 +148,7 @@ struct VisitContextSheet: View {
                 .navigationTitle("Context")
                 .navigationBarTitleDisplayMode(.inline)
             } else {
-                ContentUnavailableView("Property Twin not found", systemImage: "exclamationmark.triangle")
+                ContentUnavailableView("Property not found", systemImage: "exclamationmark.triangle")
             }
         }
     }
