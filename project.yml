@@ -31,6 +31,8 @@ targets:
       path: DaedalusScan/App/Info.plist
       properties:
         CFBundleDisplayName: Daedalus Capture
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSRequiresIPhoneOS: true
         NSCameraUsageDescription: Daedalus Capture captures property twin evidence photos.
         NSPhotoLibraryUsageDescription: Daedalus Capture stores captured twin evidence.
@@ -59,6 +61,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.martinbibb.daedalus.scan
         PRODUCT_NAME: Daedalus Capture
+        MARKETING_VERSION: 1.0.1
+        CURRENT_PROJECT_VERSION: 20260624
         SUPPORTS_MACCATALYST: NO
         TARGETED_DEVICE_FAMILY: 1
   DaedalusScanTests:

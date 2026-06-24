@@ -51,6 +51,12 @@ public struct VisitListView: View {
                 }
             }
             .searchable(text: $searchText, prompt: "Search property, customer, postcode")
+            .safeAreaInset(edge: .bottom) {
+                AppBuildLabel()
+                    .padding(.vertical, 6)
+                    .frame(maxWidth: .infinity)
+                    .background(.bar)
+            }
             .navigationTitle("Properties")
             .navigationDestination(for: UUID.self) { visitID in
                 PropertyTwinHomeView(
@@ -263,5 +269,21 @@ public struct VisitListView: View {
             count + component.evidence.filter { $0.reviewStatus == .needsReview }.count
         }
         return roomCount + componentCount + roomEvidenceCount + componentEvidenceCount
+    }
+}
+
+private struct AppBuildLabel: View {
+    private var buildText: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "unknown"
+        let build = info?["CFBundleVersion"] as? String ?? "unknown"
+        return "Daedalus Capture v\(version) (\(build))"
+    }
+
+    var body: some View {
+        Text(buildText)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("Daedalus Capture build \(buildText)")
     }
 }
