@@ -6,6 +6,8 @@ Canonical iOS Digital Twin editor for the Daedalus platform.
 
 This repository is governed by the [Daedalus Platform Constitution v1.2](docs/constitution/DAEDALUS_CONSTITUTION_v1.2.md).
 
+The repo-local build-plan projection lives in [DAEDALUS_BUILD_PLAN.md](DAEDALUS_BUILD_PLAN.md).
+
 Daedalus exists to create, maintain, and explain living Digital Twins of homes and their technical systems.
 
 This repo must obey:
