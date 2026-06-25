@@ -59,6 +59,8 @@ targets:
                 - application/json
     settings:
       base:
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 34Y4H49QMY
         PRODUCT_BUNDLE_IDENTIFIER: com.martinbibb.daedalus.scan
         PRODUCT_NAME: Daedalus Capture
         MARKETING_VERSION: 1.0.1
@@ -75,6 +77,8 @@ targets:
       - target: DaedalusScanCore
     settings:
       base:
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 34Y4H49QMY
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.martinbibb.daedalus.scan.tests
 schemes:
