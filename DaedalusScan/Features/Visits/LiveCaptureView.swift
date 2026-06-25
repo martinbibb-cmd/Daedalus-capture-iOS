@@ -62,7 +62,11 @@ struct LiveCaptureView: View {
     private func cameraFirstCapture(visit: Visit) -> some View {
         liveCaptureSurface(visit: visit)
             .onAppear {
+                resetTransientCaptureUI()
                 requestSpatialSessionStart()
+            }
+            .onDisappear {
+                teardownTransientCaptureUI()
             }
     }
 
@@ -213,6 +217,7 @@ struct LiveCaptureView: View {
 
         Task { @MainActor in
             await Task.yield()
+            guard didRequestSpatialStart else { return }
             startSpatialSession()
         }
     }
@@ -230,6 +235,29 @@ struct LiveCaptureView: View {
         captureState = .idle
         recordingService.stopRecording()
         livePlacementState = .unavailable
+    }
+
+    private func resetTransientCaptureUI() {
+        confirmationState.clearTransientState()
+        capturedEvidenceComponentID = nil
+        snapshotRequestID = nil
+        livePlacementState = .unavailable
+        scanProgress = .empty
+        spatialAim = .empty
+    }
+
+    private func teardownTransientCaptureUI() {
+        didRequestSpatialStart = false
+        spatialSession.status = .notStarted
+        spatialSession.endedAt = nil
+        confirmationState.clearTransientState()
+        capturedEvidenceComponentID = nil
+        snapshotRequestID = nil
+        scanProgress = .empty
+        spatialAim = .empty
+        livePlacementState = .unavailable
+        captureState = .idle
+        recordingService.stopRecording()
     }
 
     private func syncPlacementStateForSession() {
@@ -396,25 +424,41 @@ struct LiveCaptureView: View {
             visitID: visitID,
             reviewedLabel: event.preview.suggestedTitle
         )
-        confirmationState.update(componentID: componentID, status: .confirmed)
+        dismissLiveCaptureConfirmation(componentID: componentID, status: .confirmed)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
     private func markLiveCaptureUnresolved(_ event: CaptureConfirmationEvent) {
         guard let componentID = event.preview.linkedComponentID else { return }
         viewModel.setCaptureReviewDecision(.needsAttention, componentID: componentID, visitID: visitID)
-        confirmationState.update(componentID: componentID, status: .unresolved)
+        dismissLiveCaptureConfirmation(componentID: componentID, status: .unresolved)
         UINotificationFeedbackGenerator().notificationOccurred(.warning)
     }
 
     private func reviewLiveCaptureLater() {
-        pauseForReview()
+        dismissLiveCaptureConfirmation()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
     private func leaveSurvey() {
         completeSpatialSession()
+        teardownTransientCaptureUI()
         dismiss()
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    private func dismissLiveCaptureConfirmation(
+        componentID: UUID? = nil,
+        status: CaptureSuggestionReviewState? = nil
+    ) {
+        withAnimation(.spring(response: 0.22, dampingFraction: 0.88)) {
+            if let componentID, let status {
+                confirmationState.updateAndDismiss(componentID: componentID, status: status)
+            } else {
+                confirmationState.dismissActiveEvent()
+            }
+            capturedEvidenceComponentID = nil
+        }
     }
 
     private func resumeSurvey() {

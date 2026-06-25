@@ -428,6 +428,26 @@ struct LiveCaptureConfirmationState: Equatable, Hashable {
             return updated
         }
     }
+
+    mutating func updateAndDismiss(componentID: UUID, status: CaptureSuggestionReviewState) {
+        update(componentID: componentID, status: status)
+        dismissActiveEvent(componentID: componentID)
+    }
+
+    mutating func dismissActiveEvent(componentID: UUID? = nil) {
+        guard let componentID else {
+            activeEvent = nil
+            return
+        }
+        if activeEvent?.preview.linkedComponentID == componentID {
+            activeEvent = nil
+        }
+    }
+
+    mutating func clearTransientState() {
+        activeEvent = nil
+        recentEvents = []
+    }
 }
 
 struct TranscriptSuggestionCandidate: Identifiable, Equatable, Hashable {
