@@ -29,11 +29,17 @@ public struct VisitListView: View {
     public var body: some View {
         NavigationStack(path: $navigationPath) {
             List {
+                Section {
+                    AppBrandHeader()
+                        .listRowInsets(EdgeInsets(top: 12, leading: 20, bottom: 8, trailing: 20))
+                        .listRowBackground(Color.clear)
+                }
+
                 if viewModel.visits.isEmpty {
                     ContentUnavailableView(
                         "No Properties",
                         systemImage: "tray",
-                        description: Text("Create a Property to start offline capture.")
+                        description: Text("Tap + to create a Property and start offline capture.")
                     )
                 } else if filteredVisits.isEmpty {
                     ContentUnavailableView.search(text: searchText)
@@ -71,7 +77,7 @@ public struct VisitListView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Menu("Property") {
+                    Menu {
                         Button("Export Capture Package") {
                             if let url = viewModel.makeExportTempURL() {
                                 shareURL = url
@@ -82,6 +88,8 @@ public struct VisitListView: View {
                         Button("Import Capture Package") {
                             isPresentingImport = true
                         }
+                    } label: {
+                        Label("Property menu", systemImage: "ellipsis.circle")
                     }
                 }
 
@@ -269,6 +277,33 @@ public struct VisitListView: View {
             count + component.evidence.filter { $0.reviewStatus == .needsReview }.count
         }
         return roomCount + componentCount + roomEvidenceCount + componentEvidenceCount
+    }
+}
+
+private struct AppBrandHeader: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.accentColor)
+                Text("D")
+                    .font(.system(size: 18, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 34, height: 34)
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Daedalus Capture")
+                    .font(.headline)
+                Text("Property-rooted offline scan")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
