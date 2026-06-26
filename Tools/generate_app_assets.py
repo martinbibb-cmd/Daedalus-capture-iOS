@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import math
 import struct
+import subprocess
 import zlib
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ICON_DIR = ROOT / "DaedalusScan" / "App" / "Assets.xcassets" / "AppIcon.appiconset"
 LOGO_DIR = ROOT / "DaedalusScan" / "App" / "Assets.xcassets" / "DaedalusLogo.imageset"
+SOURCE_LOGO = ROOT / "Tools" / "assets" / "daedalus-app-logo-source.jpg"
 
 
 def write_png(path, width, height, pixels):
@@ -117,6 +119,48 @@ def render_logo(path, width, height):
 
 
 def main():
+    if SOURCE_LOGO.exists():
+        for filename, size in {
+            "AppIcon-20@2x.png": 40,
+            "AppIcon-20@3x.png": 60,
+            "AppIcon-29@2x.png": 58,
+            "AppIcon-29@3x.png": 87,
+            "AppIcon-40@2x.png": 80,
+            "AppIcon-40@3x.png": 120,
+            "AppIcon-60@2x.png": 120,
+            "AppIcon-60@3x.png": 180,
+            "AppIcon-1024.png": 1024,
+        }.items():
+            subprocess.run(
+                [
+                    "sips",
+                    "-s", "format", "png",
+                    "-z", str(size), str(size),
+                    str(SOURCE_LOGO),
+                    "--out", str(ICON_DIR / filename),
+                ],
+                check=True,
+            )
+
+        for filename, size in {
+            "DaedalusLogo.png": 256,
+            "DaedalusLogo@2x.png": 512,
+            "DaedalusLogo@3x.png": 768,
+        }.items():
+            subprocess.run(
+                [
+                    "sips",
+                    "-s", "format", "png",
+                    "-z", str(size), str(size),
+                    str(SOURCE_LOGO),
+                    "--out", str(LOGO_DIR / filename),
+                ],
+                check=True,
+            )
+        return
+
+    raise FileNotFoundError(f"Missing required Daedalus logo source: {SOURCE_LOGO}")
+
     for filename, size in {
         "AppIcon-20@2x.png": 40,
         "AppIcon-20@3x.png": 60,
