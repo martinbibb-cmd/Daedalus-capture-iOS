@@ -382,20 +382,17 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertTrue(lifecycleSource.contains("\"Resume Survey\""), "Review should expose a Resume Survey action")
     }
 
-    func testLiveCaptureSourceShowsSuggestionConfirmationCardAndReviewLink() throws {
+    func testLiveCaptureSourceDoesNotShowSuggestionConfirmationCardDuringSurvey() throws {
         let source = try sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureView.swift")
 
-        XCTAssertTrue(source.contains("\"Captured Suggestion\""))
-        XCTAssertTrue(source.contains("\"What was observed:\""))
-        XCTAssertTrue(source.contains("\"Daedalus thinks this is:\""))
-        XCTAssertTrue(source.contains("\"Area:\""))
-        XCTAssertTrue(source.contains("\"Status:\""))
-        XCTAssertTrue(source.contains("\"Needs Confirmation\""))
-        XCTAssertTrue(source.contains("\"Confirm\""))
-        XCTAssertTrue(source.contains("\"Mark Unresolved\""))
-        XCTAssertTrue(source.contains("\"Review Later\""))
-        XCTAssertTrue(source.contains("confirmationState.recentEvents"))
-        XCTAssertTrue(source.contains("reviewLiveCaptureLater"))
+        XCTAssertFalse(source.contains("LiveCaptureConfirmationView"))
+        XCTAssertFalse(source.contains("\"Captured Suggestion\""))
+        XCTAssertFalse(source.contains("\"What was observed:\""))
+        XCTAssertFalse(source.contains("\"Daedalus thinks this is:\""))
+        XCTAssertFalse(source.contains("\"Needs Confirmation\""))
+        XCTAssertFalse(source.contains("\"Review Later\""))
+        XCTAssertFalse(source.contains("reviewLiveCaptureLater"))
+        XCTAssertFalse(source.contains("confirmationState.record"), "Live capture should not open a confirmation workflow while scanning")
     }
 
     func testUserFacingCaptureLanguageUsesPropertyRootTerms() throws {
@@ -439,9 +436,9 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertFalse(cameraSource.contains(".ignoresSafeArea()"), "The whole control surface must not ignore safe areas")
         XCTAssertTrue(statusBarSource.contains(".minimumScaleFactor(0.65)"), "Property references should scale instead of pushing controls off screen")
         XCTAssertTrue(statusBarSource.contains(".minimumScaleFactor(0.58)"), "Placement labels should shrink before widening the banner")
-        XCTAssertTrue(spatialSource.contains("addRoomCaptureView"), "RoomPlan's native overlay needs horizontal safe-area margins")
-        XCTAssertTrue(spatialSource.contains("container.safeAreaLayoutGuide.leadingAnchor, constant: 12"))
-        XCTAssertTrue(spatialSource.contains("container.safeAreaLayoutGuide.trailingAnchor, constant: -12"))
+        XCTAssertTrue(spatialSource.contains("addRoomCaptureView"), "RoomPlan's native overlay should fill the live capture surface")
+        XCTAssertTrue(spatialSource.contains("child.leadingAnchor.constraint(equalTo: container.leadingAnchor)"))
+        XCTAssertTrue(spatialSource.contains("child.trailingAnchor.constraint(equalTo: container.trailingAnchor)"))
     }
 
     func testCaptureSourceDoesNotIntroduceBannedBoundaryBehaviours() throws {
@@ -486,7 +483,7 @@ final class LiveCaptureUXTests: XCTestCase {
         let captureSource = try sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureView.swift")
         let controlBarSource = try sourceBlock(
             named: "private struct LiveCaptureControlBar",
-            endingBefore: "private struct LiveCaptureConfirmationView",
+            endingBefore: "private struct LiveCaptureMiniTimeline",
             in: captureSource
         )
         XCTAssertFalse(captureSource.contains("LiveMiniTwinMapView"), "Live capture should not render a 2D Mini Twin Map overlay")

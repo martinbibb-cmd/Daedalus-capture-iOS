@@ -103,16 +103,6 @@ struct LiveCaptureView: View {
 
                 Spacer()
 
-                if let event = confirmationState.activeEvent {
-                    LiveCaptureConfirmationView(
-                        event: event,
-                        onConfirm: { confirmLiveCapture(event) },
-                        onMarkUnresolved: { markLiveCaptureUnresolved(event) },
-                        onReviewLater: reviewLiveCaptureLater
-                    )
-                        .padding(.bottom, 18)
-                }
-
                 LiveCaptureMiniTimeline(
                     events: confirmationState.recentEvents,
                     visit: visit,
@@ -298,12 +288,6 @@ struct LiveCaptureView: View {
 
         let hapticStyle: UIImpactFeedbackGenerator.FeedbackStyle = kind == .safety ? .heavy : .medium
         UIImpactFeedbackGenerator(style: hapticStyle).impactOccurred()
-        if let componentID,
-           let event = viewModel.visit(id: visitID)?.captureConfirmationEvent(for: componentID) {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                confirmationState.record(event)
-            }
-        }
     }
 
     private func toggleFocusMode() {
@@ -386,29 +370,6 @@ struct LiveCaptureView: View {
         viewModel.refreshCaptureReviewSuggestions(for: visitID)
         isPresentingReview = true
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-    }
-
-    private func confirmLiveCapture(_ event: CaptureConfirmationEvent) {
-        guard let componentID = event.preview.linkedComponentID else { return }
-        viewModel.setCaptureReviewDecision(
-            .confirmed,
-            componentID: componentID,
-            visitID: visitID,
-            reviewedLabel: event.preview.suggestedTitle
-        )
-        confirmationState.update(componentID: componentID, status: .confirmed)
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-    }
-
-    private func markLiveCaptureUnresolved(_ event: CaptureConfirmationEvent) {
-        guard let componentID = event.preview.linkedComponentID else { return }
-        viewModel.setCaptureReviewDecision(.needsAttention, componentID: componentID, visitID: visitID)
-        confirmationState.update(componentID: componentID, status: .unresolved)
-        UINotificationFeedbackGenerator().notificationOccurred(.warning)
-    }
-
-    private func reviewLiveCaptureLater() {
-        pauseForReview()
     }
 
     private func leaveSurvey() {
@@ -622,118 +583,6 @@ private struct LiveCaptureControlBar: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Capture evidence")
             Spacer()
-        }
-    }
-}
-
-private struct LiveCaptureConfirmationView: View {
-    let event: CaptureConfirmationEvent
-    let onConfirm: () -> Void
-    let onMarkUnresolved: () -> Void
-    let onReviewLater: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label("Captured Suggestion", systemImage: systemImage)
-                    .font(.caption.weight(.semibold))
-                Spacer()
-                Text(event.type.title)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.78))
-            }
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text("What was observed:")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.72))
-                Text(event.preview.observedEvidence.joined(separator: ", "))
-                    .font(.subheadline.weight(.semibold))
-            }
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text("Daedalus thinks this is:")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.72))
-                Text(event.preview.suggestedTitle)
-                    .font(.title3.weight(.bold))
-            }
-
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Area:")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.72))
-                    Text(event.preview.areaName)
-                        .font(.subheadline.weight(.semibold))
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text("Status:")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.72))
-                    Text(statusTitle)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(statusColor)
-                }
-            }
-
-            HStack(spacing: 8) {
-                Button("Confirm", action: onConfirm)
-                    .buttonStyle(.borderedProminent)
-                Button("Mark Unresolved", action: onMarkUnresolved)
-                    .buttonStyle(.bordered)
-                Button("Review Later", action: onReviewLater)
-                    .buttonStyle(.bordered)
-            }
-            .font(.caption.weight(.semibold))
-        }
-        .padding(14)
-        .background(Color.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.white.opacity(0.18), lineWidth: 1)
-        )
-        .foregroundStyle(.white)
-        .padding(.horizontal, 16)
-    }
-
-    private var systemImage: String {
-        switch event.type {
-        case .objectSuggestion: return "shippingbox"
-        case .areaSuggestion: return "square.dashed"
-        case .specialObjectSuggestion: return "mappin.and.ellipse"
-        case .unresolvedCapture: return "questionmark.diamond"
-        case .evidenceAttached: return "paperclip"
-        case .relationshipSuggestion: return "point.3.connected.trianglepath.dotted"
-        }
-    }
-
-    private var statusTitle: String {
-        switch event.preview.status {
-        case .suggested:
-            return "Needs Confirmation"
-        case .confirmed:
-            return "Confirmed"
-        case .changed:
-            return "Changed"
-        case .ignored:
-            return "Ignored"
-        case .unresolved, .needsAttention:
-            return "Unresolved"
-        }
-    }
-
-    private var statusColor: Color {
-        switch event.preview.status {
-        case .confirmed, .changed:
-            return .green
-        case .unresolved, .needsAttention:
-            return .red
-        case .ignored:
-            return .secondary
-        case .suggested:
-            return .yellow
         }
     }
 }

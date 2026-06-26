@@ -89,9 +89,9 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
             child.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(child)
             NSLayoutConstraint.activate([
-                child.leadingAnchor.constraint(equalTo: container.safeAreaLayoutGuide.leadingAnchor, constant: 12),
-                child.trailingAnchor.constraint(equalTo: container.safeAreaLayoutGuide.trailingAnchor, constant: -12),
-                child.topAnchor.constraint(equalTo: container.safeAreaLayoutGuide.topAnchor),
+                child.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                child.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                child.topAnchor.constraint(equalTo: container.topAnchor),
                 child.bottomAnchor.constraint(equalTo: container.bottomAnchor)
             ])
         }
