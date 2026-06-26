@@ -21,7 +21,9 @@ struct LiveCaptureView: View {
     @State private var activeCaptureSheet: LiveCaptureSheet?
     @State private var isPresentingFocusWarning = false
     @State private var rulerStartPosition: SpatialPosition?
+    @State private var isRulerModeActive = false
     @State private var liveActionMessage: String?
+    @State private var isRadialMenuOpen = false
 
     private var isFocusModeActive: Bool {
         captureState.isFocusActive
@@ -102,12 +104,15 @@ struct LiveCaptureView: View {
                 captureState: captureState,
                 onSnapshotCaptured: saveCapturedFrame
             )
+                .id(spatialSession.id)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea()
 
             LiveSurveyCoverageOverlay(
                 capturedSurfaceCount: scanProgress.capturedSurfaceCount,
-                isFocusModeActive: isFocusModeActive
+                isFocusModeActive: isFocusModeActive,
+                isRulerModeActive: isRulerModeActive,
+                hasRulerStart: rulerStartPosition != nil
             )
 
             LinearGradient(
@@ -130,11 +135,11 @@ struct LiveCaptureView: View {
 
             LiveCaptureSideMenus(
                 activeDrawer: $activeSideDrawer,
-                onNextRoom: createNextRoomMarker,
+                onNextRoom: finishRoomAndStartNextRoom,
                 onFocus: requestFocusMode,
                 onWater: { activeCaptureSheet = .waterPressureTest },
                 onElectrical: { activeCaptureSheet = .socketTester },
-                onMeasurement: placeGeometryRuler,
+                onMeasurement: beginRulerMeasurement,
                 onSafety: { createLiveEvidence(.safety) },
                 onReview: pauseForReview
             )
@@ -172,7 +177,16 @@ struct LiveCaptureView: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             LiveCaptureControlBar(
-                onCapture: capAction
+                isRulerModeActive: isRulerModeActive,
+                isRadialMenuOpen: $isRadialMenuOpen,
+                onCapture: capAction,
+                onNextRoom: finishRoomAndStartNextRoom,
+                onFocus: requestFocusMode,
+                onWater: { activeCaptureSheet = .waterPressureTest },
+                onElectrical: { activeCaptureSheet = .socketTester },
+                onMeasurement: beginRulerMeasurement,
+                onSafety: { createLiveEvidence(.safety) },
+                onReview: pauseForReview
             )
             .padding(.horizontal, 16)
             .padding(.top, 8)
@@ -274,6 +288,7 @@ struct LiveCaptureView: View {
         scanProgress = .empty
         spatialAim = .empty
         rulerStartPosition = nil
+        isRulerModeActive = false
         liveActionMessage = nil
     }
 
@@ -287,6 +302,7 @@ struct LiveCaptureView: View {
         spatialAim = .empty
         livePlacementState = .unavailable
         rulerStartPosition = nil
+        isRulerModeActive = false
         liveActionMessage = nil
         captureState = .idle
         recordingService.stopRecording()
@@ -380,6 +396,10 @@ struct LiveCaptureView: View {
     }
 
     private func capAction() {
+        if isRulerModeActive {
+            placeGeometryRuler()
+            return
+        }
         snapshotRequestID = UUID()
         UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
     }
@@ -388,27 +408,36 @@ struct LiveCaptureView: View {
         createLiveEvidence(.photo, photoData: data)
     }
 
-    private func createNextRoomMarker() {
+    private func finishRoomAndStartNextRoom() {
         let roomNumber = ((visit?.rooms.count ?? 0) + 1)
-        viewModel.addRoom(to: visitID, named: "Room \(roomNumber)")
+        viewModel.addRoom(to: visitID, named: "Room \(roomNumber)", placement: currentPlacementMetadata)
         createLiveEvidence(
             .mark,
             geometryCaptureMode: .manual,
             geometryDetailLevel: .room,
             geometrySource: .userMarked
         )
+        rulerStartPosition = nil
+        isRulerModeActive = false
+        spatialSession.id = UUID()
+        scanProgress = .empty
+        spatialAim = .empty
+        livePlacementState = .unavailable
+        captureState = .roomScanning
+        showLiveActionMessage("Room \(roomNumber) finished. New room scan started")
+    }
+
+    private func beginRulerMeasurement() {
+        isRulerModeActive = true
+        showLiveActionMessage(rulerStartPosition == nil ? "Ruler active. Tap capture to place start" : "Tap capture to place end")
     }
 
     private func placeGeometryRuler() {
-        guard let targetPosition = spatialAim.targetPosition else {
-            showLiveActionMessage("Aim at geometry before placing ruler")
-            UINotificationFeedbackGenerator().notificationOccurred(.warning)
-            return
-        }
+        let targetPosition = spatialAim.targetPosition ?? livePlacementState.lastKnownPosition ?? SpatialPosition(x: 0, y: 0, z: 0)
 
         guard let startPosition = rulerStartPosition else {
             rulerStartPosition = targetPosition
-            showLiveActionMessage("Ruler start placed")
+            showLiveActionMessage("Ruler start placed. Aim and tap capture for end")
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             return
         }
@@ -429,6 +458,7 @@ struct LiveCaptureView: View {
             viewModel.updateComponentAttribute("Geometry ruler", for: "suggestedLabel", componentID: componentID, visitID: visitID)
         }
         rulerStartPosition = nil
+        isRulerModeActive = false
         showLiveActionMessage("Ruler saved: \(String(format: "%.2f m", distance))")
     }
 
@@ -599,6 +629,8 @@ private struct LiveCaptureStatusBar: View {
 private struct LiveSurveyCoverageOverlay: View {
     let capturedSurfaceCount: Int
     let isFocusModeActive: Bool
+    let isRulerModeActive: Bool
+    let hasRulerStart: Bool
 
     var body: some View {
         ZStack {
@@ -606,9 +638,38 @@ private struct LiveSurveyCoverageOverlay: View {
                 if isFocusModeActive {
                     focusReticle(in: proxy.size)
                 }
+                if isRulerModeActive {
+                    rulerReticle(in: proxy.size)
+                }
             }
         }
         .allowsHitTesting(false)
+    }
+
+    private func rulerReticle(in size: CGSize) -> some View {
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        return ZStack {
+            Path { path in
+                path.move(to: CGPoint(x: center.x - 58, y: center.y))
+                path.addLine(to: CGPoint(x: center.x + 58, y: center.y))
+                path.move(to: CGPoint(x: center.x, y: center.y - 58))
+                path.addLine(to: CGPoint(x: center.x, y: center.y + 58))
+            }
+            .stroke(Color.white.opacity(0.92), style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [6, 5]))
+
+            Circle()
+                .stroke(hasRulerStart ? Color.green : Color.white, lineWidth: 3)
+                .frame(width: 92, height: 92)
+                .position(center)
+
+            Text(hasRulerStart ? "END" : "START")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.black)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(hasRulerStart ? Color.green : Color.white, in: Capsule())
+                .position(x: center.x, y: center.y - 66)
+        }
     }
 
     private func focusReticle(in size: CGSize) -> some View {
@@ -1076,25 +1137,135 @@ private extension SpatialPosition {
 }
 
 private struct LiveCaptureControlBar: View {
+    let isRulerModeActive: Bool
+    @Binding var isRadialMenuOpen: Bool
     let onCapture: () -> Void
+    let onNextRoom: () -> Void
+    let onFocus: () -> Void
+    let onWater: () -> Void
+    let onElectrical: () -> Void
+    let onMeasurement: () -> Void
+    let onSafety: () -> Void
+    let onReview: () -> Void
 
     var body: some View {
-        HStack {
+        HStack(alignment: .bottom, spacing: 18) {
             Spacer()
+
+            LiveCaptureRadialDial(
+                isOpen: $isRadialMenuOpen,
+                actions: [
+                    LiveCaptureDialAction(title: "Finish Room", systemImage: "rectangle.stack.badge.plus", tint: .white, action: onNextRoom),
+                    LiveCaptureDialAction(title: "Focus", systemImage: "scope", tint: .yellow, action: onFocus),
+                    LiveCaptureDialAction(title: "Water", systemImage: "drop.fill", tint: .cyan, action: onWater),
+                    LiveCaptureDialAction(title: "Socket", systemImage: "bolt.fill", tint: .yellow, action: onElectrical),
+                    LiveCaptureDialAction(title: "Ruler", systemImage: "ruler", tint: .white, action: onMeasurement),
+                    LiveCaptureDialAction(title: "Safety", systemImage: "exclamationmark.triangle.fill", tint: .red, action: onSafety),
+                    LiveCaptureDialAction(title: "Review", systemImage: "list.bullet.rectangle", tint: .white, action: onReview)
+                ]
+            )
+
             Button(action: onCapture) {
                 Circle()
-                    .fill(Color.yellow)
+                    .fill(isRulerModeActive ? Color.white : Color.yellow)
                     .overlay(
                         Circle()
                             .stroke(Color.white.opacity(0.85), lineWidth: 2)
                     )
+                    .overlay {
+                        if isRulerModeActive {
+                            Image(systemName: "ruler")
+                                .font(.title2.weight(.bold))
+                                .foregroundStyle(.black)
+                        }
+                    }
                     .shadow(color: .black.opacity(0.28), radius: 10, y: 4)
                     .frame(width: 86, height: 86)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Capture evidence")
+            .accessibilityLabel(isRulerModeActive ? "Place ruler point" : "Capture evidence")
             Spacer()
         }
+    }
+}
+
+private struct LiveCaptureDialAction: Identifiable {
+    let id = UUID()
+    let title: String
+    let systemImage: String
+    let tint: Color
+    let action: () -> Void
+}
+
+private struct LiveCaptureRadialDial: View {
+    @Binding var isOpen: Bool
+    let actions: [LiveCaptureDialAction]
+
+    @State private var dragRotation: Angle = .zero
+
+    var body: some View {
+        ZStack {
+            if isOpen {
+                ForEach(Array(actions.enumerated()), id: \.element.id) { index, item in
+                    Button {
+                        item.action()
+                        withAnimation(.snappy) {
+                            isOpen = false
+                        }
+                    } label: {
+                        Image(systemName: item.systemImage)
+                            .font(.callout.weight(.bold))
+                            .foregroundStyle(item.tint)
+                            .frame(width: 42, height: 42)
+                            .background(.black.opacity(0.62), in: Circle())
+                            .overlay(Circle().stroke(item.tint.opacity(0.42), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(item.title)
+                    .offset(offset(for: index))
+                    .transition(.scale.combined(with: .opacity))
+                }
+            }
+
+            Button {
+                withAnimation(.snappy) {
+                    isOpen.toggle()
+                }
+            } label: {
+                Image(systemName: "dial.low")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 58, height: 58)
+                    .background(.black.opacity(0.46), in: Circle())
+                    .overlay(Circle().stroke(.white.opacity(0.22), lineWidth: 1))
+                    .rotationEffect(dragRotation)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Capture action dial")
+            .gesture(
+                DragGesture(minimumDistance: 8)
+                    .onChanged { value in
+                        dragRotation = Angle(degrees: Double(value.translation.width + value.translation.height))
+                    }
+                    .onEnded { _ in
+                        withAnimation(.snappy) {
+                            isOpen = true
+                            dragRotation = .zero
+                        }
+                    }
+            )
+        }
+        .frame(width: 78, height: 86)
+        .animation(.snappy, value: isOpen)
+    }
+
+    private func offset(for index: Int) -> CGSize {
+        let total = max(actions.count - 1, 1)
+        let start = -170.0
+        let end = -20.0
+        let angle = (start + ((end - start) / Double(total)) * Double(index)) * .pi / 180
+        let radius = 104.0
+        return CGSize(width: cos(angle) * radius, height: sin(angle) * radius)
     }
 }
 
