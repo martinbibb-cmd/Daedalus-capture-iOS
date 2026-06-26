@@ -395,6 +395,37 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertFalse(source.contains("confirmationState.record"), "Live capture should not open a confirmation workflow while scanning")
     }
 
+    func testLiveCaptureClearsTransientSessionStateWithoutBlockingOverlay() throws {
+        let source = try sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureView.swift")
+        let leaveSource = try sourceBlock(
+            named: "private func leaveSurvey",
+            endingBefore: "private func resumeSurvey",
+            in: source
+        )
+        let teardownSource = try sourceBlock(
+            named: "private func teardownTransientCaptureUI",
+            endingBefore: "private func syncPlacementStateForSession",
+            in: source
+        )
+
+        XCTAssertFalse(source.contains("private func confirmLiveCapture"))
+        XCTAssertFalse(source.contains("private func markLiveCaptureUnresolved"))
+        XCTAssertFalse(source.contains("private func reviewLiveCaptureLater"))
+        XCTAssertFalse(source.contains("dismissLiveCaptureConfirmation"))
+        XCTAssertTrue(leaveSource.contains("teardownTransientCaptureUI()"))
+        XCTAssertTrue(source.contains(".onAppear {\n                resetTransientCaptureUI()"), "Re-entering live capture should start without zombie overlay state")
+        XCTAssertTrue(source.contains(".onDisappear {\n                teardownTransientCaptureUI()"), "Leaving live capture should clear transient overlay state")
+        XCTAssertTrue(teardownSource.contains("confirmationState.clearTransientState()"))
+        XCTAssertTrue(teardownSource.contains("didRequestSpatialStart = false"))
+        XCTAssertTrue(teardownSource.contains("spatialSession.status = .notStarted"))
+        XCTAssertTrue(teardownSource.contains("capturedEvidenceComponentID = nil"))
+        XCTAssertTrue(teardownSource.contains("scanProgress = .empty"))
+        XCTAssertTrue(teardownSource.contains("spatialAim = .empty"))
+        XCTAssertTrue(teardownSource.contains("livePlacementState = .unavailable"))
+        XCTAssertTrue(teardownSource.contains("captureState = .idle"))
+        XCTAssertTrue(source.contains("guard didRequestSpatialStart else { return }\n            startSpatialSession()"), "Deferred capture startup should not restart after teardown")
+    }
+
     func testUserFacingCaptureLanguageUsesPropertyRootTerms() throws {
         let source = try sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureView.swift") +
             sourceText(relativePath: "DaedalusScan/Features/Visits/VisitDetailView.swift") +
@@ -436,9 +467,27 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertFalse(cameraSource.contains(".ignoresSafeArea()"), "The whole control surface must not ignore safe areas")
         XCTAssertTrue(statusBarSource.contains(".minimumScaleFactor(0.65)"), "Property references should scale instead of pushing controls off screen")
         XCTAssertTrue(statusBarSource.contains(".minimumScaleFactor(0.58)"), "Placement labels should shrink before widening the banner")
-        XCTAssertTrue(spatialSource.contains("addRoomCaptureView"), "RoomPlan's native overlay should fill the live capture surface")
-        XCTAssertTrue(spatialSource.contains("child.leadingAnchor.constraint(equalTo: container.leadingAnchor)"))
-        XCTAssertTrue(spatialSource.contains("child.trailingAnchor.constraint(equalTo: container.trailingAnchor)"))
+        XCTAssertTrue(spatialSource.contains("addRoomCaptureView"))
+        XCTAssertTrue(spatialSource.contains("child.leadingAnchor.constraint(equalTo: container.leadingAnchor)"), "RoomPlan preview should fill horizontally instead of letterboxing against safe-area gutters")
+        XCTAssertTrue(spatialSource.contains("child.trailingAnchor.constraint(equalTo: container.trailingAnchor)"), "RoomPlan preview should fill horizontally instead of letterboxing against safe-area gutters")
+        XCTAssertFalse(spatialSource.contains("container.safeAreaLayoutGuide.leadingAnchor, constant: 12"))
+        XCTAssertFalse(spatialSource.contains("container.safeAreaLayoutGuide.trailingAnchor, constant: -12"))
+    }
+
+    func testPropertyDashboardLayoutIsNotDrivenByLiveCaptureViewportState() throws {
+        let lifecycleSource = try sourceText(relativePath: "DaedalusScan/Features/Visits/TwinLifecycleViews.swift")
+        let homeSource = try sourceBlock(
+            named: "struct PropertyTwinHomeView",
+            endingBefore: "struct StageModeView",
+            in: lifecycleSource
+        )
+        let captureSource = try sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureView.swift")
+
+        XCTAssertTrue(homeSource.contains("List {"), "Property dashboard should own its own list layout")
+        XCTAssertTrue(homeSource.contains("LiveCaptureView(viewModel: viewModel, visitID: visitID)"))
+        XCTAssertFalse(homeSource.contains("ignoresSafeArea"), "Live capture viewport choices must not be applied to the property dashboard")
+        XCTAssertFalse(homeSource.contains("safeAreaInset"), "Live capture control insets must not be applied to the property dashboard")
+        XCTAssertTrue(captureSource.contains("teardownTransientCaptureUI()"), "Live capture should reset transient viewport state before returning to the dashboard")
     }
 
     func testCaptureSourceDoesNotIntroduceBannedBoundaryBehaviours() throws {

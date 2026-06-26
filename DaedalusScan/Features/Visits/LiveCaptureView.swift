@@ -62,7 +62,11 @@ struct LiveCaptureView: View {
     private func cameraFirstCapture(visit: Visit) -> some View {
         liveCaptureSurface(visit: visit)
             .onAppear {
+                resetTransientCaptureUI()
                 requestSpatialSessionStart()
+            }
+            .onDisappear {
+                teardownTransientCaptureUI()
             }
     }
 
@@ -203,6 +207,7 @@ struct LiveCaptureView: View {
 
         Task { @MainActor in
             await Task.yield()
+            guard didRequestSpatialStart else { return }
             startSpatialSession()
         }
     }
@@ -220,6 +225,29 @@ struct LiveCaptureView: View {
         captureState = .idle
         recordingService.stopRecording()
         livePlacementState = .unavailable
+    }
+
+    private func resetTransientCaptureUI() {
+        confirmationState.clearTransientState()
+        capturedEvidenceComponentID = nil
+        snapshotRequestID = nil
+        livePlacementState = .unavailable
+        scanProgress = .empty
+        spatialAim = .empty
+    }
+
+    private func teardownTransientCaptureUI() {
+        didRequestSpatialStart = false
+        spatialSession.status = .notStarted
+        spatialSession.endedAt = nil
+        confirmationState.clearTransientState()
+        capturedEvidenceComponentID = nil
+        snapshotRequestID = nil
+        scanProgress = .empty
+        spatialAim = .empty
+        livePlacementState = .unavailable
+        captureState = .idle
+        recordingService.stopRecording()
     }
 
     private func syncPlacementStateForSession() {
@@ -374,6 +402,7 @@ struct LiveCaptureView: View {
 
     private func leaveSurvey() {
         completeSpatialSession()
+        teardownTransientCaptureUI()
         dismiss()
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
