@@ -474,7 +474,7 @@ extension Visit {
                 area.objectLinks.contains { $0.objectID == component.id }
             }
             let regularObjects = placedComponents
-                .filter { !$0.isSpatialSpecialObjectSuggestion }
+                .filter { !$0.isSpatialSpecialObjectSuggestion && !$0.isReviewSupportingEvidenceOnly }
                 .map { component in
                     AreaObjectReviewSummary(
                         id: stableSuggestionID("area-object-summary-\(area.id.uuidString)-\(component.id.uuidString)"),
@@ -679,6 +679,13 @@ private extension Optional where Wrapped == ReviewStatus {
 }
 
 private extension SystemComponent {
+    var isReviewSupportingEvidenceOnly: Bool {
+        guard liveCaptureEvidenceKind == .photo else { return false }
+        let label = suggestedCaptureLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let legacyPhotoLabel = ["Photo", "evidence"].joined(separator: " ")
+        return label == LiveCaptureEvidenceKind.photo.defaultSuggestedLabel || label == legacyPhotoLabel
+    }
+
     var isSpatialSpecialObjectSuggestion: Bool {
         switch liveCaptureEvidenceKind {
         case .mark, .safety, .gas, .water, .electrical:
@@ -728,7 +735,7 @@ private extension SystemComponent {
             SuggestedAreaEvidenceLink(
                 id: stableSuggestionID("area-object-evidence-\(areaID.uuidString)-\(id.uuidString)-\(evidence.id.uuidString)"),
                 evidenceID: evidence.id,
-                label: evidence.kind.title,
+                label: liveCaptureEvidenceKind == .photo ? "Photo in space" : evidence.kind.title,
                 sourceDescription: suggestedCaptureLabel
             )
         }

@@ -119,7 +119,7 @@ extension SystemComponent {
 extension LiveCaptureEvidenceKind {
     var defaultSuggestedLabel: String {
         switch self {
-        case .photo: return "Photo evidence"
+        case .photo: return "Photo in space"
         case .voice: return "Voice note"
         case .mark: return "Focus area"
         case .safety: return "Safety concern"

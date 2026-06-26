@@ -179,6 +179,8 @@ extension Visit {
             guard let markerType = component.liveCaptureEvidenceKind else { return nil }
             let primaryEvidence = component.evidence.sorted { $0.createdAt < $1.createdAt }.first
             let photoEvidence = component.evidence.first(where: { $0.kind == .photo })
+            let isPhotoInSpace = markerType == .photo && photoEvidence != nil
+            let suggestedLabel = isPhotoInSpace ? "Photo in space" : component.suggestedCaptureLabel
             return CaptureReviewCard(
                 id: component.id,
                 componentID: component.id,
@@ -186,12 +188,12 @@ extension Visit {
                 markerType: markerType,
                 capturedAt: primaryEvidence?.createdAt ?? component.createdAtFallback,
                 photoFileName: photoEvidence?.localFileName,
-                evidenceType: markerType.title,
+                evidenceType: isPhotoInSpace ? "Photo in space" : markerType.title,
                 areaName: captureReviewAreaName(for: component),
-                objectName: component.suggestedCaptureLabel,
+                objectName: suggestedLabel,
                 spatialMetadata: component.captureReviewSpatialMetadata(primaryEvidence),
                 transcriptExcerpt: component.componentAttributes["transcriptSnippet"] ?? "",
-                suggestedLabel: component.suggestedCaptureLabel,
+                suggestedLabel: suggestedLabel,
                 reviewedLabel: component.reviewedCaptureLabel,
                 anchorStatus: component.spatialPlacement.captureState.shortReviewTitle,
                 status: component.reviewStatus,
@@ -251,6 +253,13 @@ extension Visit {
         let label = component.spatialContext?.areaLabel.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !label.isEmpty && label != "Unclassified evidence" {
             return label
+        }
+        let positionLabel = component.componentAttributes["positionLabel"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !positionLabel.isEmpty &&
+            positionLabel != "Move around for more detail" &&
+            positionLabel != "Building room outline" &&
+            positionLabel != "Room understood" {
+            return positionLabel
         }
         return "Unknown Area"
     }
@@ -375,9 +384,9 @@ struct CaptureReviewWorkspaceView: View {
                     .frame(height: 280)
                     .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                 } header: {
-                    Text("Spatial Review")
+                    Text("Photo In Space Review")
                 } footer: {
-                    Text("Photo nodes use captured spatial coordinates where available. Low-confidence or unplaced evidence remains in the review list.")
+                    Text("Photos and spatial placement are reviewed as one item. Low-confidence or unplaced photos stay visible for individual review.")
                 }
 
                 Section {
@@ -397,7 +406,7 @@ struct CaptureReviewWorkspaceView: View {
                     }
                     .disabled(clearCards.isEmpty)
                 } footer: {
-                    Text("Use mass verification for clear, spatially placed assets. Low-confidence and safety items still need individual review.")
+                    Text("Use mass verification for clear, spatially placed photos. Low-confidence and safety items still need individual review.")
                 }
 
                 Section("Property") {
@@ -421,7 +430,7 @@ struct CaptureReviewWorkspaceView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("This is what Daedalus thinks you captured.")
                             .font(.subheadline.weight(.semibold))
-                        Text("Review the proposed property structure before reviewing individual evidence items.")
+                        Text("Review areas and objects first. Photos remain supporting evidence pinned in space.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -1226,7 +1235,7 @@ private struct CaptureReviewCardView: View {
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("\(card.areaName) / \(card.markerType == .photo ? "Supporting photo" : card.markerType.title)")
+                    Text(card.markerType == .photo ? "\(card.areaName) / Photo pinned in space" : "\(card.areaName) / \(card.markerType.title)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
@@ -1246,21 +1255,9 @@ private struct CaptureReviewCardView: View {
             }
 
             if card.photoFileName != nil {
-                Label("Photo and spatial placement are reviewed as one evidence item.", systemImage: "paperclip")
+                Label("Photo and spatial placement are one review item.", systemImage: "location.viewfinder")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-            }
-
-            if !card.spatialMetadata.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Spatial metadata")
-                        .font(.caption.weight(.semibold))
-                    ForEach(card.spatialMetadata, id: \.self) { item in
-                        Text(item)
-                    }
-                }
-                .font(.caption2)
-                .foregroundStyle(.secondary)
             }
 
             if card.requiresAttention {
@@ -1450,8 +1447,27 @@ private struct SpatialReviewMapView: View {
                 RoundedRectangle(cornerRadius: 0)
                     .fill(Color(.secondarySystemGroupedBackground))
 
-                planGrid
-                    .stroke(Color.secondary.opacity(0.22), lineWidth: 1)
+                planGrid(in: proxy.size)
+                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+
+                planExtent(in: proxy.size)
+                    .stroke(Color.primary.opacity(0.16), style: StrokeStyle(lineWidth: 2, dash: [8, 5]))
+
+                nodeLinks(in: proxy.size)
+                    .stroke(Color.blue.opacity(0.28), style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [4, 6]))
+
+                VStack {
+                    HStack {
+                        Label(nodes.isEmpty ? "No photo positions" : "Photo positions", systemImage: "location.viewfinder")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(8)
+                            .background(.thinMaterial, in: Capsule())
+                        Spacer()
+                    }
+                    Spacer()
+                }
+                .padding(10)
 
                 if nodes.isEmpty {
                     ContentUnavailableView("No placed photos", systemImage: "map")
@@ -1490,32 +1506,74 @@ private struct SpatialReviewMapView: View {
         .background(Color(.secondarySystemGroupedBackground))
     }
 
-    private var planGrid: Path {
+    private func planGrid(in size: CGSize) -> Path {
         Path { path in
-            let step: CGFloat = 34
-            for index in 0...12 {
+            let step = meterScale(in: size)
+            let columns = Int(ceil(size.width / max(step, 1)))
+            let rows = Int(ceil(size.height / max(step, 1)))
+            for index in 0...columns {
                 let value = CGFloat(index) * step
                 path.move(to: CGPoint(x: value, y: 0))
-                path.addLine(to: CGPoint(x: value, y: 420))
+                path.addLine(to: CGPoint(x: value, y: size.height))
+            }
+            for index in 0...rows {
+                let value = CGFloat(index) * step
                 path.move(to: CGPoint(x: 0, y: value))
-                path.addLine(to: CGPoint(x: 420, y: value))
+                path.addLine(to: CGPoint(x: size.width, y: value))
+            }
+        }
+    }
+
+    private func planExtent(in size: CGSize) -> Path {
+        Path { path in
+            let rect = CGRect(
+                x: 22,
+                y: 22,
+                width: max(size.width - 44, 1),
+                height: max(size.height - 44, 1)
+            )
+            path.addRoundedRect(in: rect, cornerSize: CGSize(width: 14, height: 14))
+        }
+    }
+
+    private func nodeLinks(in size: CGSize) -> Path {
+        Path { path in
+            let sortedNodes = nodes.sorted { $0.card.capturedAt < $1.card.capturedAt }
+            guard let first = sortedNodes.first else { return }
+            path.move(to: position(for: first.point, in: size))
+            for node in sortedNodes.dropFirst() {
+                path.addLine(to: position(for: node.point, in: size))
             }
         }
     }
 
     private func position(for point: CGPoint, in size: CGSize) -> CGPoint {
-        let points = nodes.map(\.point)
-        let minX = points.map(\.x).min() ?? -1
-        let maxX = points.map(\.x).max() ?? 1
-        let minY = points.map(\.y).min() ?? -1
-        let maxY = points.map(\.y).max() ?? 1
-        let rangeX = max(maxX - minX, 0.6)
-        let rangeY = max(maxY - minY, 0.6)
-        let inset: CGFloat = 34
+        let center = mapCenter
+        let scale = meterScale(in: size)
         return CGPoint(
-            x: inset + ((point.x - minX) / rangeX) * max(size.width - inset * 2, 1),
-            y: inset + ((point.y - minY) / rangeY) * max(size.height - inset * 2, 1)
+            x: size.width / 2 + (point.x - center.x) * scale,
+            y: size.height / 2 + (point.y - center.y) * scale
         )
+    }
+
+    private var mapCenter: CGPoint {
+        let points = nodes.map(\.point)
+        guard !points.isEmpty else { return .zero }
+        return CGPoint(
+            x: points.map(\.x).reduce(0, +) / CGFloat(points.count),
+            y: points.map(\.y).reduce(0, +) / CGFloat(points.count)
+        )
+    }
+
+    private func meterScale(in size: CGSize) -> CGFloat {
+        let points = nodes.map(\.point)
+        guard !points.isEmpty else { return 44 }
+        let minX = points.map(\.x).min() ?? -2
+        let maxX = points.map(\.x).max() ?? 2
+        let minY = points.map(\.y).min() ?? -2
+        let maxY = points.map(\.y).max() ?? 2
+        let span = max(maxX - minX, maxY - minY, 4)
+        return min(max((min(size.width, size.height) - 68) / span, 24), 64)
     }
 }
 

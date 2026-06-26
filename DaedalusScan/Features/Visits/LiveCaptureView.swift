@@ -19,7 +19,6 @@ struct LiveCaptureView: View {
     @State private var didRequestSpatialStart = false
     @State private var activeCaptureSheet: LiveCaptureSheet?
     @State private var isPresentingFocusWarning = false
-    @State private var isPresentingRoomCoverageWarning = false
     @State private var rulerStartPosition: SpatialPosition?
     @State private var isRulerModeActive = false
     @State private var liveActionMessage: String?
@@ -74,14 +73,6 @@ struct LiveCaptureView: View {
                         }
                     } message: {
                         Text("Focused scan switches from whole-room capture to local detail capture. Use it when you are ready to stop extending the current room scan.")
-                    }
-                    .alert("Room scan may be incomplete", isPresented: $isPresentingRoomCoverageWarning) {
-                        Button("Keep Scanning", role: .cancel) {}
-                        Button("Finish Room", role: .destructive) {
-                            finishRoomAndStartNextRoom()
-                        }
-                    } message: {
-                        Text("The room outline is not complete yet. Continue only if the visible gaps are acceptable for this survey.")
                     }
             } else {
                 ContentUnavailableView("Property not found", systemImage: "exclamationmark.triangle")
@@ -407,7 +398,8 @@ struct LiveCaptureView: View {
         if scanProgress.confidence == .high {
             finishRoomAndStartNextRoom()
         } else {
-            isPresentingRoomCoverageWarning = true
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            showLiveActionMessage("Room scan incomplete. Keep scanning until the room is understood.")
         }
     }
 

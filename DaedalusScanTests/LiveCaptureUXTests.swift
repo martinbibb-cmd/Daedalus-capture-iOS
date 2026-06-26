@@ -663,7 +663,7 @@ final class LiveCaptureUXTests: XCTestCase {
         let cards = visit.captureReviewCards.filter { $0.componentID == componentID }
         XCTAssertEqual(cards.count, 1)
         let card = try XCTUnwrap(cards.first)
-        XCTAssertEqual(card.evidenceType, "Photo")
+        XCTAssertEqual(card.evidenceType, "Photo in space")
         XCTAssertEqual(card.areaName, "Utility")
         XCTAssertNotNil(card.photoFileName)
         XCTAssertTrue(card.spatialMetadata.contains("RoomPlan"))
@@ -805,8 +805,9 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertTrue(source.contains("finishRoomAndStartNextRoom"))
         XCTAssertTrue(source.contains("spatialSession.id = UUID()"))
         XCTAssertTrue(source.contains("Focused scan will end the room scan"), "Focused scan should warn before switching away from room scan")
-        XCTAssertTrue(source.contains("Room scan may be incomplete"), "Next room should warn when room coverage is still incomplete")
+        XCTAssertTrue(source.contains("Room scan incomplete. Keep scanning until the room is understood."), "Next room should block when room coverage is still incomplete")
         XCTAssertTrue(source.contains("requestFinishRoom"), "Room progression should route through a coverage check")
+        XCTAssertFalse(source.contains("isPresentingRoomCoverageWarning"), "Room progression should use the scan confidence gate instead of asking the operator")
         XCTAssertFalse(source.contains("confirmationState"))
         XCTAssertFalse(source.contains("LiveCaptureConfirmationState"))
     }
@@ -822,11 +823,17 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertTrue(source.contains("SpatialReviewMapView"))
         XCTAssertTrue(source.contains("PhotoMapPin"))
         XCTAssertTrue(source.contains("case photoNode"))
+        XCTAssertTrue(source.contains("Photo in space"))
+        XCTAssertTrue(source.contains("Photo In Space Review"))
+        XCTAssertTrue(source.contains("Photo pinned in space"))
+        XCTAssertTrue(source.contains("meterScale(in:"))
+        XCTAssertTrue(source.contains("nodeLinks(in:"))
         XCTAssertTrue(source.contains("Confirm All Clear Assets"))
         XCTAssertTrue(source.contains("confirmAllClearAssets"))
         XCTAssertTrue(source.contains("mapPoint: component.captureReviewMapPoint"))
         XCTAssertTrue(source.contains("MagnificationGesture"))
         XCTAssertTrue(source.contains("DragGesture"))
+        XCTAssertFalse(source.contains("Supporting photo"))
     }
 
     func testWaterAndAssetFormsDoNotCollectNarrativeNotes() throws {
