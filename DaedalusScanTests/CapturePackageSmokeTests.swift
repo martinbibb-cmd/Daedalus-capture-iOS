@@ -59,6 +59,41 @@ final class CapturePackageSmokeTests: XCTestCase {
         XCTAssertEqual(package.visits.first?.propertyRootMetadata.captureSession.id, visit.captureSession.id)
     }
 
+    func testReviewedLiveCaptureExportRemainsV4PropertyRooted() throws {
+        let sourceDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DaedalusReviewedLiveCapture-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: sourceDirectory)
+        }
+
+        let repository = VisitRepository(storageDirectory: sourceDirectory)
+        let viewModel = VisitListViewModel(repository: repository)
+        let visitID = try XCTUnwrap(viewModel.createVisit(reference: "LIVE-ROOT"))
+        let componentID = try XCTUnwrap(
+            viewModel.addLiveCaptureEvidence(
+                to: visitID,
+                kind: .photo,
+                placement: SpatialPlacement(anchorID: "export-anchor", captureState: .anchored, confidence: .high),
+                photoData: Data([0xFF, 0xD8, 0xFF]),
+                scanSessionID: UUID(),
+                geometryCaptureMode: .roomPlan,
+                geometryDetailLevel: .room,
+                geometrySource: .roomPlan,
+                geometryConfidence: .high
+            )
+        )
+        viewModel.setCaptureReviewDecision(.confirmed, componentID: componentID, visitID: visitID)
+
+        XCTAssertTrue(viewModel.prepareReviewedCapturePackage(for: visitID))
+        let visit = try XCTUnwrap(viewModel.visit(id: visitID))
+        let package = try repository.exportPackage(visits: [visit])
+        XCTAssertEqual(package.schemaVersion, 4)
+        XCTAssertEqual(package.propertyRoots.first?.property, visit.propertyIdentity)
+        XCTAssertEqual(package.metadata?.propertyRoots.first?.captureSession.id, visit.captureSession.id)
+        XCTAssertEqual(package.visits.first?.propertyRootMetadata.property.id, visit.propertyIdentity.id)
+        XCTAssertEqual(package.visits.first?.components.first?.componentAttributes["includedInReviewedHandoff"], "true")
+    }
+
     func testEndToEndCapturePackageSurvivesExportImportRoundTrip() throws {
         let sourceDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("DaedalusPackageSmokeSource-\(UUID().uuidString)", isDirectory: true)

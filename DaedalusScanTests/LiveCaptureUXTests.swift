@@ -603,6 +603,171 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertTrue(rendererSource.contains("maximumCount: 1_500"), "Focus point rendering should be capped")
     }
 
+    func testPhotoWithSpatialMetadataAppearsAsOneReviewEvidenceItem() throws {
+        let harness = try makeHarness()
+        let componentID = try XCTUnwrap(
+            harness.viewModel.addLiveCaptureEvidence(
+                to: harness.visitID,
+                kind: .photo,
+                placement: SpatialPlacement(anchorID: "photo-anchor", captureState: .anchored, confidence: .high),
+                photoData: Data([0xFF, 0xD8, 0xFF]),
+                scanSessionID: UUID(),
+                geometryAnchorID: "photo-anchor",
+                positionLabel: "Utility",
+                geometryCaptureMode: .roomPlan,
+                geometryDetailLevel: .room,
+                geometrySource: .roomPlan,
+                geometryConfidence: .high
+            )
+        )
+
+        let visit = try XCTUnwrap(harness.viewModel.visit(id: harness.visitID))
+        let cards = visit.captureReviewCards.filter { $0.componentID == componentID }
+        XCTAssertEqual(cards.count, 1)
+        let card = try XCTUnwrap(cards.first)
+        XCTAssertEqual(card.evidenceType, "Photo")
+        XCTAssertEqual(card.areaName, "Utility")
+        XCTAssertNotNil(card.photoFileName)
+        XCTAssertTrue(card.spatialMetadata.contains("RoomPlan"))
+        XCTAssertFalse(visit.captureReviewWorkspaceSummary.observations.contains { $0.detail == card.objectName && $0.title == "Text Note" })
+    }
+
+    func testThumbnailRemainsAvailableAfterReviewReloadAndDecisions() throws {
+        let harness = try makeHarness()
+        let componentID = try XCTUnwrap(
+            harness.viewModel.addLiveCaptureEvidence(
+                to: harness.visitID,
+                kind: .photo,
+                placement: SpatialPlacement(anchorID: "persist-anchor", captureState: .anchored, confidence: .medium),
+                photoData: Data([0xFF, 0xD8, 0xFF]),
+                scanSessionID: UUID()
+            )
+        )
+
+        var visit = try XCTUnwrap(harness.viewModel.visit(id: harness.visitID))
+        var card = try XCTUnwrap(visit.captureReviewCards.first { $0.componentID == componentID })
+        var fileName = try XCTUnwrap(card.photoFileName)
+        XCTAssertNotNil(harness.viewModel.evidenceFileURL(localFileName: fileName))
+
+        let reloadedViewModel = VisitListViewModel(repository: harness.repository)
+        visit = try XCTUnwrap(reloadedViewModel.visit(id: harness.visitID))
+        card = try XCTUnwrap(visit.captureReviewCards.first { $0.componentID == componentID })
+        fileName = try XCTUnwrap(card.photoFileName)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(reloadedViewModel.evidenceFileURL(localFileName: fileName)).path))
+
+        reloadedViewModel.setCaptureReviewDecision(.confirmed, componentID: componentID, visitID: harness.visitID)
+        visit = try XCTUnwrap(reloadedViewModel.visit(id: harness.visitID))
+        card = try XCTUnwrap(visit.captureReviewCards.first { $0.componentID == componentID })
+        fileName = try XCTUnwrap(card.photoFileName)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(reloadedViewModel.evidenceFileURL(localFileName: fileName)).path))
+    }
+
+    func testThumbnailExpansionRouteStateExists() throws {
+        let source = try sourceText(relativePath: "DaedalusScan/Features/Visits/CaptureReviewWorkspace.swift")
+        XCTAssertTrue(source.contains("@State private var activeSheet: CaptureReviewSheet?"))
+        XCTAssertTrue(source.contains(".sheet(item: $activeSheet)"))
+        XCTAssertTrue(source.contains("case expandedPhoto(ExpandedEvidencePhoto)"))
+        XCTAssertTrue(source.contains("ExpandedEvidencePhotoView"))
+        XCTAssertTrue(source.contains("activeSheet = .expandedPhoto"))
+    }
+
+    func testGeometryReviewSectionRendersWhenGeometryMetadataExists() throws {
+        let harness = try makeHarness()
+        _ = try XCTUnwrap(
+            harness.viewModel.addLiveCaptureEvidence(
+                to: harness.visitID,
+                kind: .photo,
+                placement: SpatialPlacement(anchorID: "room-plan-anchor", captureState: .anchored, confidence: .high),
+                photoData: Data([0xFF, 0xD8]),
+                scanSessionID: UUID(),
+                geometryCaptureMode: .roomPlan,
+                geometryDetailLevel: .room,
+                geometrySource: .roomPlan,
+                geometryConfidence: .high
+            )
+        )
+
+        let summary = try XCTUnwrap(harness.viewModel.visit(id: harness.visitID)).captureGeometryReviewSummary
+        XCTAssertTrue(summary.hasGeometry)
+        XCTAssertEqual(summary.spatialEvidenceCount, 1)
+        XCTAssertEqual(summary.roomPlanCount, 1)
+        XCTAssertEqual(summary.confidence, "High")
+
+        let source = try sourceText(relativePath: "DaedalusScan/Features/Visits/CaptureReviewWorkspace.swift")
+        XCTAssertTrue(source.contains("Section(\"Geometry Review\")"))
+        XCTAssertTrue(source.contains("GeometryReviewSummaryView"))
+    }
+
+    func testReviewCardsDoNotUseRawUUIDFilenameAsPrimaryTitle() throws {
+        let harness = try makeHarness()
+        let componentID = try XCTUnwrap(
+            harness.viewModel.addLiveCaptureEvidence(
+                to: harness.visitID,
+                kind: .photo,
+                placement: SpatialPlacement(anchorID: "title-anchor", captureState: .anchored, confidence: .medium),
+                photoData: Data([0xFF, 0xD8]),
+                scanSessionID: UUID()
+            )
+        )
+
+        let card = try XCTUnwrap(harness.viewModel.visit(id: harness.visitID)?.captureReviewCards.first { $0.componentID == componentID })
+        XCTAssertFalse(card.objectName.contains(".jpg"))
+        XCTAssertNil(UUID(uuidString: card.objectName))
+        XCTAssertFalse(card.suggestedLabel.contains(".jpg"))
+    }
+
+    func testReviewButtonsUseNonWrappingActionLabels() throws {
+        let source = try sourceText(relativePath: "DaedalusScan/Features/Visits/CaptureReviewWorkspace.swift")
+        XCTAssertTrue(source.contains("ReviewActionButton"))
+        XCTAssertTrue(source.contains(".lineLimit(1)"))
+        XCTAssertTrue(source.contains(".minimumScaleFactor(0.72)"))
+        XCTAssertFalse(source.contains("Button(\"Mark Unresolved\""))
+        XCTAssertFalse(source.contains("ReviewActionButton(title: \"Mark Unresolved\""))
+        XCTAssertFalse(source.contains("ReviewActionButton(title: \"Needs attention\""))
+    }
+
+    func testLiveSideControlsSaveMarkersWithoutBlockingConfirmationFlows() throws {
+        let harness = try makeHarness()
+        let gasID = try XCTUnwrap(harness.viewModel.addLiveCaptureEvidence(to: harness.visitID, kind: .gas, placement: nil))
+        let waterID = try XCTUnwrap(harness.viewModel.addLiveCaptureEvidence(to: harness.visitID, kind: .water, placement: nil))
+        let electricalID = try XCTUnwrap(harness.viewModel.addLiveCaptureEvidence(to: harness.visitID, kind: .electrical, placement: nil))
+        let measurementID = try XCTUnwrap(harness.viewModel.addLiveCaptureEvidence(to: harness.visitID, kind: .measurement, placement: nil))
+
+        let visit = try XCTUnwrap(harness.viewModel.visit(id: harness.visitID))
+        let specialObjects = visit.areaObjectGroups.flatMap(\.specialObjects)
+        XCTAssertTrue(specialObjects.contains { $0.linkedComponentID == gasID && $0.specialObject == .gasEntry })
+        XCTAssertTrue(specialObjects.contains { $0.linkedComponentID == waterID && $0.specialObject == .waterEntry })
+        XCTAssertTrue(specialObjects.contains { $0.linkedComponentID == electricalID && $0.specialObject == .electricIntake })
+        XCTAssertEqual(try XCTUnwrap(visit.components.first { $0.id == measurementID }).liveCaptureEvidenceKind, .measurement)
+
+        let source = try sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureView.swift")
+        XCTAssertTrue(source.contains("onNextRoom"))
+        XCTAssertTrue(source.contains("onFocus"))
+        XCTAssertTrue(source.contains("onGas"))
+        XCTAssertTrue(source.contains("onWater"))
+        XCTAssertTrue(source.contains("onElectrical"))
+        XCTAssertTrue(source.contains("onMeasurement"))
+        XCTAssertFalse(source.contains("confirmationState"))
+        XCTAssertFalse(source.contains("LiveCaptureConfirmationState"))
+    }
+
+    func testCaptureSourceRejectsAIAndVisionHooks() throws {
+        let source = try sourceText(relativePath: "DaedalusScan/ViewModels/VisitListViewModel.swift") +
+            sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureEvidence.swift") +
+            sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureView.swift") +
+            sourceText(relativePath: "DaedalusScan/Features/Visits/CaptureReviewWorkspace.swift")
+        for bannedTerm in [
+            "machineVision",
+            "VisionSuggestionCandidate",
+            "LiveCaptureConfirmationState",
+            "CaptureConfirmationEvent",
+            "Needs Confirmation",
+            "Review Later"
+        ] {
+            XCTAssertFalse(source.contains(bannedTerm), "Capture code contains banned hook: \(bannedTerm)")
+        }
+    }
+
     private struct Harness {
         let viewModel: VisitListViewModel
         let repository: VisitRepository

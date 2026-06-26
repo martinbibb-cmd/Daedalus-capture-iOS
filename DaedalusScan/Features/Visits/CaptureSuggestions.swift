@@ -680,12 +680,26 @@ private extension Optional where Wrapped == ReviewStatus {
 
 private extension SystemComponent {
     var isSpatialSpecialObjectSuggestion: Bool {
-        liveCaptureEvidenceKind == .mark || liveCaptureEvidenceKind == .safety
+        switch liveCaptureEvidenceKind {
+        case .mark, .safety, .gas, .water, .electrical:
+            return true
+        case .photo, .voice, .measurement, .none:
+            return false
+        }
     }
 
     var suggestedSpecialObject: SpecialObject {
         if liveCaptureEvidenceKind == .safety {
             return .hiddenObjectMarker
+        }
+        if liveCaptureEvidenceKind == .gas {
+            return .gasEntry
+        }
+        if liveCaptureEvidenceKind == .water {
+            return .waterEntry
+        }
+        if liveCaptureEvidenceKind == .electrical {
+            return .electricIntake
         }
         let text = [
             suggestedCaptureLabel,
@@ -701,6 +715,9 @@ private extension SystemComponent {
         if text.contains("airing") { return .airingCupboard }
         if text.contains("loft") { return .loftHatch }
         if text.contains("flue") { return .flueExit }
+        if text.contains("gas") { return .gasEntry }
+        if text.contains("water") { return .waterEntry }
+        if text.contains("electric") { return .electricIntake }
         if text.contains("door") { return .doorway }
         if text.contains("external wall") { return .externalWall }
         return .unresolvedSpecialObject

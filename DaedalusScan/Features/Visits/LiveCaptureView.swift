@@ -98,6 +98,12 @@ struct LiveCaptureView: View {
                 HStack {
                     Spacer()
                     LiveCaptureUtilityRail(
+                        onNextRoom: createNextRoomMarker,
+                        onFocus: toggleFocusMode,
+                        onGas: { createLiveEvidence(.gas) },
+                        onWater: { createLiveEvidence(.water) },
+                        onElectrical: { createLiveEvidence(.electrical) },
+                        onMeasurement: { createLiveEvidence(.measurement) },
                         onSafety: { createLiveEvidence(.safety) },
                         onReview: pauseForReview
                     )
@@ -339,6 +345,17 @@ struct LiveCaptureView: View {
         createLiveEvidence(.photo, photoData: data)
     }
 
+    private func createNextRoomMarker() {
+        let roomNumber = ((visit?.rooms.count ?? 0) + 1)
+        viewModel.addRoom(to: visitID, named: "Room \(roomNumber)")
+        createLiveEvidence(
+            .mark,
+            geometryCaptureMode: .manual,
+            geometryDetailLevel: .room,
+            geometrySource: .userMarked
+        )
+    }
+
     private func endFocusMode() {
         withAnimation(.easeOut(duration: 0.16)) {
             captureState = .focusEnding
@@ -365,7 +382,7 @@ struct LiveCaptureView: View {
         switch kind {
         case .photo, .voice:
             return .photoOnly
-        case .mark, .safety, .measurement:
+        case .mark, .safety, .measurement, .gas, .water, .electrical:
             return .manual
         }
     }
@@ -563,32 +580,46 @@ private struct FocusCorner {
 }
 
 private struct LiveCaptureUtilityRail: View {
+    let onNextRoom: () -> Void
+    let onFocus: () -> Void
+    let onGas: () -> Void
+    let onWater: () -> Void
+    let onElectrical: () -> Void
+    let onMeasurement: () -> Void
     let onSafety: () -> Void
     let onReview: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            Button(action: onSafety) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.headline.weight(.bold))
-                    .frame(width: 44, height: 44)
-                    .foregroundStyle(.red)
-                    .background(.black.opacity(0.38), in: Circle())
-                    .overlay(Circle().stroke(Color.red.opacity(0.55), lineWidth: 1))
-            }
-            .accessibilityLabel("Safety hazard")
-
-            Button(action: onReview) {
-                Image(systemName: "list.bullet.rectangle")
-                    .font(.headline.weight(.semibold))
-                    .frame(width: 44, height: 44)
-                    .foregroundStyle(.white)
-                    .background(.black.opacity(0.38), in: Circle())
-                    .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 1))
-            }
-            .accessibilityLabel("Review capture")
+        VStack(spacing: 8) {
+            railButton(systemImage: "rectangle.stack.badge.plus", tint: .white, action: onNextRoom)
+                .accessibilityLabel("Next room")
+            railButton(systemImage: "scope", tint: .yellow, action: onFocus)
+                .accessibilityLabel("Focused scan")
+            railButton(systemImage: "flame.fill", tint: .orange, action: onGas)
+                .accessibilityLabel("Gas marker")
+            railButton(systemImage: "drop.fill", tint: .cyan, action: onWater)
+                .accessibilityLabel("Water marker")
+            railButton(systemImage: "bolt.fill", tint: .yellow, action: onElectrical)
+                .accessibilityLabel("Electrical marker")
+            railButton(systemImage: "ruler", tint: .white, action: onMeasurement)
+                .accessibilityLabel("Measurement marker")
+            railButton(systemImage: "exclamationmark.triangle.fill", tint: .red, action: onSafety)
+                .accessibilityLabel("Safety hazard")
+            railButton(systemImage: "list.bullet.rectangle", tint: .white, action: onReview)
+                .accessibilityLabel("Review capture")
         }
         .buttonStyle(.plain)
+    }
+
+    private func railButton(systemImage: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.headline.weight(.semibold))
+                .frame(width: 44, height: 44)
+                .foregroundStyle(tint)
+                .background(.black.opacity(0.38), in: Circle())
+                .overlay(Circle().stroke(tint.opacity(0.36), lineWidth: 1))
+        }
     }
 }
 

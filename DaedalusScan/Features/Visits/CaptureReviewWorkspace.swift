@@ -28,6 +28,10 @@ struct CaptureReviewCard: Identifiable, Equatable {
     let markerType: LiveCaptureEvidenceKind
     let capturedAt: Date
     let photoFileName: String?
+    let evidenceType: String
+    let areaName: String
+    let objectName: String
+    let spatialMetadata: [String]
     let transcriptExcerpt: String
     let suggestedLabel: String
     let reviewedLabel: String
@@ -37,6 +41,58 @@ struct CaptureReviewCard: Identifiable, Equatable {
 
     var requiresAttention: Bool {
         markerType == .safety && (status == .unreviewed || status == .needsAttention)
+    }
+}
+
+struct CaptureGeometryReviewSummary: Equatable {
+    let areaCount: Int
+    let spatialEvidenceCount: Int
+    let anchoredCount: Int
+    let approximateCount: Int
+    let roomPlanCount: Int
+    let focusCount: Int
+    let manualCount: Int
+    let confidence: String
+    let coverageStatus: String
+    let anchors: [String]
+
+    var hasGeometry: Bool {
+        spatialEvidenceCount > 0 || areaCount > 0
+    }
+}
+
+struct ExpandedEvidencePhoto: Identifiable, Equatable {
+    let id: UUID
+    let title: String
+    let url: URL
+}
+
+private enum CaptureReviewSheet: Identifiable {
+    case changeEvidence(CaptureReviewCard)
+    case areaDetail(SuggestedAreaGroup)
+    case renameArea(SuggestedAreaGroup)
+    case changeObject(AreaObjectReviewSummary)
+    case changeSuggestion(CaptureSuggestion)
+    case share(URL)
+    case expandedPhoto(ExpandedEvidencePhoto)
+
+    var id: String {
+        switch self {
+        case .changeEvidence(let card):
+            return "change-evidence-\(card.id.uuidString)"
+        case .areaDetail(let area):
+            return "area-detail-\(area.id.uuidString)"
+        case .renameArea(let area):
+            return "rename-area-\(area.id.uuidString)"
+        case .changeObject(let object):
+            return "change-object-\(object.id.uuidString)"
+        case .changeSuggestion(let suggestion):
+            return "change-suggestion-\(suggestion.id.uuidString)"
+        case .share(let url):
+            return "share-\(url.path)"
+        case .expandedPhoto(let photo):
+            return "photo-\(photo.id.uuidString)"
+        }
     }
 }
 
@@ -111,17 +167,22 @@ extension Visit {
         liveCaptureEvidenceComponents.compactMap { component in
             guard let markerType = component.liveCaptureEvidenceKind else { return nil }
             let primaryEvidence = component.evidence.sorted { $0.createdAt < $1.createdAt }.first
+            let photoEvidence = component.evidence.first(where: { $0.kind == .photo })
             return CaptureReviewCard(
                 id: component.id,
                 componentID: component.id,
                 evidenceID: primaryEvidence?.id,
                 markerType: markerType,
                 capturedAt: primaryEvidence?.createdAt ?? component.createdAtFallback,
-                photoFileName: component.evidence.first(where: { $0.kind == .photo })?.localFileName,
+                photoFileName: photoEvidence?.localFileName,
+                evidenceType: markerType.title,
+                areaName: captureReviewAreaName(for: component),
+                objectName: component.suggestedCaptureLabel,
+                spatialMetadata: component.captureReviewSpatialMetadata(primaryEvidence),
                 transcriptExcerpt: component.componentAttributes["transcriptSnippet"] ?? "",
                 suggestedLabel: component.suggestedCaptureLabel,
                 reviewedLabel: component.reviewedCaptureLabel,
-                anchorStatus: component.spatialPlacement.captureState == .anchored ? "anchored" : "geometry pending",
+                anchorStatus: component.spatialPlacement.captureState.shortReviewTitle,
                 status: component.reviewStatus,
                 confidence: component.spatialPlacement.confidence.title
             )
@@ -141,12 +202,115 @@ extension Visit {
     var captureReviewSummaryText: String {
         "\(reviewedPackageReadyCount) reviewed / \(liveCaptureEvidenceComponents.count) raw"
     }
+
+    var captureGeometryReviewSummary: CaptureGeometryReviewSummary {
+        let spatialEvidence = components.flatMap(\.evidence).filter { $0.geometryMetadata != nil }
+        let placements = components.map(\.spatialPlacement) + rooms.map(\.spatialPlacement)
+        let metadata = spatialEvidence.compactMap(\.geometryMetadata)
+        let confidence = strongestConfidence(from: metadata.map(\.confidence) + placements.map(\.confidence))
+        let anchors = components.compactMap { component -> String? in
+            if let anchor = component.spatialPlacement.anchorID, !anchor.isEmpty {
+                return anchor
+            }
+            return component.componentAttributes["geometryAnchorID"]
+        }
+
+        return CaptureGeometryReviewSummary(
+            areaCount: rooms.count,
+            spatialEvidenceCount: spatialEvidence.count,
+            anchoredCount: placements.filter { $0.captureState == .anchored }.count,
+            approximateCount: placements.filter { $0.captureState == .approximate || $0.captureState == .areaReferenceOnly }.count,
+            roomPlanCount: metadata.filter { $0.captureMode == .roomPlan }.count,
+            focusCount: metadata.filter { $0.captureMode == .focusPointCloud }.count,
+            manualCount: metadata.filter { $0.captureMode == .manual || $0.captureMode == .photoOnly }.count,
+            confidence: confidence.title,
+            coverageStatus: metadata.contains { $0.captureMode == .roomPlan } ? "Room geometry captured" : "Structured spatial evidence",
+            anchors: Array(Set(anchors.filter { !$0.isEmpty })).sorted()
+        )
+    }
+
+    func captureReviewAreaName(for component: SystemComponent) -> String {
+        if let group = areaObjectGroups.first(where: { group in
+            group.objects.contains { $0.objectID == component.id } ||
+                group.specialObjects.contains { $0.linkedComponentID == component.id }
+        }) {
+            return group.area.name
+        }
+        let label = component.spatialContext?.areaLabel.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !label.isEmpty && label != "Unclassified evidence" {
+            return label
+        }
+        return "Unknown Area"
+    }
 }
 
 private extension SystemComponent {
     var createdAtFallback: Date {
         evidence.map(\.createdAt).min() ?? Date()
     }
+
+    func captureReviewSpatialMetadata(_ evidence: Evidence?) -> [String] {
+        var values: [String] = []
+        values.append(spatialPlacement.captureState.shortReviewTitle)
+        values.append(spatialPlacement.confidence.title)
+        if let position = spatialContext?.approximatePositionLabel, !position.isEmpty {
+            values.append(position)
+        }
+        if let mode = evidence?.geometryMetadata?.captureMode {
+            values.append(mode.reviewTitle)
+        } else if let mode = componentAttributes["geometryCaptureMode"], !mode.isEmpty {
+            values.append(mode)
+        }
+        if let source = evidence?.geometryMetadata?.source {
+            values.append(source.reviewTitle)
+        }
+        if let anchor = spatialPlacement.anchorID ?? componentAttributes["geometryAnchorID"], !anchor.isEmpty {
+            values.append("Anchor \(anchor)")
+        }
+        return Array(values.prefix(4))
+    }
+}
+
+private extension SpatialCaptureState {
+    var shortReviewTitle: String {
+        switch self {
+        case .anchored: return "Anchored"
+        case .approximate: return "Approx"
+        case .areaReferenceOnly: return "Area linked"
+        case .failed: return "No geometry"
+        case .unspecified: return "Spatial pending"
+        }
+    }
+}
+
+private extension GeometryCaptureMode {
+    var reviewTitle: String {
+        switch self {
+        case .roomPlan: return "RoomPlan"
+        case .focusPointCloud: return "Focus scan"
+        case .photoOnly: return "Photo"
+        case .manual: return "Marker"
+        }
+    }
+}
+
+private extension GeometrySource {
+    var reviewTitle: String {
+        switch self {
+        case .roomPlan: return "RoomPlan"
+        case .arkitSceneReconstruction: return "Scene mesh"
+        case .arkitPointCloud: return "Point cloud"
+        case .detectedBoundingBox: return "Measured"
+        case .userMarked: return "User marked"
+        }
+    }
+}
+
+private func strongestConfidence(from values: [SpatialConfidence]) -> SpatialConfidence {
+    if values.contains(.high) { return .high }
+    if values.contains(.medium) { return .medium }
+    if values.contains(.low) { return .low }
+    return .unknown
 }
 
 struct CaptureReviewWorkspaceView: View {
@@ -154,22 +318,16 @@ struct CaptureReviewWorkspaceView: View {
     let visitID: UUID
     var onResumeSurvey: (() -> Void)?
 
-    @State private var changeTarget: CaptureReviewCard?
-    @State private var areaDetailTarget: SuggestedAreaGroup?
-    @State private var areaRenameTarget: SuggestedAreaGroup?
     @State private var areaReviewStates: [UUID: SuggestedAreaReviewState] = [:]
     @State private var areaNames: [UUID: String] = [:]
     @State private var areaMergeTargets: [UUID: UUID] = [:]
     @State private var areaAuditTrails: [UUID: [String]] = [:]
-    @State private var objectChangeTarget: AreaObjectReviewSummary?
     @State private var objectReviewStates: [UUID: CaptureSuggestionReviewState] = [:]
     @State private var objectTitles: [UUID: String] = [:]
     @State private var specialObjectReviewStates: [UUID: CaptureSuggestionReviewState] = [:]
-    @State private var suggestionChangeTarget: CaptureSuggestion?
     @State private var suggestionReviewStates: [UUID: CaptureSuggestionReviewState] = [:]
     @State private var suggestionTitles: [UUID: String] = [:]
-    @State private var isPresentingShareSheet = false
-    @State private var shareURL: URL?
+    @State private var activeSheet: CaptureReviewSheet?
 
     var body: some View {
         if let visit = viewModel.visit(id: visitID) {
@@ -221,14 +379,14 @@ struct CaptureReviewWorkspaceView: View {
                         SuggestedAreaGroupCardView(
                             group: group,
                             mergeCandidates: areaObjectGroups.filter { $0.area.id != group.area.id && $0.area.reviewState != .merged },
-                            onOpen: { areaDetailTarget = group.area },
+                            onOpen: { activeSheet = .areaDetail(group.area) },
                             onConfirmArea: { updateArea(group.area, state: .confirmed) },
-                            onRenameArea: { areaRenameTarget = group.area },
+                            onRenameArea: { activeSheet = .renameArea(group.area) },
                             onMergeArea: { target in mergeArea(group.area, into: target.area) },
                             onIgnoreArea: { updateArea(group.area, state: .ignored) },
                             onMarkAreaUnresolved: { updateArea(group.area, state: .unresolved) },
                             onConfirmObject: { updateObject($0, state: .confirmed) },
-                            onChangeObject: { objectChangeTarget = $0 },
+                            onChangeObject: { activeSheet = .changeObject($0) },
                             onIgnoreObject: { updateObject($0, state: .ignored) },
                             onMarkObjectUnresolved: { updateObject($0, state: .unresolved) },
                             onConfirmSpecialObject: { updateSpecialObject($0, state: .confirmed) },
@@ -243,6 +401,13 @@ struct CaptureReviewWorkspaceView: View {
                     LabeledContent("Review objects", value: "\(areaObjectGroups.reduce(0) { $0 + $1.objects.count + $1.specialObjects.count })")
                 }
 
+                let geometrySummary = visit.captureGeometryReviewSummary
+                if geometrySummary.hasGeometry {
+                    Section("Geometry Review") {
+                        GeometryReviewSummaryView(summary: geometrySummary)
+                    }
+                }
+
                 if cards.isEmpty {
                     ContentUnavailableView("No capture evidence", systemImage: "tray")
                 } else {
@@ -251,6 +416,15 @@ struct CaptureReviewWorkspaceView: View {
                             CaptureReviewCardView(
                                 card: card,
                                 thumbnailURL: card.photoFileName.flatMap { viewModel.evidenceFileURL(localFileName: $0) },
+                                onExpandPhoto: { url in
+                                    activeSheet = .expandedPhoto(
+                                        ExpandedEvidencePhoto(
+                                            id: card.evidenceID ?? card.id,
+                                            title: card.objectName,
+                                            url: url
+                                        )
+                                    )
+                                },
                                 onConfirm: {
                                     viewModel.setCaptureReviewDecision(
                                         .confirmed,
@@ -259,7 +433,7 @@ struct CaptureReviewWorkspaceView: View {
                                         reviewedLabel: card.suggestedLabel
                                     )
                                 },
-                                onChange: { changeTarget = card },
+                                onChange: { activeSheet = .changeEvidence(card) },
                                 onIgnore: {
                                     viewModel.setCaptureReviewDecision(.ignored, componentID: card.componentID, visitID: visitID)
                                 },
@@ -274,8 +448,7 @@ struct CaptureReviewWorkspaceView: View {
                 Section {
                     Button {
                         if let url = viewModel.makeReviewedExportTempURL(for: visitID) {
-                            shareURL = url
-                            isPresentingShareSheet = true
+                            activeSheet = .share(url)
                         }
                     } label: {
                         Label("Create Reviewed Capture Package", systemImage: "shippingbox")
@@ -301,42 +474,40 @@ struct CaptureReviewWorkspaceView: View {
             .onAppear {
                 viewModel.refreshCaptureReviewSuggestions(for: visitID)
             }
-            .sheet(item: $changeTarget) { card in
-                CaptureReviewChangeSheet(card: card) { label in
-                    viewModel.setCaptureReviewDecision(
-                        .changed,
-                        componentID: card.componentID,
-                        visitID: visitID,
-                        reviewedLabel: label
-                    )
-                }
-            }
-            .sheet(item: $areaDetailTarget) { area in
-                if let group = areaObjectGroups.first(where: { $0.area.id == area.id }) {
-                    SuggestedAreaDetailView(group: group)
-                }
-            }
-            .sheet(item: $areaRenameTarget) { area in
-                SuggestedAreaRenameSheet(area: area) { name in
-                    areaNames[area.id] = name
-                    updateArea(area, state: .renamed)
-                }
-            }
-            .sheet(item: $objectChangeTarget) { object in
-                AreaObjectChangeSheet(object: object) { label in
-                    objectTitles[object.objectID] = label
-                    updateObject(object, state: .changed)
-                }
-            }
-            .sheet(item: $suggestionChangeTarget) { suggestion in
-                CaptureSuggestionChangeSheet(suggestion: suggestion) { label in
-                    suggestionTitles[suggestion.id] = label
-                    updateSuggestion(suggestion, state: .changed)
-                }
-            }
-            .sheet(isPresented: $isPresentingShareSheet) {
-                if let shareURL {
-                    ActivityView(url: shareURL)
+            .sheet(item: $activeSheet) { sheet in
+                switch sheet {
+                case .changeEvidence(let card):
+                    CaptureReviewChangeSheet(card: card) { label in
+                        viewModel.setCaptureReviewDecision(
+                            .changed,
+                            componentID: card.componentID,
+                            visitID: visitID,
+                            reviewedLabel: label
+                        )
+                    }
+                case .areaDetail(let area):
+                    if let group = areaObjectGroups.first(where: { $0.area.id == area.id }) {
+                        SuggestedAreaDetailView(group: group)
+                    }
+                case .renameArea(let area):
+                    SuggestedAreaRenameSheet(area: area) { name in
+                        areaNames[area.id] = name
+                        updateArea(area, state: .renamed)
+                    }
+                case .changeObject(let object):
+                    AreaObjectChangeSheet(object: object) { label in
+                        objectTitles[object.objectID] = label
+                        updateObject(object, state: .changed)
+                    }
+                case .changeSuggestion(let suggestion):
+                    CaptureSuggestionChangeSheet(suggestion: suggestion) { label in
+                        suggestionTitles[suggestion.id] = label
+                        updateSuggestion(suggestion, state: .changed)
+                    }
+                case .share(let url):
+                    ActivityView(url: url)
+                case .expandedPhoto(let photo):
+                    ExpandedEvidencePhotoView(photo: photo)
                 }
             }
         } else {
@@ -519,26 +690,19 @@ private struct SuggestedAreaGroupCardView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Button("Confirm", action: onConfirmArea)
-                        .buttonStyle(.borderedProminent)
-                    Button("Rename", action: onRenameArea)
-                        .buttonStyle(.bordered)
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    ReviewActionButton(title: "Confirm", prominent: true, action: onConfirmArea)
+                    ReviewActionButton(title: "Rename", action: onRenameArea)
                     Menu("Merge With...") {
                         ForEach(mergeCandidates) { candidate in
                             Button(candidate.area.name) { onMergeArea(candidate) }
                         }
                     }
                     .disabled(mergeCandidates.isEmpty)
-                }
-                HStack(spacing: 8) {
-                    Button("Ignore", action: onIgnoreArea)
-                        .buttonStyle(.bordered)
-                    Button("Mark Unresolved", action: onMarkAreaUnresolved)
-                        .buttonStyle(.bordered)
+                    ReviewActionButton(title: "Ignore", action: onIgnoreArea)
+                    ReviewActionButton(title: "Unresolved", action: onMarkAreaUnresolved)
                 }
             }
-            .font(.caption.weight(.semibold))
         }
         .padding(.vertical, 8)
     }
@@ -583,17 +747,12 @@ private struct AreaObjectRowView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
-            HStack(spacing: 8) {
-                Button("Confirm", action: onConfirm)
-                    .buttonStyle(.borderedProminent)
-                Button("Change", action: onChange)
-                    .buttonStyle(.bordered)
-                Button("Ignore", action: onIgnore)
-                    .buttonStyle(.bordered)
-                Button("Mark Unresolved", action: onMarkUnresolved)
-                    .buttonStyle(.bordered)
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                ReviewActionButton(title: "Confirm", prominent: true, action: onConfirm)
+                ReviewActionButton(title: "Change", action: onChange)
+                ReviewActionButton(title: "Ignore", action: onIgnore)
+                ReviewActionButton(title: "Unresolved", action: onMarkUnresolved)
             }
-            .font(.caption.weight(.semibold))
         }
         .padding(.leading, 10)
         .padding(.vertical, 6)
@@ -633,15 +792,11 @@ private struct AreaSpecialObjectRowView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            HStack(spacing: 8) {
-                Button("Confirm", action: onConfirm)
-                    .buttonStyle(.borderedProminent)
-                Button("Ignore", action: onIgnore)
-                    .buttonStyle(.bordered)
-                Button("Mark Unresolved", action: onMarkUnresolved)
-                    .buttonStyle(.bordered)
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                ReviewActionButton(title: "Confirm", prominent: true, action: onConfirm)
+                ReviewActionButton(title: "Ignore", action: onIgnore)
+                ReviewActionButton(title: "Unresolved", action: onMarkUnresolved)
             }
-            .font(.caption.weight(.semibold))
         }
         .padding(.leading, 10)
         .padding(.vertical, 6)
@@ -917,17 +1072,12 @@ private struct CaptureSuggestionCardView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
-            HStack(spacing: 8) {
-                Button("Confirm", action: onConfirm)
-                    .buttonStyle(.borderedProminent)
-                Button("Change", action: onChange)
-                    .buttonStyle(.bordered)
-                Button("Ignore", action: onIgnore)
-                    .buttonStyle(.bordered)
-                Button("Mark Unresolved", action: onMarkUnresolved)
-                    .buttonStyle(.bordered)
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                ReviewActionButton(title: "Confirm", prominent: true, action: onConfirm)
+                ReviewActionButton(title: "Change", action: onChange)
+                ReviewActionButton(title: "Ignore", action: onIgnore)
+                ReviewActionButton(title: "Unresolved", action: onMarkUnresolved)
             }
-            .font(.caption.weight(.semibold))
         }
         .padding(10)
         .background(Color(.secondarySystemGroupedBackground))
@@ -964,6 +1114,7 @@ private struct CaptureSuggestionCardView: View {
 private struct CaptureReviewCardView: View {
     let card: CaptureReviewCard
     let thumbnailURL: URL?
+    let onExpandPhoto: (URL) -> Void
     let onConfirm: () -> Void
     let onChange: () -> Void
     let onIgnore: () -> Void
@@ -972,21 +1123,33 @@ private struct CaptureReviewCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
-                PhotoThumbnail(url: thumbnailURL, markerType: card.markerType)
+                Button {
+                    if let thumbnailURL {
+                        onExpandPhoto(thumbnailURL)
+                    }
+                } label: {
+                    PhotoThumbnail(url: thumbnailURL, markerType: card.markerType)
+                }
+                .buttonStyle(.plain)
+                .disabled(thumbnailURL == nil)
 
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Label(card.markerType.title, systemImage: systemImage)
+                        Label(card.evidenceType, systemImage: systemImage)
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(card.markerType == .safety ? .red : .primary)
                         Spacer()
-                        Text(card.status?.title ?? ReviewStatus.unreviewed.title)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(statusColor)
+                        ReviewChip(text: card.status?.title ?? ReviewStatus.unreviewed.title, color: statusColor)
                     }
 
-                    Text(card.suggestedLabel)
+                    Text(card.objectName)
                         .font(.headline)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text("\(card.areaName) / \(card.markerType == .photo ? "Supporting photo" : card.markerType.title)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
                     if !card.transcriptExcerpt.isEmpty {
                         Text(card.transcriptExcerpt)
@@ -999,15 +1162,26 @@ private struct CaptureReviewCardView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    HStack(spacing: 10) {
-                        Label(card.anchorStatus, systemImage: "location")
-                        Label(card.confidence, systemImage: "scope")
-                        Text(card.capturedAt.formatted(date: .omitted, time: .shortened))
-                            .monospacedDigit()
-                    }
+                    FlexibleChipRow(values: card.spatialMetadata + [card.capturedAt.formatted(date: .omitted, time: .shortened)])
+                }
+            }
+
+            if card.photoFileName != nil {
+                Label("Photo and spatial placement are reviewed as one evidence item.", systemImage: "paperclip")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+            }
+
+            if !card.spatialMetadata.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Spatial metadata")
+                        .font(.caption.weight(.semibold))
+                    ForEach(card.spatialMetadata, id: \.self) { item in
+                        Text(item)
+                    }
                 }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             }
 
             if card.requiresAttention {
@@ -1016,20 +1190,14 @@ private struct CaptureReviewCardView: View {
                     .foregroundStyle(.red)
             }
 
-            HStack(spacing: 8) {
-                Button("Confirm", action: onConfirm)
-                    .buttonStyle(.borderedProminent)
-                Button("Change", action: onChange)
-                    .buttonStyle(.bordered)
-                Button("Ignore", action: onIgnore)
-                    .buttonStyle(.bordered)
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                ReviewActionButton(title: "Confirm", prominent: true, action: onConfirm)
+                ReviewActionButton(title: "Change", action: onChange)
+                ReviewActionButton(title: "Ignore", action: onIgnore)
                 if card.markerType == .safety {
-                    Button("Needs attention", action: onNeedsAttention)
-                        .buttonStyle(.bordered)
-                        .tint(.red)
+                    ReviewActionButton(title: "Attention", tint: .red, action: onNeedsAttention)
                 }
             }
-            .font(.caption.weight(.semibold))
         }
         .padding(.vertical, 8)
     }
@@ -1041,6 +1209,9 @@ private struct CaptureReviewCardView: View {
         case .mark: return "mappin.and.ellipse"
         case .safety: return "exclamationmark.triangle.fill"
         case .measurement: return "ruler"
+        case .gas: return "flame.fill"
+        case .water: return "drop.fill"
+        case .electrical: return "bolt.fill"
         }
     }
 
@@ -1054,6 +1225,153 @@ private struct CaptureReviewCardView: View {
             return .red
         default:
             return .orange
+        }
+    }
+}
+
+private struct ReviewActionButton: View {
+    let title: String
+    var prominent = false
+    var tint: Color?
+    let action: () -> Void
+
+    var body: some View {
+        if prominent {
+            Button(action: action) {
+                label
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(tint)
+        } else {
+            Button(action: action) {
+                label
+            }
+            .buttonStyle(.bordered)
+            .tint(tint)
+        }
+    }
+
+    private var label: some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .frame(maxWidth: .infinity, minHeight: 34)
+    }
+}
+
+private struct ReviewChip: View {
+    let text: String
+    let color: Color
+
+    var body: some View {
+        Text(text)
+            .font(.caption2.weight(.semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .foregroundStyle(color)
+            .background(color.opacity(0.12), in: Capsule())
+    }
+}
+
+private struct FlexibleChipRow: View {
+    let values: [String]
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                chips
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                chips
+            }
+        }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+    }
+
+    @ViewBuilder
+    private var chips: some View {
+        ForEach(values.filter { !$0.isEmpty }, id: \.self) { value in
+            Text(value)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(Color(.tertiarySystemGroupedBackground), in: Capsule())
+        }
+    }
+}
+
+private struct GeometryReviewSummaryView: View {
+    let summary: CaptureGeometryReviewSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(summary.coverageStatus, systemImage: "cube.transparent")
+                .font(.subheadline.weight(.semibold))
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 8) {
+                GeometryMetricView(title: "Areas", value: "\(summary.areaCount)")
+                GeometryMetricView(title: "Spatial evidence", value: "\(summary.spatialEvidenceCount)")
+                GeometryMetricView(title: "Anchored", value: "\(summary.anchoredCount)")
+                GeometryMetricView(title: "Approx", value: "\(summary.approximateCount)")
+                GeometryMetricView(title: "RoomPlan", value: "\(summary.roomPlanCount)")
+                GeometryMetricView(title: "Focus", value: "\(summary.focusCount)")
+                GeometryMetricView(title: "Markers", value: "\(summary.manualCount)")
+                GeometryMetricView(title: "Confidence", value: summary.confidence)
+            }
+            if !summary.anchors.isEmpty {
+                FlexibleChipRow(values: Array(summary.anchors.prefix(4).map { "Anchor \($0)" }))
+            }
+        }
+        .padding(.vertical, 6)
+    }
+}
+
+private struct GeometryMetricView: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+    }
+}
+
+private struct ExpandedEvidencePhotoView: View {
+    @Environment(\.dismiss) private var dismiss
+    let photo: ExpandedEvidencePhoto
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                if let image = UIImage(contentsOfFile: photo.url.path) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .padding()
+                } else {
+                    ContentUnavailableView("Photo unavailable", systemImage: "photo")
+                        .foregroundStyle(.white)
+                }
+            }
+            .navigationTitle(photo.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
         }
     }
 }
@@ -1093,6 +1411,12 @@ private struct PhotoThumbnail: View {
             return "exclamationmark.triangle.fill"
         case .measurement:
             return "ruler"
+        case .gas:
+            return "flame.fill"
+        case .water:
+            return "drop.fill"
+        case .electrical:
+            return "bolt.fill"
         }
     }
 }
