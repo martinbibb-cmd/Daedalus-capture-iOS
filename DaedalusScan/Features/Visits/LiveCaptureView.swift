@@ -20,6 +20,8 @@ struct LiveCaptureView: View {
     @State private var activeSideDrawer: LiveCaptureSideDrawer?
     @State private var activeCaptureSheet: LiveCaptureSheet?
     @State private var isPresentingFocusWarning = false
+    @State private var rulerStartPosition: SpatialPosition?
+    @State private var liveActionMessage: String?
 
     private var isFocusModeActive: Bool {
         captureState.isFocusActive
@@ -58,6 +60,10 @@ struct LiveCaptureView: View {
                         switch sheet {
                         case .waterPressureTest:
                             WaterSupplyTestSheet(viewModel: viewModel, visitID: visitID)
+                        case .socketTester:
+                            SocketSeeTestSheet { result in
+                                saveSocketTesterResult(result)
+                            }
                         }
                     }
                     .alert("Focused scan will end the room scan", isPresented: $isPresentingFocusWarning) {
@@ -126,13 +132,27 @@ struct LiveCaptureView: View {
                 activeDrawer: $activeSideDrawer,
                 onNextRoom: createNextRoomMarker,
                 onFocus: requestFocusMode,
-                onGas: { createLiveEvidence(.gas) },
                 onWater: { activeCaptureSheet = .waterPressureTest },
-                onElectrical: { createLiveEvidence(.electrical) },
+                onElectrical: { activeCaptureSheet = .socketTester },
                 onMeasurement: placeGeometryRuler,
                 onSafety: { createLiveEvidence(.safety) },
                 onReview: pauseForReview
             )
+
+            if let liveActionMessage {
+                VStack {
+                    Spacer()
+                    Text(liveActionMessage)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(.black.opacity(0.54), in: Capsule())
+                        .padding(.bottom, 116)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                .padding(.horizontal, 16)
+            }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             HStack {
@@ -253,6 +273,8 @@ struct LiveCaptureView: View {
         livePlacementState = .unavailable
         scanProgress = .empty
         spatialAim = .empty
+        rulerStartPosition = nil
+        liveActionMessage = nil
     }
 
     private func teardownTransientCaptureUI() {
@@ -264,6 +286,8 @@ struct LiveCaptureView: View {
         scanProgress = .empty
         spatialAim = .empty
         livePlacementState = .unavailable
+        rulerStartPosition = nil
+        liveActionMessage = nil
         captureState = .idle
         recordingService.stopRecording()
     }
@@ -304,13 +328,14 @@ struct LiveCaptureView: View {
         }
     }
 
+    @discardableResult
     private func createLiveEvidence(
         _ kind: LiveCaptureEvidenceKind,
         photoData: Data? = nil,
         geometryCaptureMode: GeometryCaptureMode? = nil,
         geometryDetailLevel: GeometryDetailLevel? = nil,
         geometrySource: GeometrySource? = nil
-    ) {
+    ) -> UUID? {
         let geometryMode = geometryCaptureMode ?? defaultGeometryCaptureMode(for: kind)
         let detailLevel = geometryDetailLevel ?? defaultGeometryDetailLevel(for: geometryMode)
         let source = geometrySource ?? defaultGeometrySource(for: geometryMode)
@@ -334,6 +359,7 @@ struct LiveCaptureView: View {
 
         let hapticStyle: UIImpactFeedbackGenerator.FeedbackStyle = kind == .safety ? .heavy : .medium
         UIImpactFeedbackGenerator(style: hapticStyle).impactOccurred()
+        return componentID
     }
 
     private func requestFocusMode() {
@@ -374,12 +400,69 @@ struct LiveCaptureView: View {
     }
 
     private func placeGeometryRuler() {
-        createLiveEvidence(
+        guard let targetPosition = spatialAim.targetPosition else {
+            showLiveActionMessage("Aim at geometry before placing ruler")
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            return
+        }
+
+        guard let startPosition = rulerStartPosition else {
+            rulerStartPosition = targetPosition
+            showLiveActionMessage("Ruler start placed")
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            return
+        }
+
+        let distance = startPosition.distance(to: targetPosition)
+        let componentID = createLiveEvidence(
             .measurement,
             geometryCaptureMode: .manual,
             geometryDetailLevel: .component,
             geometrySource: .userMarked
         )
+        if let componentID {
+            let distanceText = String(format: "%.2f m", distance)
+            viewModel.updateComponentAttribute(distanceText, for: "rulerDistance", componentID: componentID, visitID: visitID)
+            viewModel.updateComponentAttribute(startPosition.coordinateSummary, for: "rulerStart", componentID: componentID, visitID: visitID)
+            viewModel.updateComponentAttribute(targetPosition.coordinateSummary, for: "rulerEnd", componentID: componentID, visitID: visitID)
+            viewModel.updateComponentAttribute("Ruler measurement: \(distanceText)", for: "transcriptSnippet", componentID: componentID, visitID: visitID)
+            viewModel.updateComponentAttribute("Geometry ruler", for: "suggestedLabel", componentID: componentID, visitID: visitID)
+        }
+        rulerStartPosition = nil
+        showLiveActionMessage("Ruler saved: \(String(format: "%.2f m", distance))")
+    }
+
+    private func saveSocketTesterResult(_ result: SocketSeeTestResult) {
+        guard let componentID = createLiveEvidence(
+            .electrical,
+            geometryCaptureMode: .manual,
+            geometryDetailLevel: .component,
+            geometrySource: .userMarked
+        ) else { return }
+
+        viewModel.updateComponentAttribute("Socket & See", for: "socketTester", componentID: componentID, visitID: visitID)
+        viewModel.updateComponentAttribute(result.wiringStatus.rawValue, for: "socketWiringStatus", componentID: componentID, visitID: visitID)
+        viewModel.updateComponentAttribute(result.rmsVoltageBand.rawValue, for: "socketRMSVoltage", componentID: componentID, visitID: visitID)
+        viewModel.updateComponentAttribute(result.earthLoopImpedanceBand.rawValue, for: "socketEarthLoopImpedance", componentID: componentID, visitID: visitID)
+        viewModel.updateComponentAttribute(result.loopTestStatus.rawValue, for: "socketLoopTestStatus", componentID: componentID, visitID: visitID)
+        viewModel.updateComponentAttribute(result.notes, for: "socketTestNotes", componentID: componentID, visitID: visitID)
+        viewModel.updateComponentAttribute(result.reviewSummary, for: "transcriptSnippet", componentID: componentID, visitID: visitID)
+        viewModel.updateComponentAttribute("Socket & See test", for: "suggestedLabel", componentID: componentID, visitID: visitID)
+        showLiveActionMessage("Socket & See result saved")
+    }
+
+    private func showLiveActionMessage(_ message: String) {
+        withAnimation(.snappy) {
+            liveActionMessage = message
+        }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_800_000_000)
+            if liveActionMessage == message {
+                withAnimation(.snappy) {
+                    liveActionMessage = nil
+                }
+            }
+        }
     }
 
     private func endFocusMode() {
@@ -607,11 +690,14 @@ private struct FocusCorner {
 
 private enum LiveCaptureSheet: Identifiable {
     case waterPressureTest
+    case socketTester
 
     var id: String {
         switch self {
         case .waterPressureTest:
             return "water-pressure-test"
+        case .socketTester:
+            return "socket-tester"
         }
     }
 }
@@ -625,7 +711,6 @@ private struct LiveCaptureSideMenus: View {
     @Binding var activeDrawer: LiveCaptureSideDrawer?
     let onNextRoom: () -> Void
     let onFocus: () -> Void
-    let onGas: () -> Void
     let onWater: () -> Void
     let onElectrical: () -> Void
     let onMeasurement: () -> Void
@@ -687,9 +772,8 @@ private struct LiveCaptureSideMenus: View {
                     subtitle: "Evidence only, no interruption",
                     alignment: .trailing,
                     items: [
-                        LiveCaptureMenuItem(title: "Gas", systemImage: "flame.fill", tint: .orange, action: onGas),
                         LiveCaptureMenuItem(title: "Water Pressure Test", systemImage: "drop.fill", tint: .cyan, accessibilityLabel: "Water pressure test results", action: onWater),
-                        LiveCaptureMenuItem(title: "Socket Check", systemImage: "bolt.fill", tint: .yellow, accessibilityLabel: "Electrical socket evidence", action: onElectrical),
+                        LiveCaptureMenuItem(title: "Socket & See", systemImage: "bolt.fill", tint: .yellow, accessibilityLabel: "Socket and See test results", action: onElectrical),
                         LiveCaptureMenuItem(title: "Place Ruler", systemImage: "ruler", tint: .white, accessibilityLabel: "Place ruler on geometry", action: onMeasurement),
                         LiveCaptureMenuItem(title: "Safety Issue", systemImage: "exclamationmark.triangle.fill", tint: .red, accessibilityLabel: "Safety hazard", action: onSafety)
                     ]
@@ -845,6 +929,150 @@ private struct LiveCaptureMenuItem: Identifiable {
     let tint: Color
     var accessibilityLabel: String? = nil
     let action: () -> Void
+}
+
+private struct SocketSeeTestResult {
+    var wiringStatus: SocketSeeWiringStatus
+    var rmsVoltageBand: SocketSeeRMSVoltageBand
+    var earthLoopImpedanceBand: SocketSeeEarthLoopImpedanceBand
+    var loopTestStatus: SocketSeeLoopTestStatus
+    var notes: String
+
+    var reviewSummary: String {
+        [
+            "Socket & See",
+            "Wiring: \(wiringStatus.title)",
+            "RMS: \(rmsVoltageBand.title)",
+            "Earth loop: \(earthLoopImpedanceBand.title)",
+            "Loop test: \(loopTestStatus.title)",
+            notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        ]
+        .filter { !$0.isEmpty }
+        .joined(separator: " | ")
+    }
+}
+
+private enum SocketSeeWiringStatus: String, CaseIterable, Identifiable {
+    case correct = "Correct"
+    case liveEarthReverse = "L-E Reverse"
+    case liveNeutralReverse = "L-N Reverse"
+    case earthFault = "E Fault"
+    case liveFault = "L Fault"
+    case unknown = "Unknown"
+
+    var id: String { rawValue }
+    var title: String { rawValue }
+}
+
+private enum SocketSeeRMSVoltageBand: String, CaseIterable, Identifiable {
+    case low = "<207 V"
+    case valid = "207-253 V"
+    case high = ">253 V"
+    case unknown = "Unknown"
+
+    var id: String { rawValue }
+    var title: String { rawValue }
+}
+
+private enum SocketSeeEarthLoopImpedanceBand: String, CaseIterable, Identifiable {
+    case underOne = "<1 ohm"
+    case underTwo = "<2 ohm"
+    case underHundred = "<100 ohm"
+    case underTwoHundred = "<200 ohm"
+    case overTwoHundred = ">200 ohm"
+    case unknown = "Unknown"
+
+    var id: String { rawValue }
+    var title: String { rawValue }
+}
+
+private enum SocketSeeLoopTestStatus: String, CaseIterable, Identifiable {
+    case valid = "Valid"
+    case notTested = "Not tested"
+    case failed = "Failed"
+    case unknown = "Unknown"
+
+    var id: String { rawValue }
+    var title: String { rawValue }
+}
+
+private struct SocketSeeTestSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let onSave: (SocketSeeTestResult) -> Void
+
+    @State private var wiringStatus: SocketSeeWiringStatus = .correct
+    @State private var rmsVoltageBand: SocketSeeRMSVoltageBand = .valid
+    @State private var earthLoopImpedanceBand: SocketSeeEarthLoopImpedanceBand = .underOne
+    @State private var loopTestStatus: SocketSeeLoopTestStatus = .valid
+    @State private var notes = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Socket & See") {
+                    Picker("Wiring", selection: $wiringStatus) {
+                        ForEach(SocketSeeWiringStatus.allCases) { status in
+                            Text(status.title).tag(status)
+                        }
+                    }
+                    Picker("RMS voltage", selection: $rmsVoltageBand) {
+                        ForEach(SocketSeeRMSVoltageBand.allCases) { band in
+                            Text(band.title).tag(band)
+                        }
+                    }
+                    Picker("Earth loop impedance", selection: $earthLoopImpedanceBand) {
+                        ForEach(SocketSeeEarthLoopImpedanceBand.allCases) { band in
+                            Text(band.title).tag(band)
+                        }
+                    }
+                    Picker("Loop test", selection: $loopTestStatus) {
+                        ForEach(SocketSeeLoopTestStatus.allCases) { status in
+                            Text(status.title).tag(status)
+                        }
+                    }
+                }
+
+                Section("Notes") {
+                    TextField("Outlet, room, or tester note", text: $notes, axis: .vertical)
+                }
+            }
+            .navigationTitle("Socket & See")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave(
+                            SocketSeeTestResult(
+                                wiringStatus: wiringStatus,
+                                rmsVoltageBand: rmsVoltageBand,
+                                earthLoopImpedanceBand: earthLoopImpedanceBand,
+                                loopTestStatus: loopTestStatus,
+                                notes: notes
+                            )
+                        )
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+private extension SpatialPosition {
+    func distance(to other: SpatialPosition) -> Double {
+        let dx = x - other.x
+        let dy = y - other.y
+        let dz = z - other.z
+        return (dx * dx + dy * dy + dz * dz).squareRoot()
+    }
+
+    var coordinateSummary: String {
+        String(format: "%.3f, %.3f, %.3f", x, y, z)
+    }
 }
 
 private struct LiveCaptureControlBar: View {
