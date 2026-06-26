@@ -523,6 +523,27 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertFalse(source.contains("TextField(\"Property reference (required)\", text: $reference)\n                        .textInputAutocapitalization(.characters)"))
     }
 
+    func testPropertiesScreenUsesDaedalusLogoAndReadableVisitRows() throws {
+        let source = try sourceText(relativePath: "DaedalusScan/Features/Visits/VisitListView.swift")
+        let brandHeader = try sourceBlock(
+            named: "private struct AppBrandHeader",
+            endingBefore: "private struct VisitMetadataChip",
+            in: source
+        )
+        let visitRow = try sourceBlock(
+            named: "private func visitRow",
+            endingBefore: "private func reviewNeedsCount",
+            in: source
+        )
+
+        XCTAssertTrue(brandHeader.contains("Image(\"DaedalusLogo\")"))
+        XCTAssertFalse(brandHeader.contains("Text(\"D\")"), "Properties screen should not draw the old blue D placeholder")
+        XCTAssertTrue(visitRow.contains("VisitMetadataChip"))
+        XCTAssertFalse(visitRow.contains("Label(\"System · House · Home\""), "Visit rows should not squeeze long metadata into vertical strips")
+        XCTAssertTrue(source.contains(".lineLimit(1)"))
+        XCTAssertTrue(source.contains(".minimumScaleFactor(0.8)"))
+    }
+
     func testLiveSpatialCaptureDoesNotEagerlyCreateHeavyRenderers() throws {
         let source = try sourceText(relativePath: "DaedalusScan/Platform/LiveSpatialCaptureView.swift")
         let makeUIViewStart = try XCTUnwrap(source.range(of: "func makeUIView(context: Context) -> UIView"))

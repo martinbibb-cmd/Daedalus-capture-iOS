@@ -239,32 +239,27 @@ public struct VisitListView: View {
                     .lineLimit(1)
             }
 
-            HStack(spacing: 12) {
-                Label("Version \(visit.twinVersion)", systemImage: "number")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    VisitMetadataChip(title: "v\(visit.twinVersion)", systemImage: "number")
+                    VisitMetadataChip(title: visit.repositoryState.title, systemImage: "arrow.triangle.branch")
+                }
 
-                Label("System · House · Home", systemImage: "building.2")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    VisitMetadataChip(
+                        title: visit.captureSessionStatus.title,
+                        systemImage: visit.captureSessionStatus.systemImage,
+                        tint: visit.hasUnreviewedEvidence ? .orange : .secondary
+                    )
 
-                Label(visit.repositoryState.title, systemImage: "arrow.triangle.branch")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-
-                Label(visit.captureSessionStatus.title, systemImage: visit.captureSessionStatus.systemImage)
-                    .font(.caption2)
-                    .foregroundStyle(visit.hasUnreviewedEvidence ? .orange : .secondary)
-
-                let reviewCount = reviewNeedsCount(for: visit)
-                if reviewCount > 0 {
-                    Label("\(reviewCount) needs review", systemImage: "eye")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
+                    let reviewCount = reviewNeedsCount(for: visit)
+                    if reviewCount > 0 {
+                        VisitMetadataChip(title: "\(reviewCount) review", systemImage: "eye", tint: .orange)
+                    }
                 }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 6)
     }
 
     private func reviewNeedsCount(for visit: Visit) -> Int {
@@ -283,14 +278,11 @@ public struct VisitListView: View {
 private struct AppBrandHeader: View {
     var body: some View {
         HStack(spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(Color.accentColor)
-                Text("D")
-                    .font(.system(size: 18, weight: .black, design: .rounded))
-                    .foregroundStyle(.white)
-            }
-            .frame(width: 34, height: 34)
+            Image("DaedalusLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 42, height: 42)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 1) {
@@ -304,6 +296,21 @@ private struct AppBrandHeader: View {
             Spacer()
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+private struct VisitMetadataChip: View {
+    let title: String
+    let systemImage: String
+    var tint: Color = .secondary
+
+    var body: some View {
+        Label(title, systemImage: systemImage)
+            .font(.caption2)
+            .foregroundStyle(tint)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

@@ -67,8 +67,8 @@ targets:
         PRODUCT_NAME: Daedalus Capture
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_CFBundleDisplayName: Daedalus Capture
-        MARKETING_VERSION: 1.0.2
-        CURRENT_PROJECT_VERSION: 20260625
+        MARKETING_VERSION: 1.0.3
+        CURRENT_PROJECT_VERSION: 20260626
         SUPPORTS_MACCATALYST: NO
         TARGETED_DEVICE_FAMILY: 1
   DaedalusScanTests:
