@@ -364,7 +364,8 @@ final class LiveCaptureUXTests: XCTestCase {
         }
         XCTAssertFalse(source.contains("\"CAP.\""), "Primary shutter should be a blank yellow dial")
         XCTAssertFalse(source.contains("LiveMiniTwinMapView"), "Live capture should not render a 2D mini-map panel")
-        XCTAssertTrue(source.contains("LiveCaptureUtilityRail"), "Hazard and review controls should be separate from the shutter dock")
+        XCTAssertTrue(source.contains("LiveCaptureSideMenus"), "Hazard and review controls should live in side menus separate from the shutter dock")
+        XCTAssertFalse(source.contains("LiveCaptureUtilityRail"), "Live capture should not expose utilities as an always-visible rail")
         XCTAssertFalse(source.contains("Geometry not available yet"), "Live survey should not show unavailable geometry once surfaces are captured")
         XCTAssertFalse(source.contains("Room geometry active"), "Live survey should not claim fake room geometry")
         XCTAssertFalse(source.localizedCaseInsensitiveContains("Detected geometry"), "Normal survey should not expose diagnostic geometry labels")
@@ -542,6 +543,24 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertFalse(visitRow.contains("Label(\"System · House · Home\""), "Visit rows should not squeeze long metadata into vertical strips")
         XCTAssertTrue(source.contains(".lineLimit(1)"))
         XCTAssertTrue(source.contains(".minimumScaleFactor(0.8)"))
+    }
+
+    func testLiveCaptureUtilitiesUseSwipeInSideMenusNotButtonRail() throws {
+        let source = try sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureView.swift")
+
+        XCTAssertFalse(source.contains("LiveCaptureUtilityRail"), "Live capture utilities should not be an always-visible button rail")
+        XCTAssertTrue(source.contains("private struct LiveCaptureSideMenus"), "Live capture should render swipe-in side menus")
+        XCTAssertTrue(source.contains("@State private var activeSideDrawer"), "Live capture should track which side drawer is open")
+        XCTAssertTrue(source.contains("DragGesture(minimumDistance:"), "Side menus should be opened by edge swipes")
+        XCTAssertTrue(source.contains("edgeSwipeZone(side: .survey)"), "Survey menu should have a left edge swipe zone")
+        XCTAssertTrue(source.contains("edgeSwipeZone(side: .markers)"), "Marker menu should have a right edge swipe zone")
+        XCTAssertTrue(source.contains("LiveCaptureMenuItem(title: \"Next Room\""))
+        XCTAssertTrue(source.contains("LiveCaptureMenuItem(title: \"Focused Scan\""))
+        XCTAssertTrue(source.contains("LiveCaptureMenuItem(title: \"Gas\""))
+        XCTAssertTrue(source.contains("LiveCaptureMenuItem(title: \"Water\""))
+        XCTAssertTrue(source.contains("LiveCaptureMenuItem(title: \"Electrical\""))
+        XCTAssertTrue(source.contains("LiveCaptureMenuItem(title: \"Measurement\""))
+        XCTAssertTrue(source.contains("LiveCaptureMenuItem(title: \"Safety Issue\""))
     }
 
     func testLiveSpatialCaptureDoesNotEagerlyCreateHeavyRenderers() throws {
