@@ -557,9 +557,9 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertTrue(source.contains("LiveCaptureMenuItem(title: \"Next Room\""))
         XCTAssertTrue(source.contains("LiveCaptureMenuItem(title: \"Focused Scan\""))
         XCTAssertTrue(source.contains("LiveCaptureMenuItem(title: \"Gas\""))
-        XCTAssertTrue(source.contains("LiveCaptureMenuItem(title: \"Water\""))
-        XCTAssertTrue(source.contains("LiveCaptureMenuItem(title: \"Electrical\""))
-        XCTAssertTrue(source.contains("LiveCaptureMenuItem(title: \"Measurement\""))
+        XCTAssertTrue(source.contains("LiveCaptureMenuItem(title: \"Water Pressure Test\""))
+        XCTAssertTrue(source.contains("LiveCaptureMenuItem(title: \"Socket Check\""))
+        XCTAssertTrue(source.contains("LiveCaptureMenuItem(title: \"Place Ruler\""))
         XCTAssertTrue(source.contains("LiveCaptureMenuItem(title: \"Safety Issue\""))
     }
 
@@ -766,7 +766,7 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertFalse(source.contains("ReviewActionButton(title: \"Needs attention\""))
     }
 
-    func testLiveSideControlsSaveMarkersWithoutBlockingConfirmationFlows() throws {
+    func testLiveSideControlsUseExistingDomainPaths() throws {
         let harness = try makeHarness()
         let gasID = try XCTUnwrap(harness.viewModel.addLiveCaptureEvidence(to: harness.visitID, kind: .gas, placement: nil))
         let waterID = try XCTUnwrap(harness.viewModel.addLiveCaptureEvidence(to: harness.visitID, kind: .water, placement: nil))
@@ -787,8 +787,21 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertTrue(source.contains("onWater"))
         XCTAssertTrue(source.contains("onElectrical"))
         XCTAssertTrue(source.contains("onMeasurement"))
+        XCTAssertTrue(source.contains("WaterSupplyTestSheet(viewModel: viewModel, visitID: visitID)"), "Water side menu should enter pressure/flow test results")
+        XCTAssertTrue(source.contains("activeCaptureSheet = .waterPressureTest"))
+        XCTAssertTrue(source.contains("private func placeGeometryRuler()"))
+        XCTAssertTrue(source.contains("geometryDetailLevel: .component"))
+        XCTAssertTrue(source.contains("geometrySource: .userMarked"))
+        XCTAssertTrue(source.contains("Electrical socket evidence"), "Electrical side menu should stay on the existing evidence path until a socket model exists")
+        XCTAssertTrue(source.contains("Focused scan will end the room scan"), "Focused scan should warn before switching away from room scan")
         XCTAssertFalse(source.contains("confirmationState"))
         XCTAssertFalse(source.contains("LiveCaptureConfirmationState"))
+    }
+
+    func testReviewUsesRoomStitchingLanguage() throws {
+        let source = try sourceText(relativePath: "DaedalusScan/Features/Visits/CaptureReviewWorkspace.swift")
+        XCTAssertTrue(source.contains("Stitch With..."))
+        XCTAssertFalse(source.contains("Merge With..."))
     }
 
     func testCaptureSourceRejectsAIAndVisionHooks() throws {

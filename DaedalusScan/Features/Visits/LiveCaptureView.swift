@@ -18,6 +18,8 @@ struct LiveCaptureView: View {
     @State private var snapshotRequestID: UUID?
     @State private var didRequestSpatialStart = false
     @State private var activeSideDrawer: LiveCaptureSideDrawer?
+    @State private var activeCaptureSheet: LiveCaptureSheet?
+    @State private var isPresentingFocusWarning = false
 
     private var isFocusModeActive: Bool {
         captureState.isFocusActive
@@ -51,6 +53,20 @@ struct LiveCaptureView: View {
                     }
                     .navigationDestination(isPresented: $isPresentingReview) {
                         CaptureReviewWorkspaceView(viewModel: viewModel, visitID: visitID, onResumeSurvey: resumeSurvey)
+                    }
+                    .sheet(item: $activeCaptureSheet) { sheet in
+                        switch sheet {
+                        case .waterPressureTest:
+                            WaterSupplyTestSheet(viewModel: viewModel, visitID: visitID)
+                        }
+                    }
+                    .alert("Focused scan will end the room scan", isPresented: $isPresentingFocusWarning) {
+                        Button("Cancel", role: .cancel) {}
+                        Button("Start Focused Scan", role: .destructive) {
+                            startFocusMode()
+                        }
+                    } message: {
+                        Text("Focused scan switches from whole-room capture to local detail capture. Use it when you are ready to stop extending the current room scan.")
                     }
             } else {
                 ContentUnavailableView("Property not found", systemImage: "exclamationmark.triangle")
@@ -109,11 +125,11 @@ struct LiveCaptureView: View {
             LiveCaptureSideMenus(
                 activeDrawer: $activeSideDrawer,
                 onNextRoom: createNextRoomMarker,
-                onFocus: toggleFocusMode,
+                onFocus: requestFocusMode,
                 onGas: { createLiveEvidence(.gas) },
-                onWater: { createLiveEvidence(.water) },
+                onWater: { activeCaptureSheet = .waterPressureTest },
                 onElectrical: { createLiveEvidence(.electrical) },
-                onMeasurement: { createLiveEvidence(.measurement) },
+                onMeasurement: placeGeometryRuler,
                 onSafety: { createLiveEvidence(.safety) },
                 onReview: pauseForReview
             )
@@ -320,17 +336,21 @@ struct LiveCaptureView: View {
         UIImpactFeedbackGenerator(style: hapticStyle).impactOccurred()
     }
 
-    private func toggleFocusMode() {
+    private func requestFocusMode() {
         if captureState.isFocusActive {
             endFocusMode()
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } else {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                captureState = .focusPreparing
-                scanProgress = LiveSpatialScanProgress(capturePath: .focusPointCloud)
-            }
-            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            isPresentingFocusWarning = true
         }
+    }
+
+    private func startFocusMode() {
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+            captureState = .focusPreparing
+            scanProgress = LiveSpatialScanProgress(capturePath: .focusPointCloud)
+        }
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
     }
 
     private func capAction() {
@@ -349,6 +369,15 @@ struct LiveCaptureView: View {
             .mark,
             geometryCaptureMode: .manual,
             geometryDetailLevel: .room,
+            geometrySource: .userMarked
+        )
+    }
+
+    private func placeGeometryRuler() {
+        createLiveEvidence(
+            .measurement,
+            geometryCaptureMode: .manual,
+            geometryDetailLevel: .component,
             geometrySource: .userMarked
         )
     }
@@ -576,6 +605,17 @@ private struct FocusCorner {
     let verticalEnd: CGPoint
 }
 
+private enum LiveCaptureSheet: Identifiable {
+    case waterPressureTest
+
+    var id: String {
+        switch self {
+        case .waterPressureTest:
+            return "water-pressure-test"
+        }
+    }
+}
+
 private enum LiveCaptureSideDrawer: Equatable {
     case survey
     case markers
@@ -648,9 +688,9 @@ private struct LiveCaptureSideMenus: View {
                     alignment: .trailing,
                     items: [
                         LiveCaptureMenuItem(title: "Gas", systemImage: "flame.fill", tint: .orange, action: onGas),
-                        LiveCaptureMenuItem(title: "Water", systemImage: "drop.fill", tint: .cyan, action: onWater),
-                        LiveCaptureMenuItem(title: "Electrical", systemImage: "bolt.fill", tint: .yellow, action: onElectrical),
-                        LiveCaptureMenuItem(title: "Measurement", systemImage: "ruler", tint: .white, action: onMeasurement),
+                        LiveCaptureMenuItem(title: "Water Pressure Test", systemImage: "drop.fill", tint: .cyan, accessibilityLabel: "Water pressure test results", action: onWater),
+                        LiveCaptureMenuItem(title: "Socket Check", systemImage: "bolt.fill", tint: .yellow, accessibilityLabel: "Electrical socket evidence", action: onElectrical),
+                        LiveCaptureMenuItem(title: "Place Ruler", systemImage: "ruler", tint: .white, accessibilityLabel: "Place ruler on geometry", action: onMeasurement),
                         LiveCaptureMenuItem(title: "Safety Issue", systemImage: "exclamationmark.triangle.fill", tint: .red, accessibilityLabel: "Safety hazard", action: onSafety)
                     ]
                 )
@@ -803,7 +843,7 @@ private struct LiveCaptureMenuItem: Identifiable {
     let title: String
     let systemImage: String
     let tint: Color
-    var accessibilityLabel: String?
+    var accessibilityLabel: String? = nil
     let action: () -> Void
 }
 

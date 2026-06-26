@@ -693,7 +693,7 @@ private struct SuggestedAreaGroupCardView: View {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                     ReviewActionButton(title: "Confirm", prominent: true, action: onConfirmArea)
                     ReviewActionButton(title: "Rename", action: onRenameArea)
-                    Menu("Merge With...") {
+                    Menu("Stitch With...") {
                         ForEach(mergeCandidates) { candidate in
                             Button(candidate.area.name) { onMergeArea(candidate) }
                         }
