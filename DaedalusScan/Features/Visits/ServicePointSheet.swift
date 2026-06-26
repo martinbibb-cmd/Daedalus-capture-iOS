@@ -14,7 +14,6 @@ struct ServicePointSheet: View {
     @State private var selectedAssetIDs = Set<String>()
     @State private var selectedIssues = Set<ObservedIssue>()
     @State private var selectedEvidenceIDs = Set<String>()
-    @State private var notes = ""
 
     private var components: [SystemComponent] {
         visit.components.filter { $0.captureMode == visit.captureMode }
@@ -84,7 +83,6 @@ struct ServicePointSheet: View {
                             Toggle(evidence.title, isOn: evidenceBinding(evidence.id))
                         }
                     }
-                    TextField("Notes", text: $notes, axis: .vertical)
                 }
             }
             .navigationTitle("Service Point")
@@ -157,7 +155,7 @@ struct ServicePointSheet: View {
             evidenceIDs: Array(selectedEvidenceIDs).sorted(),
             confidence: selectedIssues.isEmpty && supplyType == .unknown && intendedPressureType == .unknown ? .unknown : .approximate,
             provenance: TwinProvenance(source: "service-point-capture", observedAt: now, observedBy: observedBy),
-            notes: notes.nilIfEmpty
+            notes: nil
         )
         viewModel.addServicePointObservation(to: visitID, observation: observation)
         dismiss()

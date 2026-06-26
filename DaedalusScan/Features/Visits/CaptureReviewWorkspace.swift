@@ -38,9 +38,17 @@ struct CaptureReviewCard: Identifiable, Equatable {
     let anchorStatus: String
     let status: ReviewStatus?
     let confidence: String
+    let mapPoint: CGPoint?
 
     var requiresAttention: Bool {
         markerType == .safety && (status == .unreviewed || status == .needsAttention)
+    }
+
+    var isLowConfidence: Bool {
+        confidence.localizedCaseInsensitiveContains("low") ||
+            confidence.localizedCaseInsensitiveContains("unknown") ||
+            anchorStatus.localizedCaseInsensitiveContains("pending") ||
+            anchorStatus.localizedCaseInsensitiveContains("no geometry")
     }
 }
 
@@ -69,6 +77,7 @@ struct ExpandedEvidencePhoto: Identifiable, Equatable {
 
 private enum CaptureReviewSheet: Identifiable {
     case changeEvidence(CaptureReviewCard)
+    case photoNode(CaptureReviewCard)
     case areaDetail(SuggestedAreaGroup)
     case renameArea(SuggestedAreaGroup)
     case changeObject(AreaObjectReviewSummary)
@@ -80,6 +89,8 @@ private enum CaptureReviewSheet: Identifiable {
         switch self {
         case .changeEvidence(let card):
             return "change-evidence-\(card.id.uuidString)"
+        case .photoNode(let card):
+            return "photo-node-\(card.id.uuidString)"
         case .areaDetail(let area):
             return "area-detail-\(area.id.uuidString)"
         case .renameArea(let area):
@@ -184,7 +195,8 @@ extension Visit {
                 reviewedLabel: component.reviewedCaptureLabel,
                 anchorStatus: component.spatialPlacement.captureState.shortReviewTitle,
                 status: component.reviewStatus,
-                confidence: component.spatialPlacement.confidence.title
+                confidence: component.spatialPlacement.confidence.title,
+                mapPoint: component.captureReviewMapPoint
             )
         }
         .sorted { lhs, rhs in
@@ -247,6 +259,21 @@ extension Visit {
 private extension SystemComponent {
     var createdAtFallback: Date {
         evidence.map(\.createdAt).min() ?? Date()
+    }
+
+    var captureReviewMapPoint: CGPoint? {
+        if let x = Double(componentAttributes["targetPositionX"] ?? ""),
+           let z = Double(componentAttributes["targetPositionZ"] ?? "") {
+            return CGPoint(x: x, y: z)
+        }
+        if let x = Double(componentAttributes["devicePositionX"] ?? ""),
+           let z = Double(componentAttributes["devicePositionZ"] ?? "") {
+            return CGPoint(x: x, y: z)
+        }
+        if let position = spatialPlacement.approximatePosition {
+            return CGPoint(x: position.x, y: position.z)
+        }
+        return nil
     }
 
     func captureReviewSpatialMetadata(_ evidence: Evidence?) -> [String] {
@@ -333,7 +360,26 @@ struct CaptureReviewWorkspaceView: View {
         if let visit = viewModel.visit(id: visitID) {
             let cards = visit.captureReviewCards
             let areaObjectGroups = reviewedAreaObjectGroups(from: visit.areaObjectGroups)
+            let clearCards = cards.filter { !$0.requiresAttention && !$0.isLowConfidence && $0.status != .confirmed }
             List {
+                Section {
+                    SpatialReviewMapView(
+                        cards: cards,
+                        thumbnailURL: { card in
+                            card.photoFileName.flatMap { viewModel.evidenceFileURL(localFileName: $0) }
+                        },
+                        onSelect: { card in
+                            activeSheet = .photoNode(card)
+                        }
+                    )
+                    .frame(height: 280)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+                } header: {
+                    Text("Spatial Review")
+                } footer: {
+                    Text("Photo nodes use captured spatial coordinates where available. Low-confidence or unplaced evidence remains in the review list.")
+                }
+
                 Section {
                     HStack {
                         Label(visit.captureReviewSummaryText, systemImage: "checklist.checked")
@@ -344,8 +390,14 @@ struct CaptureReviewWorkspaceView: View {
                                 .foregroundStyle(.red)
                         }
                     }
+                    Button {
+                        confirmAllClearAssets(clearCards)
+                    } label: {
+                        Label("Confirm All Clear Assets", systemImage: "checkmark.seal")
+                    }
+                    .disabled(clearCards.isEmpty)
                 } footer: {
-                    Text("Review confirms Capture evidence before export or handoff. Suggestions are weak until confirmed or changed.")
+                    Text("Use mass verification for clear, spatially placed assets. Low-confidence and safety items still need individual review.")
                 }
 
                 Section("Property") {
@@ -485,6 +537,22 @@ struct CaptureReviewWorkspaceView: View {
                             reviewedLabel: label
                         )
                     }
+                case .photoNode(let card):
+                    CaptureReviewPhotoNodeSheet(
+                        card: card,
+                        thumbnailURL: card.photoFileName.flatMap { viewModel.evidenceFileURL(localFileName: $0) },
+                        onConfirm: {
+                            viewModel.setCaptureReviewDecision(
+                                .confirmed,
+                                componentID: card.componentID,
+                                visitID: visitID,
+                                reviewedLabel: card.suggestedLabel
+                            )
+                        },
+                        onNeedsAttention: {
+                            viewModel.setCaptureReviewDecision(.needsAttention, componentID: card.componentID, visitID: visitID)
+                        }
+                    )
                 case .areaDetail(let area):
                     if let group = areaObjectGroups.first(where: { $0.area.id == area.id }) {
                         SuggestedAreaDetailView(group: group)
@@ -512,6 +580,17 @@ struct CaptureReviewWorkspaceView: View {
             }
         } else {
             ContentUnavailableView("Property not found", systemImage: "exclamationmark.triangle")
+        }
+    }
+
+    private func confirmAllClearAssets(_ cards: [CaptureReviewCard]) {
+        for card in cards {
+            viewModel.setCaptureReviewDecision(
+                .confirmed,
+                componentID: card.componentID,
+                visitID: visitID,
+                reviewedLabel: card.suggestedLabel
+            )
         }
     }
 
@@ -1343,6 +1422,177 @@ private struct GeometryMetricView: View {
                 .font(.caption.weight(.semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
+        }
+    }
+}
+
+private struct SpatialReviewMapView: View {
+    let cards: [CaptureReviewCard]
+    let thumbnailURL: (CaptureReviewCard) -> URL?
+    let onSelect: (CaptureReviewCard) -> Void
+
+    @State private var scale: CGFloat = 1
+    @State private var offset: CGSize = .zero
+
+    private var nodes: [SpatialReviewNode] {
+        cards.compactMap { card in
+            guard card.photoFileName != nil,
+                  let point = card.mapPoint else {
+                return nil
+            }
+            return SpatialReviewNode(card: card, point: point)
+        }
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                RoundedRectangle(cornerRadius: 0)
+                    .fill(Color(.secondarySystemGroupedBackground))
+
+                planGrid
+                    .stroke(Color.secondary.opacity(0.22), lineWidth: 1)
+
+                if nodes.isEmpty {
+                    ContentUnavailableView("No placed photos", systemImage: "map")
+                        .font(.caption)
+                } else {
+                    ForEach(nodes) { node in
+                        Button {
+                            onSelect(node.card)
+                        } label: {
+                            PhotoMapPin(
+                                url: thumbnailURL(node.card),
+                                isLowConfidence: node.card.isLowConfidence
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .position(position(for: node.point, in: proxy.size))
+                    }
+                }
+            }
+            .scaleEffect(scale)
+            .offset(offset)
+            .gesture(
+                MagnificationGesture()
+                    .onChanged { value in
+                        scale = min(max(value, 0.8), 3.2)
+                    }
+            )
+            .simultaneousGesture(
+                DragGesture()
+                    .onChanged { value in
+                        offset = value.translation
+                    }
+            )
+            .clipped()
+        }
+        .background(Color(.secondarySystemGroupedBackground))
+    }
+
+    private var planGrid: Path {
+        Path { path in
+            let step: CGFloat = 34
+            for index in 0...12 {
+                let value = CGFloat(index) * step
+                path.move(to: CGPoint(x: value, y: 0))
+                path.addLine(to: CGPoint(x: value, y: 420))
+                path.move(to: CGPoint(x: 0, y: value))
+                path.addLine(to: CGPoint(x: 420, y: value))
+            }
+        }
+    }
+
+    private func position(for point: CGPoint, in size: CGSize) -> CGPoint {
+        let points = nodes.map(\.point)
+        let minX = points.map(\.x).min() ?? -1
+        let maxX = points.map(\.x).max() ?? 1
+        let minY = points.map(\.y).min() ?? -1
+        let maxY = points.map(\.y).max() ?? 1
+        let rangeX = max(maxX - minX, 0.6)
+        let rangeY = max(maxY - minY, 0.6)
+        let inset: CGFloat = 34
+        return CGPoint(
+            x: inset + ((point.x - minX) / rangeX) * max(size.width - inset * 2, 1),
+            y: inset + ((point.y - minY) / rangeY) * max(size.height - inset * 2, 1)
+        )
+    }
+}
+
+private struct SpatialReviewNode: Identifiable {
+    let card: CaptureReviewCard
+    let point: CGPoint
+
+    var id: UUID { card.id }
+}
+
+private struct PhotoMapPin: View {
+    let url: URL?
+    let isLowConfidence: Bool
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            PhotoThumbnail(url: url, markerType: .photo)
+                .frame(width: 46, height: 46)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(isLowConfidence ? Color.orange : Color.green, lineWidth: 3)
+                )
+            Image(systemName: isLowConfidence ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(isLowConfidence ? .orange : .green)
+                .background(Color.black.opacity(0.55), in: Circle())
+        }
+    }
+}
+
+private struct CaptureReviewPhotoNodeSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let card: CaptureReviewCard
+    let thumbnailURL: URL?
+    let onConfirm: () -> Void
+    let onNeedsAttention: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    HStack(spacing: 12) {
+                        PhotoThumbnail(url: thumbnailURL, markerType: card.markerType)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(card.objectName)
+                                .font(.headline)
+                            Text(card.areaName)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                Section("Spatial Metadata") {
+                    ForEach(card.spatialMetadata, id: \.self) { item in
+                        Text(item)
+                    }
+                    LabeledContent("Confidence", value: card.confidence)
+                    LabeledContent("Status", value: card.status?.title ?? ReviewStatus.unreviewed.title)
+                }
+
+                Section {
+                    Button {
+                        onConfirm()
+                        dismiss()
+                    } label: {
+                        Label("Confirm Photo Anchor", systemImage: "checkmark.seal")
+                    }
+                    Button(role: .destructive) {
+                        onNeedsAttention()
+                        dismiss()
+                    } label: {
+                        Label("Mark Needs Attention", systemImage: "exclamationmark.triangle")
+                    }
+                }
+            }
+            .navigationTitle("Photo Anchor")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 }

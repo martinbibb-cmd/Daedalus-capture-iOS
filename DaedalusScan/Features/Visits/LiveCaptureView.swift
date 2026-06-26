@@ -17,13 +17,12 @@ struct LiveCaptureView: View {
     @State private var captureState: LiveCaptureState = .idle
     @State private var snapshotRequestID: UUID?
     @State private var didRequestSpatialStart = false
-    @State private var activeSideDrawer: LiveCaptureSideDrawer?
     @State private var activeCaptureSheet: LiveCaptureSheet?
     @State private var isPresentingFocusWarning = false
+    @State private var isPresentingRoomCoverageWarning = false
     @State private var rulerStartPosition: SpatialPosition?
     @State private var isRulerModeActive = false
     @State private var liveActionMessage: String?
-    @State private var isRadialMenuOpen = false
 
     private var isFocusModeActive: Bool {
         captureState.isFocusActive
@@ -75,6 +74,14 @@ struct LiveCaptureView: View {
                         }
                     } message: {
                         Text("Focused scan switches from whole-room capture to local detail capture. Use it when you are ready to stop extending the current room scan.")
+                    }
+                    .alert("Room scan may be incomplete", isPresented: $isPresentingRoomCoverageWarning) {
+                        Button("Keep Scanning", role: .cancel) {}
+                        Button("Finish Room", role: .destructive) {
+                            finishRoomAndStartNextRoom()
+                        }
+                    } message: {
+                        Text("The room outline is not complete yet. Continue only if the visible gaps are acceptable for this survey.")
                     }
             } else {
                 ContentUnavailableView("Property not found", systemImage: "exclamationmark.triangle")
@@ -133,17 +140,6 @@ struct LiveCaptureView: View {
                     .padding(.bottom, 12)
             }
 
-            LiveCaptureSideMenus(
-                activeDrawer: $activeSideDrawer,
-                onNextRoom: finishRoomAndStartNextRoom,
-                onFocus: requestFocusMode,
-                onWater: { activeCaptureSheet = .waterPressureTest },
-                onElectrical: { activeCaptureSheet = .socketTester },
-                onMeasurement: beginRulerMeasurement,
-                onSafety: { createLiveEvidence(.safety) },
-                onReview: pauseForReview
-            )
-
             if let liveActionMessage {
                 VStack {
                     Spacer()
@@ -176,11 +172,10 @@ struct LiveCaptureView: View {
             .padding(.bottom, 8)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            LiveCaptureControlBar(
-                isRulerModeActive: isRulerModeActive,
-                isRadialMenuOpen: $isRadialMenuOpen,
-                onCapture: capAction,
-                onNextRoom: finishRoomAndStartNextRoom,
+                LiveCaptureControlBar(
+                    isRulerModeActive: isRulerModeActive,
+                    onCapture: capAction,
+                    onNextRoom: requestFinishRoom,
                 onFocus: requestFocusMode,
                 onWater: { activeCaptureSheet = .waterPressureTest },
                 onElectrical: { activeCaptureSheet = .socketTester },
@@ -408,6 +403,14 @@ struct LiveCaptureView: View {
         createLiveEvidence(.photo, photoData: data)
     }
 
+    private func requestFinishRoom() {
+        if scanProgress.confidence == .high {
+            finishRoomAndStartNextRoom()
+        } else {
+            isPresentingRoomCoverageWarning = true
+        }
+    }
+
     private func finishRoomAndStartNextRoom() {
         let roomNumber = ((visit?.rooms.count ?? 0) + 1)
         viewModel.addRoom(to: visitID, named: "Room \(roomNumber)", placement: currentPlacementMetadata)
@@ -475,7 +478,6 @@ struct LiveCaptureView: View {
         viewModel.updateComponentAttribute(result.rmsVoltageBand.rawValue, for: "socketRMSVoltage", componentID: componentID, visitID: visitID)
         viewModel.updateComponentAttribute(result.earthLoopImpedanceBand.rawValue, for: "socketEarthLoopImpedance", componentID: componentID, visitID: visitID)
         viewModel.updateComponentAttribute(result.loopTestStatus.rawValue, for: "socketLoopTestStatus", componentID: componentID, visitID: visitID)
-        viewModel.updateComponentAttribute(result.notes, for: "socketTestNotes", componentID: componentID, visitID: visitID)
         viewModel.updateComponentAttribute(result.reviewSummary, for: "transcriptSnippet", componentID: componentID, visitID: visitID)
         viewModel.updateComponentAttribute("Socket & See test", for: "suggestedLabel", componentID: componentID, visitID: visitID)
         showLiveActionMessage("Socket & See result saved")
@@ -763,241 +765,11 @@ private enum LiveCaptureSheet: Identifiable {
     }
 }
 
-private enum LiveCaptureSideDrawer: Equatable {
-    case survey
-    case markers
-}
-
-private struct LiveCaptureSideMenus: View {
-    @Binding var activeDrawer: LiveCaptureSideDrawer?
-    let onNextRoom: () -> Void
-    let onFocus: () -> Void
-    let onWater: () -> Void
-    let onElectrical: () -> Void
-    let onMeasurement: () -> Void
-    let onSafety: () -> Void
-    let onReview: () -> Void
-
-    var body: some View {
-        GeometryReader { proxy in
-            let safeTop = proxy.safeAreaInsets.top + 104
-            let safeBottom = proxy.safeAreaInsets.bottom + 126
-
-            ZStack {
-                if activeDrawer != nil {
-                    Color.black.opacity(0.001)
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            withAnimation(.snappy) {
-                                activeDrawer = nil
-                            }
-                        }
-                        .accessibilityHidden(true)
-                }
-
-                HStack {
-                    sideEdgeHandle(
-                        side: .survey,
-                        systemImage: "chevron.right",
-                        alignment: .leading,
-                        openOffset: 232
-                    )
-                    Spacer()
-                    sideEdgeHandle(
-                        side: .markers,
-                        systemImage: "chevron.left",
-                        alignment: .trailing,
-                        openOffset: -232
-                    )
-                }
-                .padding(.top, safeTop)
-                .padding(.bottom, safeBottom)
-
-                sideDrawer(
-                    side: .survey,
-                    title: "Survey",
-                    subtitle: "Move through the property",
-                    alignment: .leading,
-                    items: [
-                        LiveCaptureMenuItem(title: "Next Room", systemImage: "rectangle.stack.badge.plus", tint: .white, action: onNextRoom),
-                        LiveCaptureMenuItem(title: "Focused Scan", systemImage: "scope", tint: .yellow, action: onFocus),
-                        LiveCaptureMenuItem(title: "Review Capture", systemImage: "list.bullet.rectangle", tint: .white, accessibilityLabel: "Review capture", action: onReview)
-                    ]
-                )
-                .padding(.top, safeTop)
-                .padding(.bottom, safeBottom)
-
-                sideDrawer(
-                    side: .markers,
-                    title: "Markers",
-                    subtitle: "Evidence only, no interruption",
-                    alignment: .trailing,
-                    items: [
-                        LiveCaptureMenuItem(title: "Water Pressure Test", systemImage: "drop.fill", tint: .cyan, accessibilityLabel: "Water pressure test results", action: onWater),
-                        LiveCaptureMenuItem(title: "Socket & See", systemImage: "bolt.fill", tint: .yellow, accessibilityLabel: "Socket and See test results", action: onElectrical),
-                        LiveCaptureMenuItem(title: "Place Ruler", systemImage: "ruler", tint: .white, accessibilityLabel: "Place ruler on geometry", action: onMeasurement),
-                        LiveCaptureMenuItem(title: "Safety Issue", systemImage: "exclamationmark.triangle.fill", tint: .red, accessibilityLabel: "Safety hazard", action: onSafety)
-                    ]
-                )
-                .padding(.top, safeTop)
-                .padding(.bottom, safeBottom)
-
-                HStack {
-                    edgeSwipeZone(side: .survey)
-                    Spacer()
-                    edgeSwipeZone(side: .markers)
-                }
-            }
-        }
-        .ignoresSafeArea(.container, edges: [.leading, .trailing])
-    }
-
-    private func sideDrawer(
-        side: LiveCaptureSideDrawer,
-        title: String,
-        subtitle: String,
-        alignment: HorizontalAlignment,
-        items: [LiveCaptureMenuItem]
-    ) -> some View {
-        HStack {
-            if side == .markers {
-                Spacer()
-            }
-            VStack(alignment: alignment, spacing: 12) {
-                VStack(alignment: alignment, spacing: 3) {
-                    Text(title)
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(.white)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.72))
-                        .lineLimit(1)
-                }
-                .frame(maxWidth: .infinity, alignment: side == .survey ? .leading : .trailing)
-
-                VStack(spacing: 8) {
-                    ForEach(items) { item in
-                        Button {
-                            item.action()
-                            withAnimation(.snappy) {
-                                activeDrawer = nil
-                            }
-                        } label: {
-                            HStack(spacing: 10) {
-                                if side == .markers {
-                                    Spacer(minLength: 0)
-                                }
-                                Image(systemName: item.systemImage)
-                                    .font(.body.weight(.semibold))
-                                    .foregroundStyle(item.tint)
-                                    .frame(width: 24)
-                                Text(item.title)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.white)
-                                    .lineLimit(1)
-                                if side == .survey {
-                                    Spacer(minLength: 0)
-                                }
-                            }
-                            .frame(height: 42)
-                            .padding(.horizontal, 12)
-                            .background(.white.opacity(0.11), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(item.accessibilityLabel ?? item.title)
-                    }
-                }
-            }
-            .frame(width: 224)
-            .padding(12)
-            .background(.black.opacity(0.64), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(.white.opacity(0.14), lineWidth: 1)
-            )
-            .offset(x: drawerOffset(for: side))
-            .animation(.snappy, value: activeDrawer)
-            .accessibilityElement(children: .contain)
-
-            if side == .survey {
-                Spacer()
-            }
-        }
-        .padding(.horizontal, 10)
-    }
-
-    private func sideEdgeHandle(
-        side: LiveCaptureSideDrawer,
-        systemImage: String,
-        alignment: HorizontalAlignment,
-        openOffset: CGFloat
-    ) -> some View {
-        VStack {
-            Spacer()
-            Button {
-                withAnimation(.snappy) {
-                    activeDrawer = activeDrawer == side ? nil : side
-                }
-            } label: {
-                Image(systemName: systemImage)
-                    .font(.callout.weight(.bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 28, height: 64)
-                    .background(.black.opacity(0.38), in: Capsule())
-                    .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(side == .survey ? "Open survey menu" : "Open marker menu")
-            .offset(x: activeDrawer == side ? openOffset : 0)
-            .animation(.snappy, value: activeDrawer)
-            Spacer()
-        }
-        .frame(width: 36)
-    }
-
-    private func edgeSwipeZone(side: LiveCaptureSideDrawer) -> some View {
-        Rectangle()
-            .fill(.clear)
-            .contentShape(Rectangle())
-            .frame(width: 34)
-            .gesture(
-                DragGesture(minimumDistance: 18)
-                    .onEnded { value in
-                        let isOpeningSurvey = side == .survey && value.translation.width > 28
-                        let isOpeningMarkers = side == .markers && value.translation.width < -28
-                        if isOpeningSurvey || isOpeningMarkers {
-                            withAnimation(.snappy) {
-                                activeDrawer = side
-                            }
-                        }
-                    }
-            )
-            .accessibilityHidden(true)
-    }
-
-    private func drawerOffset(for side: LiveCaptureSideDrawer) -> CGFloat {
-        if activeDrawer == side {
-            return 0
-        }
-        return side == .survey ? -270 : 270
-    }
-}
-
-private struct LiveCaptureMenuItem: Identifiable {
-    let id = UUID()
-    let title: String
-    let systemImage: String
-    let tint: Color
-    var accessibilityLabel: String? = nil
-    let action: () -> Void
-}
-
 private struct SocketSeeTestResult {
     var wiringStatus: SocketSeeWiringStatus
     var rmsVoltageBand: SocketSeeRMSVoltageBand
     var earthLoopImpedanceBand: SocketSeeEarthLoopImpedanceBand
     var loopTestStatus: SocketSeeLoopTestStatus
-    var notes: String
 
     var reviewSummary: String {
         [
@@ -1005,8 +777,7 @@ private struct SocketSeeTestResult {
             "Wiring: \(wiringStatus.title)",
             "RMS: \(rmsVoltageBand.title)",
             "Earth loop: \(earthLoopImpedanceBand.title)",
-            "Loop test: \(loopTestStatus.title)",
-            notes.trimmingCharacters(in: .whitespacesAndNewlines)
+            "Loop test: \(loopTestStatus.title)"
         ]
         .filter { !$0.isEmpty }
         .joined(separator: " | ")
@@ -1066,7 +837,6 @@ private struct SocketSeeTestSheet: View {
     @State private var rmsVoltageBand: SocketSeeRMSVoltageBand = .valid
     @State private var earthLoopImpedanceBand: SocketSeeEarthLoopImpedanceBand = .underOne
     @State private var loopTestStatus: SocketSeeLoopTestStatus = .valid
-    @State private var notes = ""
 
     var body: some View {
         NavigationStack {
@@ -1094,9 +864,6 @@ private struct SocketSeeTestSheet: View {
                     }
                 }
 
-                Section("Notes") {
-                    TextField("Outlet, room, or tester note", text: $notes, axis: .vertical)
-                }
             }
             .navigationTitle("Socket & See")
             .navigationBarTitleDisplayMode(.inline)
@@ -1111,8 +878,7 @@ private struct SocketSeeTestSheet: View {
                                 wiringStatus: wiringStatus,
                                 rmsVoltageBand: rmsVoltageBand,
                                 earthLoopImpedanceBand: earthLoopImpedanceBand,
-                                loopTestStatus: loopTestStatus,
-                                notes: notes
+                                loopTestStatus: loopTestStatus
                             )
                         )
                         dismiss()
@@ -1138,7 +904,6 @@ private extension SpatialPosition {
 
 private struct LiveCaptureControlBar: View {
     let isRulerModeActive: Bool
-    @Binding var isRadialMenuOpen: Bool
     let onCapture: () -> Void
     let onNextRoom: () -> Void
     let onFocus: () -> Void
@@ -1149,19 +914,18 @@ private struct LiveCaptureControlBar: View {
     let onReview: () -> Void
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 18) {
+        HStack(alignment: .bottom, spacing: 12) {
             Spacer()
 
-            LiveCaptureRadialDial(
-                isOpen: $isRadialMenuOpen,
+            LiveCaptureActionTray(
                 actions: [
-                    LiveCaptureDialAction(title: "Finish Room", systemImage: "rectangle.stack.badge.plus", tint: .white, action: onNextRoom),
-                    LiveCaptureDialAction(title: "Focus", systemImage: "scope", tint: .yellow, action: onFocus),
-                    LiveCaptureDialAction(title: "Water", systemImage: "drop.fill", tint: .cyan, action: onWater),
-                    LiveCaptureDialAction(title: "Socket", systemImage: "bolt.fill", tint: .yellow, action: onElectrical),
-                    LiveCaptureDialAction(title: "Ruler", systemImage: "ruler", tint: .white, action: onMeasurement),
-                    LiveCaptureDialAction(title: "Safety", systemImage: "exclamationmark.triangle.fill", tint: .red, action: onSafety),
-                    LiveCaptureDialAction(title: "Review", systemImage: "list.bullet.rectangle", tint: .white, action: onReview)
+                    LiveCaptureTrayAction(title: "Room", systemImage: "rectangle.stack.badge.plus", tint: .white, action: onNextRoom),
+                    LiveCaptureTrayAction(title: "Focus", systemImage: "scope", tint: .yellow, action: onFocus),
+                    LiveCaptureTrayAction(title: "Water", systemImage: "drop.fill", tint: .cyan, action: onWater),
+                    LiveCaptureTrayAction(title: "Socket", systemImage: "bolt.fill", tint: .yellow, action: onElectrical),
+                    LiveCaptureTrayAction(title: "Ruler", systemImage: "ruler", tint: .white, action: onMeasurement),
+                    LiveCaptureTrayAction(title: "Safety", systemImage: "exclamationmark.triangle.fill", tint: .red, action: onSafety),
+                    LiveCaptureTrayAction(title: "Review", systemImage: "list.bullet.rectangle", tint: .white, action: onReview)
                 ]
             )
 
@@ -1189,7 +953,7 @@ private struct LiveCaptureControlBar: View {
     }
 }
 
-private struct LiveCaptureDialAction: Identifiable {
+private struct LiveCaptureTrayAction: Identifiable {
     let id = UUID()
     let title: String
     let systemImage: String
@@ -1197,75 +961,41 @@ private struct LiveCaptureDialAction: Identifiable {
     let action: () -> Void
 }
 
-private struct LiveCaptureRadialDial: View {
-    @Binding var isOpen: Bool
-    let actions: [LiveCaptureDialAction]
-
-    @State private var dragRotation: Angle = .zero
+private struct LiveCaptureActionTray: View {
+    let actions: [LiveCaptureTrayAction]
 
     var body: some View {
-        ZStack {
-            if isOpen {
-                ForEach(Array(actions.enumerated()), id: \.element.id) { index, item in
-                    Button {
-                        item.action()
-                        withAnimation(.snappy) {
-                            isOpen = false
-                        }
-                    } label: {
-                        Image(systemName: item.systemImage)
-                            .font(.callout.weight(.bold))
-                            .foregroundStyle(item.tint)
-                            .frame(width: 42, height: 42)
-                            .background(.black.opacity(0.62), in: Circle())
-                            .overlay(Circle().stroke(item.tint.opacity(0.42), lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(item.title)
-                    .offset(offset(for: index))
-                    .transition(.scale.combined(with: .opacity))
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(actions) { item in
+                    trayButton(item)
                 }
             }
-
-            Button {
-                withAnimation(.snappy) {
-                    isOpen.toggle()
-                }
-            } label: {
-                Image(systemName: "dial.low")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 58, height: 58)
-                    .background(.black.opacity(0.46), in: Circle())
-                    .overlay(Circle().stroke(.white.opacity(0.22), lineWidth: 1))
-                    .rotationEffect(dragRotation)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Capture action dial")
-            .gesture(
-                DragGesture(minimumDistance: 8)
-                    .onChanged { value in
-                        dragRotation = Angle(degrees: Double(value.translation.width + value.translation.height))
-                    }
-                    .onEnded { _ in
-                        withAnimation(.snappy) {
-                            isOpen = true
-                            dragRotation = .zero
-                        }
-                    }
-            )
         }
-        .frame(width: 78, height: 86)
-        .animation(.snappy, value: isOpen)
+        .frame(maxWidth: 250)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.black.opacity(0.42), in: Capsule())
+        .overlay(Capsule().stroke(.white.opacity(0.16), lineWidth: 1))
     }
 
-    private func offset(for index: Int) -> CGSize {
-        let total = max(actions.count - 1, 1)
-        let start = -170.0
-        let end = -20.0
-        let angle = (start + ((end - start) / Double(total)) * Double(index)) * .pi / 180
-        let radius = 104.0
-        return CGSize(width: cos(angle) * radius, height: sin(angle) * radius)
+    private func trayButton(_ item: LiveCaptureTrayAction) -> some View {
+        Button(action: item.action) {
+            VStack(spacing: 3) {
+                Image(systemName: item.systemImage)
+                    .font(.callout.weight(.bold))
+                    .foregroundStyle(item.tint)
+                    .frame(width: 28, height: 24)
+                Text(item.title)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .frame(width: 48, height: 48)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(item.title)
     }
 }
 

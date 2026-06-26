@@ -6,9 +6,8 @@ struct WaterSupplyTestSheet: View {
     @ObservedObject var viewModel: VisitListViewModel
     let visitID: UUID
 
-    @State private var method: WaterSupplyMethod = .flowCup
+    @State private var method: WaterSupplyMethod = .pressureFlowTestKit
     @State private var location: WaterSupplyLocation = .kitchenColdTap
-    @State private var intent: WaterSupplyIntent = .usableHouseholdCapacity
     @State private var instrument = ""
     @State private var flowRate = ""
     @State private var staticPressure = ""
@@ -16,68 +15,47 @@ struct WaterSupplyTestSheet: View {
     @State private var residualPressure = ""
     @State private var flowAtZeroBar = ""
     @State private var flowAtOneBar = ""
-    @State private var qualitativeObservation = ""
-    @State private var absenceReason: WaterAbsenceReason = .equipmentUnavailable
     @State private var mainsStopTapFullyOpen: WaterBoundaryState = .unknown
     @State private var visiblePrvFitted: WaterBoundaryState = .unknown
     @State private var softenerOrFilterPresent: WaterBoundaryState = .unknown
     @State private var otherOutletsOpenDuringTest: WaterBoundaryState = .unknown
     @State private var restrictorOrAeratorSuspected: WaterBoundaryState = .unknown
-    @State private var notes = ""
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("Observation") {
                     Picker("Method", selection: $method) {
-                        ForEach(WaterSupplyMethod.allCases) { method in
+                        ForEach(hardMeasurementMethods) { method in
                             Text(method.title).tag(method)
                         }
                     }
-                    Text(method.qualityHint)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                     Picker("Location", selection: $location) {
                         ForEach(WaterSupplyLocation.allCases) { location in
                             Text(location.title).tag(location)
-                        }
-                    }
-                    Picker("Intent", selection: $intent) {
-                        ForEach(WaterSupplyIntent.allCases) { intent in
-                            Text(intent.title).tag(intent)
                         }
                     }
                     TextField("Instrument or kit", text: $instrument)
                 }
 
                 Section("Values") {
-                    if method == .notTested {
-                        Picker("Reason", selection: $absenceReason) {
-                            ForEach(WaterAbsenceReason.allCases) { reason in
-                                Text(reason.title).tag(reason)
-                            }
-                        }
-                    } else if method == .customerReported {
-                        TextField("Customer report", text: $qualitativeObservation, axis: .vertical)
-                    } else {
-                        if method == .pressureFlowTestKit || method == .digitalPressureFlowLogger {
-                            TextField("Static pressure, bar", text: $staticPressure)
-                                .keyboardType(.decimalPad)
-                            TextField("Dynamic pressure, bar", text: $dynamicPressure)
-                                .keyboardType(.decimalPad)
-                            TextField("Flow at 0 bar, l/min", text: $flowAtZeroBar)
-                                .keyboardType(.decimalPad)
-                            TextField("Flow at 1 bar, l/min", text: $flowAtOneBar)
-                                .keyboardType(.decimalPad)
-                        }
-                        if method == .flowCup || method == .digitalPressureFlowLogger {
-                            TextField("Flow rate, l/min", text: $flowRate)
-                                .keyboardType(.decimalPad)
-                        }
-                        if method == .pressureGauge || method == .digitalPressureFlowLogger {
-                            TextField("Residual pressure, bar", text: $residualPressure)
-                                .keyboardType(.decimalPad)
-                        }
+                    if method == .pressureFlowTestKit || method == .digitalPressureFlowLogger {
+                        TextField("Static pressure, bar", text: $staticPressure)
+                            .keyboardType(.decimalPad)
+                        TextField("Dynamic pressure, bar", text: $dynamicPressure)
+                            .keyboardType(.decimalPad)
+                        TextField("Flow at 0 bar, l/min", text: $flowAtZeroBar)
+                            .keyboardType(.decimalPad)
+                        TextField("Flow at 1 bar, l/min", text: $flowAtOneBar)
+                            .keyboardType(.decimalPad)
+                    }
+                    if method == .flowCup || method == .digitalPressureFlowLogger {
+                        TextField("Flow rate, l/min", text: $flowRate)
+                            .keyboardType(.decimalPad)
+                    }
+                    if method == .pressureGauge || method == .digitalPressureFlowLogger {
+                        TextField("Residual pressure, bar", text: $residualPressure)
+                            .keyboardType(.decimalPad)
                     }
                 }
 
@@ -87,13 +65,6 @@ struct WaterSupplyTestSheet: View {
                     boundaryPicker("Softener/filter present", selection: $softenerOrFilterPresent)
                     boundaryPicker("Other outlets open", selection: $otherOutletsOpenDuringTest)
                     boundaryPicker("Restrictor/aerator suspected", selection: $restrictorOrAeratorSuspected)
-                }
-
-                Section("Evidence") {
-                    Text("Attach photos, notes, or device logs with Evidence. Water observations can reference that evidence at export time.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    TextField("Notes", text: $notes, axis: .vertical)
                 }
             }
             .navigationTitle("Water Test")
@@ -127,7 +98,7 @@ struct WaterSupplyTestSheet: View {
             observedBy: observedBy,
             method: method,
             location: location,
-            intent: method == .notTested ? .notTested : intent,
+            intent: .usableHouseholdCapacity,
             instrument: instrument.nilIfEmpty,
             values: measurementValues,
             boundaryConditions: WaterBoundaryConditions(
@@ -138,11 +109,11 @@ struct WaterSupplyTestSheet: View {
                 restrictorOrAeratorSuspected: restrictorOrAeratorSuspected
             ),
             suspectedLimitations: suspectedLimitations,
-            absenceReason: method == .notTested ? absenceReason : nil,
+            absenceReason: nil,
             confidence: confidence,
             evidenceIDs: [],
             provenance: TwinProvenance(source: "water-supply-test", observedAt: now, observedBy: observedBy),
-            notes: notes.nilIfEmpty
+            notes: nil
         )
         viewModel.addWaterSupplyObservation(to: visitID, observation: observation)
         dismiss()
@@ -156,9 +127,6 @@ struct WaterSupplyTestSheet: View {
         values.appendNumber(.flowRate, raw: flowRate, unit: "l/min", confidence: confidence)
         values.appendNumber(.flowAtPressure, raw: flowAtZeroBar, unit: "l/min", condition: "0 bar residual pressure", confidence: confidence)
         values.appendNumber(.flowAtPressure, raw: flowAtOneBar, unit: "l/min", condition: "1 bar residual pressure", confidence: confidence)
-        if method == .customerReported, let report = qualitativeObservation.nilIfEmpty {
-            values.append(WaterMeasurementValue(name: .qualitativeObservation, value: report, confidence: .unknown))
-        }
         return values
     }
 
@@ -175,15 +143,15 @@ struct WaterSupplyTestSheet: View {
 
     private var suspectedLimitations: [WaterSuspectedLimitation] {
         switch method {
-        case .customerReported:
-            return [.customerReportOnly]
         case .flowCup:
             return restrictorOrAeratorSuspected == .true ? [.restrictedOutlet, .aerator] : []
-        case .notTested:
-            return absenceReason == .noSuitableOutlet ? [.noSuitableOutlet] : []
         default:
             return restrictorOrAeratorSuspected == .true ? [.restrictedOutlet] : []
         }
+    }
+
+    private var hardMeasurementMethods: [WaterSupplyMethod] {
+        [.pressureFlowTestKit, .digitalPressureFlowLogger, .pressureGauge, .flowCup]
     }
 }
 
