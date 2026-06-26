@@ -834,6 +834,12 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertFalse(waterSource.contains("Customer report"))
         XCTAssertFalse(waterSource.contains("Picker(\"Intent\""))
         XCTAssertFalse(waterSource.contains("TextField(\"Notes\""))
+        XCTAssertFalse(waterSource.contains("Section(\"Boundary Conditions\")"))
+        XCTAssertFalse(waterSource.contains("Mains stop tap open"))
+        XCTAssertFalse(waterSource.contains("PRV visible"))
+        XCTAssertFalse(waterSource.contains("Softener/filter present"))
+        XCTAssertFalse(waterSource.contains("Other outlets open"))
+        XCTAssertFalse(waterSource.contains("Restrictor/aerator suspected"))
 
         let servicePointSource = try sourceText(relativePath: "DaedalusScan/Features/Visits/ServicePointSheet.swift")
         XCTAssertFalse(servicePointSource.contains("TextField(\"Notes\""))

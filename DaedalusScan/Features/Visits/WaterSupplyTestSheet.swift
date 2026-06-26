@@ -15,11 +15,6 @@ struct WaterSupplyTestSheet: View {
     @State private var residualPressure = ""
     @State private var flowAtZeroBar = ""
     @State private var flowAtOneBar = ""
-    @State private var mainsStopTapFullyOpen: WaterBoundaryState = .unknown
-    @State private var visiblePrvFitted: WaterBoundaryState = .unknown
-    @State private var softenerOrFilterPresent: WaterBoundaryState = .unknown
-    @State private var otherOutletsOpenDuringTest: WaterBoundaryState = .unknown
-    @State private var restrictorOrAeratorSuspected: WaterBoundaryState = .unknown
 
     var body: some View {
         NavigationStack {
@@ -58,14 +53,6 @@ struct WaterSupplyTestSheet: View {
                             .keyboardType(.decimalPad)
                     }
                 }
-
-                Section("Boundary Conditions") {
-                    boundaryPicker("Mains stop tap open", selection: $mainsStopTapFullyOpen)
-                    boundaryPicker("PRV visible", selection: $visiblePrvFitted)
-                    boundaryPicker("Softener/filter present", selection: $softenerOrFilterPresent)
-                    boundaryPicker("Other outlets open", selection: $otherOutletsOpenDuringTest)
-                    boundaryPicker("Restrictor/aerator suspected", selection: $restrictorOrAeratorSuspected)
-                }
             }
             .navigationTitle("Water Test")
             .toolbar {
@@ -81,15 +68,6 @@ struct WaterSupplyTestSheet: View {
         }
     }
 
-    @ViewBuilder
-    private func boundaryPicker(_ label: String, selection: Binding<WaterBoundaryState>) -> some View {
-        Picker(label, selection: selection) {
-            ForEach(WaterBoundaryState.allCases) { state in
-                Text(state.title).tag(state)
-            }
-        }
-    }
-
     private func save() {
         let now = Date()
         let observedBy = viewModel.visit(id: visitID)?.engineerName.nilIfEmpty ?? "Daedalus Capture"
@@ -101,13 +79,7 @@ struct WaterSupplyTestSheet: View {
             intent: .usableHouseholdCapacity,
             instrument: instrument.nilIfEmpty,
             values: measurementValues,
-            boundaryConditions: WaterBoundaryConditions(
-                mainsStopTapFullyOpen: mainsStopTapFullyOpen,
-                visiblePrvFitted: visiblePrvFitted,
-                softenerOrFilterPresent: softenerOrFilterPresent,
-                otherOutletsOpenDuringTest: otherOutletsOpenDuringTest,
-                restrictorOrAeratorSuspected: restrictorOrAeratorSuspected
-            ),
+            boundaryConditions: WaterBoundaryConditions(),
             suspectedLimitations: suspectedLimitations,
             absenceReason: nil,
             confidence: confidence,
@@ -142,12 +114,7 @@ struct WaterSupplyTestSheet: View {
     }
 
     private var suspectedLimitations: [WaterSuspectedLimitation] {
-        switch method {
-        case .flowCup:
-            return restrictorOrAeratorSuspected == .true ? [.restrictedOutlet, .aerator] : []
-        default:
-            return restrictorOrAeratorSuspected == .true ? [.restrictedOutlet] : []
-        }
+        []
     }
 
     private var hardMeasurementMethods: [WaterSupplyMethod] {
@@ -187,24 +154,6 @@ private extension Optional where Wrapped == String {
 }
 
 private extension WaterSupplyLocation {
-    var title: String {
-        rawValue.splitCamelCase
-    }
-}
-
-private extension WaterSupplyIntent {
-    var title: String {
-        rawValue.splitCamelCase
-    }
-}
-
-private extension WaterBoundaryState {
-    var title: String {
-        rawValue.capitalized
-    }
-}
-
-private extension WaterAbsenceReason {
     var title: String {
         rawValue.splitCamelCase
     }
