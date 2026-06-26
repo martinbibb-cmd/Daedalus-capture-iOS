@@ -5,15 +5,11 @@ final class CaptureSuggestionFoundationTests: XCTestCase {
     func testSuggestionFoundationDefinesRequestedSourcesStatesAndSpecialObjects() {
         XCTAssertEqual(
             CaptureSuggestionSource.allCases,
-            [.machineVision, .transcript, .spatialContext, .manualTap, .existingEvidence]
+            [.transcript, .spatialContext, .manualTap, .existingEvidence]
         )
         XCTAssertEqual(
             CaptureSuggestionReviewState.allCases,
             [.suggested, .confirmed, .changed, .ignored, .unresolved, .needsAttention]
-        )
-        XCTAssertEqual(
-            CaptureConfirmationType.allCases,
-            [.objectSuggestion, .areaSuggestion, .specialObjectSuggestion, .unresolvedCapture, .evidenceAttached, .relationshipSuggestion]
         )
         XCTAssertEqual(
             SpecialObject.allCases,
@@ -275,109 +271,42 @@ final class CaptureSuggestionFoundationTests: XCTestCase {
         XCTAssertEqual(hall?.specialObjects.first?.evidenceSummary.evidenceLinks.map(\.evidenceID), [evidenceID])
     }
 
-    func testCaptureConfirmationEventPreviewsMeaningEvidenceAreaAndStatus() {
-        let kitchenID = UUID()
-        let componentID = UUID()
-        let evidenceID = UUID()
-        let visit = Visit(
-            reference: "Live preview",
-            twinKind: .system,
-            rooms: [Room(id: kitchenID, name: "Kitchen")],
-            relationships: [
-                SpatialRelationship(sourceComponentID: componentID, relationship: .containedIn, targetAreaID: kitchenID)
-            ],
-            components: [
-                SystemComponent(
-                    id: componentID,
-                    kind: .boiler,
-                    componentAttributes: [
-                        "liveEvidenceKind": LiveCaptureEvidenceKind.photo.rawValue,
-                        "suggestedLabel": "Boiler",
-                        "reviewDecision": CaptureReviewDecision.unreviewed.rawValue
-                    ],
-                    evidence: [Evidence(id: evidenceID, kind: .photo, localFileName: "boiler.jpg")]
-                )
-            ]
-        )
+    func testLiveConfirmationAndVisionHooksAreNotPresent() throws {
+        let suggestionSource = try sourceText(relativePath: "DaedalusScan/Features/Visits/CaptureSuggestions.swift")
+        let reviewSource = try sourceText(relativePath: "DaedalusScan/Features/Visits/CaptureReviewWorkspace.swift")
 
-        let event = visit.captureConfirmationEvent(for: componentID)
-
-        XCTAssertEqual(event?.type, .objectSuggestion)
-        XCTAssertEqual(event?.preview.suggestedTitle, "Boiler")
-        XCTAssertEqual(event?.preview.observedEvidence, ["Photo"])
-        XCTAssertEqual(event?.preview.areaName, "Kitchen")
-        XCTAssertEqual(event?.preview.status, .suggested)
-        XCTAssertEqual(event?.preview.linkedComponentID, componentID)
+        for removedTerm in [
+            "machineVision",
+            "Machine Vision",
+            "VisionSuggestionCandidate",
+            "CaptureConfirmationEvent",
+            "CaptureSuggestionPreview",
+            "LiveCaptureConfirmationState",
+            "CaptureConfirmationType",
+            "captureConfirmationEvent"
+        ] {
+            XCTAssertFalse(suggestionSource.contains(removedTerm), "Capture suggestions should not keep removed live-confirmation or vision hook: \(removedTerm)")
+            XCTAssertFalse(reviewSource.contains(removedTerm), "Review should not expose removed live-confirmation or vision hook: \(removedTerm)")
+        }
     }
 
-    func testCaptureConfirmationEventCanRemainUnresolvedWithoutCreatingFact() {
-        let componentID = UUID()
-        let visit = Visit(
-            reference: "Unresolved preview",
-            twinKind: .system,
-            components: [
-                SystemComponent(
-                    id: componentID,
-                    kind: .other,
-                    componentAttributes: [
-                        "liveEvidenceKind": LiveCaptureEvidenceKind.safety.rawValue,
-                        "suggestedLabel": "Safety concern",
-                        "reviewDecision": CaptureReviewDecision.needsAttention.rawValue,
-                        "positionLabel": "Kitchen"
-                    ],
-                    evidence: [Evidence(kind: .textNote, localFileName: "safety.txt")]
-                )
-            ]
-        )
-
-        let event = visit.captureConfirmationEvent(for: componentID)
-
-        XCTAssertEqual(event?.type, .unresolvedCapture)
-        XCTAssertEqual(event?.preview.suggestedTitle, "Hidden Object Marker")
-        XCTAssertEqual(event?.preview.areaName, "Kitchen")
-        XCTAssertEqual(event?.preview.status, .unresolved)
-    }
-
-    func testLiveConfirmationStateTracksRecentEventsAndReviewUpdates() {
-        let componentID = UUID()
-        let event = CaptureConfirmationEvent(
-            type: .objectSuggestion,
-            preview: CaptureSuggestionPreview(
-                observedEvidence: ["Photo", "Spatial Marker"],
-                suggestedTitle: "Radiator",
-                areaName: "Hall",
-                status: .suggested,
-                linkedComponentID: componentID
-            )
-        )
-        var state = LiveCaptureConfirmationState()
-
-        state.record(event)
-        state.update(componentID: componentID, status: .confirmed)
-
-        XCTAssertEqual(state.activeEvent?.preview.status, .confirmed)
-        XCTAssertEqual(state.recentEvents.first?.preview.status, .confirmed)
-        XCTAssertEqual(state.recentEvents.first?.preview.suggestedTitle, "Radiator")
-    }
-
-    func testTranscriptAndVisionSuggestionCandidatesAreArchitectureOnlyHooks() {
+    func testTranscriptSuggestionCandidateIsTextOnly() {
         let transcriptID = UUID()
-        let evidenceID = UUID()
         let transcript = TranscriptSuggestionCandidate(
             transcriptID: transcriptID,
             heardText: "I heard: Worcester boiler",
             suggestedTitle: "Boiler",
             confidence: .medium
         )
-        let vision = VisionSuggestionCandidate(
-            evidenceID: evidenceID,
-            suggestedTitle: "Radiator",
-            confidence: .low
-        )
 
         XCTAssertEqual(transcript.transcriptID, transcriptID)
         XCTAssertEqual(transcript.suggestedTitle, "Boiler")
-        XCTAssertEqual(vision.evidenceID, evidenceID)
-        XCTAssertEqual(vision.suggestedTitle, "Radiator")
+    }
+
+    private func sourceText(relativePath: String) throws -> String {
+        var url = URL(fileURLWithPath: #filePath)
+        url.deleteLastPathComponent()
+        url.deleteLastPathComponent()
+        return try String(contentsOf: url.appendingPathComponent(relativePath), encoding: .utf8)
     }
 }

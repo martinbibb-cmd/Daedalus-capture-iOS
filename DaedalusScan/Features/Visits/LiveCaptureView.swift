@@ -79,6 +79,7 @@ struct LiveCaptureView: View {
                 captureState: captureState,
                 onSnapshotCaptured: saveCapturedFrame
             )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea()
 
             LiveSurveyCoverageOverlay(
@@ -141,6 +142,8 @@ struct LiveCaptureView: View {
         .onChange(of: scanProgress) { _, _ in
             syncPlacementStateForSession()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
     }
 
     private var currentPlacementMetadata: SpatialPlacement? {

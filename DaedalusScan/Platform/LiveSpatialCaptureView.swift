@@ -21,6 +21,12 @@ struct LiveSpatialCaptureView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> UIView {
         let container = UIView(frame: .zero)
+        container.backgroundColor = .black
+        container.clipsToBounds = true
+        container.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        container.setContentHuggingPriority(.defaultLow, for: .vertical)
+        container.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        container.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         context.coordinator.containerView = container
         context.coordinator.configureCaptureAvailability()
         context.coordinator.setCaptureState(captureState)

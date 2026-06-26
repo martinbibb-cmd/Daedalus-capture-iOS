@@ -1,7 +1,6 @@
 import Foundation
 
 enum CaptureSuggestionSource: String, CaseIterable, Hashable {
-    case machineVision
     case transcript
     case spatialContext
     case manualTap
@@ -9,7 +8,6 @@ enum CaptureSuggestionSource: String, CaseIterable, Hashable {
 
     var title: String {
         switch self {
-        case .machineVision: return "Machine Vision"
         case .transcript: return "Transcript"
         case .spatialContext: return "Spatial Context"
         case .manualTap: return "Manual Tap"
@@ -333,123 +331,6 @@ struct CaptureSuggestion: Identifiable, Equatable, Hashable {
     }
 }
 
-enum CaptureConfirmationType: String, CaseIterable, Hashable {
-    case objectSuggestion
-    case areaSuggestion
-    case specialObjectSuggestion
-    case unresolvedCapture
-    case evidenceAttached
-    case relationshipSuggestion
-
-    var title: String {
-        switch self {
-        case .objectSuggestion: return "Object Suggestion"
-        case .areaSuggestion: return "Area Suggestion"
-        case .specialObjectSuggestion: return "Special Object Suggestion"
-        case .unresolvedCapture: return "Unresolved Capture"
-        case .evidenceAttached: return "Evidence Attached"
-        case .relationshipSuggestion: return "Relationship Suggestion"
-        }
-    }
-}
-
-struct CaptureSuggestionPreview: Identifiable, Equatable, Hashable {
-    let id: UUID
-    var observedEvidence: [String]
-    var suggestedTitle: String
-    var areaName: String
-    var status: CaptureSuggestionReviewState
-    var linkedComponentID: UUID?
-
-    init(
-        id: UUID = UUID(),
-        observedEvidence: [String],
-        suggestedTitle: String,
-        areaName: String,
-        status: CaptureSuggestionReviewState,
-        linkedComponentID: UUID? = nil
-    ) {
-        self.id = id
-        self.observedEvidence = observedEvidence
-        self.suggestedTitle = suggestedTitle
-        self.areaName = areaName
-        self.status = status
-        self.linkedComponentID = linkedComponentID
-    }
-}
-
-struct CaptureConfirmationEvent: Identifiable, Equatable, Hashable {
-    let id: UUID
-    var type: CaptureConfirmationType
-    var preview: CaptureSuggestionPreview
-    var createdAt: Date
-
-    init(
-        id: UUID = UUID(),
-        type: CaptureConfirmationType,
-        preview: CaptureSuggestionPreview,
-        createdAt: Date = Date()
-    ) {
-        self.id = id
-        self.type = type
-        self.preview = preview
-        self.createdAt = createdAt
-    }
-}
-
-struct LiveCaptureConfirmationState: Equatable, Hashable {
-    var activeEvent: CaptureConfirmationEvent?
-    var recentEvents: [CaptureConfirmationEvent]
-
-    init(
-        activeEvent: CaptureConfirmationEvent? = nil,
-        recentEvents: [CaptureConfirmationEvent] = []
-    ) {
-        self.activeEvent = activeEvent
-        self.recentEvents = recentEvents
-    }
-
-    mutating func record(_ event: CaptureConfirmationEvent, limit: Int = 6) {
-        activeEvent = event
-        recentEvents.insert(event, at: 0)
-        if recentEvents.count > limit {
-            recentEvents.removeLast(recentEvents.count - limit)
-        }
-    }
-
-    mutating func update(componentID: UUID, status: CaptureSuggestionReviewState) {
-        if activeEvent?.preview.linkedComponentID == componentID {
-            activeEvent?.preview.status = status
-        }
-        recentEvents = recentEvents.map { event in
-            guard event.preview.linkedComponentID == componentID else { return event }
-            var updated = event
-            updated.preview.status = status
-            return updated
-        }
-    }
-
-    mutating func updateAndDismiss(componentID: UUID, status: CaptureSuggestionReviewState) {
-        update(componentID: componentID, status: status)
-        dismissActiveEvent(componentID: componentID)
-    }
-
-    mutating func dismissActiveEvent(componentID: UUID? = nil) {
-        guard let componentID else {
-            activeEvent = nil
-            return
-        }
-        if activeEvent?.preview.linkedComponentID == componentID {
-            activeEvent = nil
-        }
-    }
-
-    mutating func clearTransientState() {
-        activeEvent = nil
-        recentEvents = []
-    }
-}
-
 struct TranscriptSuggestionCandidate: Identifiable, Equatable, Hashable {
     let id: UUID
     var transcriptID: UUID?
@@ -467,25 +348,6 @@ struct TranscriptSuggestionCandidate: Identifiable, Equatable, Hashable {
         self.id = id
         self.transcriptID = transcriptID
         self.heardText = heardText
-        self.suggestedTitle = suggestedTitle
-        self.confidence = confidence
-    }
-}
-
-struct VisionSuggestionCandidate: Identifiable, Equatable, Hashable {
-    let id: UUID
-    var evidenceID: UUID?
-    var suggestedTitle: String
-    var confidence: SpatialConfidence
-
-    init(
-        id: UUID = UUID(),
-        evidenceID: UUID? = nil,
-        suggestedTitle: String,
-        confidence: SpatialConfidence = .unknown
-    ) {
-        self.id = id
-        self.evidenceID = evidenceID
         self.suggestedTitle = suggestedTitle
         self.confidence = confidence
     }
@@ -646,28 +508,6 @@ extension Visit {
         }
     }
 
-    func captureConfirmationEvent(for componentID: UUID) -> CaptureConfirmationEvent? {
-        guard let component = components.first(where: { $0.id == componentID }),
-              let liveKind = component.liveCaptureEvidenceKind else {
-            return nil
-        }
-        let areaName = suggestedAreaName(for: component)
-        let preview = CaptureSuggestionPreview(
-            id: stableSuggestionID("capture-preview-\(component.id.uuidString)"),
-            observedEvidence: component.liveCaptureObservedEvidenceLabels,
-            suggestedTitle: component.liveCaptureSuggestionTitle,
-            areaName: areaName,
-            status: component.liveCaptureConfirmationStatus,
-            linkedComponentID: component.id
-        )
-        return CaptureConfirmationEvent(
-            id: stableSuggestionID("capture-confirmation-\(component.id.uuidString)"),
-            type: confirmationType(for: component, liveKind: liveKind),
-            preview: preview,
-            createdAt: component.createdAtFallback
-        )
-    }
-
     private var suggestedAreas: [CaptureSuggestion] {
         suggestedAreaGroups.map { group in
             CaptureSuggestion(
@@ -744,20 +584,6 @@ extension Visit {
 }
 
 private extension Visit {
-    func confirmationType(for component: SystemComponent, liveKind: LiveCaptureEvidenceKind) -> CaptureConfirmationType {
-        if component.captureReviewDecision == .needsAttention {
-            return .unresolvedCapture
-        }
-        switch liveKind {
-        case .safety:
-            return .unresolvedCapture
-        case .mark:
-            return component.suggestedSpecialObject == .unresolvedSpecialObject ? .relationshipSuggestion : .specialObjectSuggestion
-        case .photo, .voice, .measurement:
-            return component.suggestedCaptureLabel == liveKind.defaultSuggestedLabel ? .evidenceAttached : .objectSuggestion
-        }
-    }
-
     func suggestedAreaName(for component: SystemComponent) -> String {
         areaObjectGroups.first { group in
             group.objects.contains { $0.objectID == component.id } ||
@@ -889,21 +715,6 @@ private extension SystemComponent {
                 sourceDescription: suggestedCaptureLabel
             )
         }
-    }
-
-    var liveCaptureSuggestionTitle: String {
-        guard isSpatialSpecialObjectSuggestion else {
-            return suggestedCaptureLabel
-        }
-        let title = suggestedSpecialObject.title
-        return suggestedSpecialObject == .unresolvedSpecialObject ? "Unknown Object" : title
-    }
-
-    var liveCaptureConfirmationStatus: CaptureSuggestionReviewState {
-        if captureReviewDecision == .needsAttention {
-            return .unresolved
-        }
-        return captureReviewDecision.captureSuggestionState
     }
 
     var liveCaptureObservedEvidenceLabels: [String] {

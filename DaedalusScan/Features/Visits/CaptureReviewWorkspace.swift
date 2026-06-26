@@ -949,8 +949,6 @@ private struct CaptureSuggestionCardView: View {
 
     private func sourceSystemImage(_ source: CaptureSuggestionSource) -> String {
         switch source {
-        case .machineVision:
-            return "camera.viewfinder"
         case .transcript:
             return "text.quote"
         case .spatialContext:
