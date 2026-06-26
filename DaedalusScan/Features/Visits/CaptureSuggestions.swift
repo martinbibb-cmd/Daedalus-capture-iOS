@@ -915,8 +915,6 @@ private extension SystemComponent {
                 return "Voice Note"
             case .textNote:
                 return liveCaptureEvidenceKind == .mark || liveCaptureEvidenceKind == .safety ? "Spatial Marker" : "Text Note"
-            default:
-                return evidence.kind.title
             }
         }
         if isSpatialSpecialObjectSuggestion && labels.isEmpty {

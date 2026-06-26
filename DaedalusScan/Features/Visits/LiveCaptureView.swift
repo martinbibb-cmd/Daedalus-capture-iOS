@@ -14,7 +14,6 @@ struct LiveCaptureView: View {
     @State private var livePlacementState = LivePlacementState.unavailable
     @State private var scanProgress = LiveSpatialScanProgress.empty
     @State private var spatialAim = LiveSpatialAim.empty
-    @State private var confirmationState = LiveCaptureConfirmationState()
     @State private var captureState: LiveCaptureState = .idle
     @State private var snapshotRequestID: UUID?
     @State private var didRequestSpatialStart = false
@@ -108,7 +107,6 @@ struct LiveCaptureView: View {
                 Spacer()
 
                 LiveCaptureMiniTimeline(
-                    events: confirmationState.recentEvents,
                     visit: visit,
                     scanProgress: scanProgress
                 )
@@ -228,7 +226,6 @@ struct LiveCaptureView: View {
     }
 
     private func resetTransientCaptureUI() {
-        confirmationState.clearTransientState()
         capturedEvidenceComponentID = nil
         snapshotRequestID = nil
         livePlacementState = .unavailable
@@ -240,7 +237,6 @@ struct LiveCaptureView: View {
         didRequestSpatialStart = false
         spatialSession.status = .notStarted
         spatialSession.endedAt = nil
-        confirmationState.clearTransientState()
         capturedEvidenceComponentID = nil
         snapshotRequestID = nil
         scanProgress = .empty
@@ -617,7 +613,6 @@ private struct LiveCaptureControlBar: View {
 }
 
 private struct LiveCaptureMiniTimeline: View {
-    let events: [CaptureConfirmationEvent]
     let visit: Visit
     let scanProgress: LiveSpatialScanProgress
 
@@ -627,26 +622,7 @@ private struct LiveCaptureMiniTimeline: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if !events.isEmpty {
-                ForEach(areaSections, id: \.areaName) { section in
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(section.areaName)
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.white.opacity(0.88))
-                        ForEach(section.events) { event in
-                            HStack(spacing: 8) {
-                                Text("•")
-                                Text("\(event.preview.suggestedTitle) suggestion")
-                                Spacer()
-                                Text(shortStatus(for: event.preview.status))
-                                    .foregroundStyle(.white.opacity(0.76))
-                            }
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.white)
-                        }
-                    }
-                }
-            } else if entries.isEmpty {
+            if entries.isEmpty {
                 Text(scanProgress.hasGeometry ? scanProgress.captureLabel : "Move around for more detail")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.white.opacity(0.84))
@@ -669,40 +645,13 @@ private struct LiveCaptureMiniTimeline: View {
         .background(.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
-    private var areaSections: [(areaName: String, events: [CaptureConfirmationEvent])] {
-        var sections: [(String, [CaptureConfirmationEvent])] = []
-        for event in events.prefix(5) {
-            if let index = sections.firstIndex(where: { $0.0 == event.preview.areaName }) {
-                sections[index].1.append(event)
-            } else {
-                sections.append((event.preview.areaName, [event]))
-            }
-        }
-        return sections
-    }
-
-    private func shortStatus(for state: CaptureSuggestionReviewState) -> String {
-        switch state {
-        case .suggested:
-            return "needs confirmation"
-        case .confirmed:
-            return "confirmed"
-        case .changed:
-            return "changed"
-        case .ignored:
-            return "ignored"
-        case .unresolved, .needsAttention:
-            return "unresolved"
-        }
-    }
-
     private func anchorText(for entry: EvidenceTimelineEntry) -> String {
         guard let spatialContext = entry.spatialContext, !spatialContext.isEmpty else {
             return "needs another angle"
         }
         if spatialContext.localizedCaseInsensitiveContains("geometry") ||
             spatialContext.localizedCaseInsensitiveContains("anchor") {
-            return "area suggested"
+            return "area linked"
         }
         return "evidence linked"
     }

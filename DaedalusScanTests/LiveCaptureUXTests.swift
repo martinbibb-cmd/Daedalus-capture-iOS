@@ -392,6 +392,8 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertFalse(source.contains("\"Needs Confirmation\""))
         XCTAssertFalse(source.contains("\"Review Later\""))
         XCTAssertFalse(source.contains("reviewLiveCaptureLater"))
+        XCTAssertFalse(source.contains("@State private var confirmationState"))
+        XCTAssertFalse(source.contains("confirmationState.recentEvents"))
         XCTAssertFalse(source.contains("confirmationState.record"), "Live capture should not open a confirmation workflow while scanning")
     }
 
@@ -415,7 +417,7 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertTrue(leaveSource.contains("teardownTransientCaptureUI()"))
         XCTAssertTrue(source.contains(".onAppear {\n                resetTransientCaptureUI()"), "Re-entering live capture should start without zombie overlay state")
         XCTAssertTrue(source.contains(".onDisappear {\n                teardownTransientCaptureUI()"), "Leaving live capture should clear transient overlay state")
-        XCTAssertTrue(teardownSource.contains("confirmationState.clearTransientState()"))
+        XCTAssertFalse(teardownSource.contains("confirmationState"), "Live capture should not own review confirmation state")
         XCTAssertTrue(teardownSource.contains("didRequestSpatialStart = false"))
         XCTAssertTrue(teardownSource.contains("spatialSession.status = .notStarted"))
         XCTAssertTrue(teardownSource.contains("capturedEvidenceComponentID = nil"))
@@ -545,6 +547,9 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertFalse(controlBarSource.contains("\"Review\""), "Review should live outside the shutter dock")
         XCTAssertFalse(controlBarSource.contains("liveButton("), "Bottom dock should only render the primary shutter")
         XCTAssertTrue(controlBarSource.contains("Button(action: onCapture)"), "Bottom dock should bind the primary shutter directly")
+        XCTAssertFalse(captureSource.contains("CaptureConfirmationEvent"), "Live capture should not render review suggestion events")
+        XCTAssertFalse(captureSource.contains("areaSections"), "Live capture should not maintain a suggestion stack")
+        XCTAssertFalse(captureSource.contains("shortStatus(for:"), "Review statuses belong in the review workspace")
         XCTAssertTrue(captureSource.contains("spatialAim.targetPosition"), "Evidence should use the current target position")
         XCTAssertTrue(captureSource.contains("spatialAim.devicePosition"), "Evidence should use the current device position")
         XCTAssertFalse(captureSource.contains("\"CAP.\""), "The primary shutter control should not contain text")
