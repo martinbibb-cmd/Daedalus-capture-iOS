@@ -74,7 +74,7 @@ Owns:
 - WorkingTwin creation
 - SurveyCaptureSession
 - evidence capture
-- review workflow
+- spatial Twin review workflow
 - v4 export package
 - statement capture and statement-derived candidate fields when explicitly marked
 - uncertainty, confidence, fallback, unresolved, and review state preservation
@@ -88,6 +88,27 @@ Must not own:
 - ranking, scoring, optimisation, product selection, or pricing
 - billing or users
 - Main reasoning
+
+## Capture Review Direction
+
+Capture review is based on reconstructed reality, not metadata review. The
+surveyor asks "Have I got the property right?" rather than "Is this marker
+metadata correct?"
+
+- Default review view is a top-down floor plan of the Working Twin.
+- Future advanced review may use a raised, rotatable 3D model.
+- Do not use a fixed cutaway house, side elevation primary view, or card/list-first review.
+- The Twin remains visible while evidence is inspected.
+- Captured objects are selected directly on the plan or model.
+- Evidence expands from the selected object.
+- Photos, voice notes, transcripts, confidence, and review status attach to the object.
+- Unknown, unresolved, approximate, and fallback states are visible on the Twin.
+- Review actions correct the reconstructed Twin.
+
+Capture is CSI: it records physical evidence and witness statements, uses
+additive and deductive reasoning, maximises information gain, and asks the next
+most valuable question where possible. LLM transcript extraction is statement
+parsing only, not truth creation.
 
 ## Deferred Explicitly
 

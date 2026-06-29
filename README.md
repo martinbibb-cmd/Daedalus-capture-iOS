@@ -57,10 +57,9 @@ Daedalus Capture v1 is Property Twin-first, spatial-first, and evidence-first:
 - use Capture Lite on devices or visits where AR capture is unavailable
 - capture occupancy, behaviour, constraints, and human observations for the Home Twin
 - attach photos, voice notes, documents, labels, and text evidence to captured reality
-- correct evidence bundle details before merge when reality is clarified
+- correct the reconstructed Twin before merge when reality is clarified
 - preserve spatial placement or explicit fallback state when anchoring is unavailable
-- locate captured components from Twin Overview markers
-- review the evidence timeline and merge summary before updating the authoritative twin
+- review the navigable Twin before updating the authoritative twin
 - review, clarify, confirm, and merge local changes into the authoritative twin
 
 Property Twin list, summaries, and detail forms remain available as secondary fallback/admin surfaces. They are not the main capture journey.
@@ -78,7 +77,7 @@ Properties are managed internally as repositories. Users see and work with Prope
 - Pull Twin: download the authoritative twin and create a Working Twin.
 - Capture: observe reality and add photos, voice notes, geometry, components, and context.
 - Commit: create a local change set.
-- Review: review added, removed, and updated items.
+- Review: inspect the reconstructed Twin and correct what is missing, wrong, unknown, unresolved, approximate, or fallback.
 - Clarify: resolve uncertainty.
 - Recapture: capture additional evidence.
 - Confirm Captured Evidence: confirm evidence review state without generating conclusions.
@@ -97,6 +96,9 @@ Capture warns before leaving unmerged work, pulling over local changes, or mergi
 ## Trust model
 
 Trust comes from evidence. The app records evidence and review state, but humans remain authoritative. Automation may assist, but nothing may create facts without human confirmation.
+
+The review question is "Have I got the property right?" It is not "Is this
+marker metadata correct?"
 
 Evidence trust order:
 
@@ -147,10 +149,11 @@ The live capture path is a one-pass spatial evidence loop:
 3. The live surface runs native ARKit world tracking with plane detection and LiDAR mesh reconstruction when the device supports it. The scan overlay shows whether geometry is still pending or how many surfaces have been captured.
 4. While the spatial session remains active, capture **Photo**, **Voice**, **Mark**, or **Safety** evidence without leaving the survey flow.
 5. Each evidence item is stored as an unclassified spatial marker with the current scan session ID, anchor ID when available, approximate position when available, confidence, and an explicit fallback state when anchoring is unavailable.
-6. **Review** shows raw evidence cards with title/placeholder, evidence kind, transcript placeholder, location/anchor state, confidence, and review state.
-7. The surveyor can confirm, edit the reviewed label, mark attention, or ignore. Confirmed and changed evidence is distinguishable from raw evidence and is marked for reviewed handoff.
-8. **Twin Overview** shows the scanned/placed evidence as map-style component markers. Tapping a marker opens the underlying evidence bundle.
-9. Export packages preserve Property Twin metadata, partial scanned areas, spatial markers/components, photos, voice note placeholders, transcript placeholders, review decisions, anchor metadata, fallback metadata, confidence, and provenance.
+6. **Review** opens on a top-down floor plan of the reconstructed Twin. The Twin remains visible throughout review. Future advanced review may add a raised, rotatable 3D model, but the default is the plan.
+7. Captured objects are selected directly on the plan or model. Evidence expands from the selected object instead of from a list, card stack, metadata form, side view, or fixed cutaway house visual.
+8. Photos, voice notes, transcripts, confidence, and review state attach to the selected object. Unknown, unresolved, approximate, and fallback states are visible on the Twin.
+9. Review actions correct the reconstructed Twin: object identity, location, boundaries, relationships, missing evidence, and unresolved uncertainty.
+10. Export packages preserve Property Twin metadata, partial scanned areas, spatial markers/components, photos, voice note placeholders, transcript placeholders, review decisions, anchor metadata, fallback metadata, confidence, and provenance.
 
 Voice capture in this slice creates a recording/transcript placeholder inside the spatial session. Production audio recording and transcription can replace the placeholder without changing the package shape. Transcript extraction is statement parsing only: statement-derived data must remain marked as statement-derived until reviewed or confirmed. Partial twins are valid: a boiler cupboard capture with spatial evidence is a usable Property Twin fragment and can grow into a full Property Twin later.
 
@@ -160,11 +163,11 @@ Voice capture in this slice creates a recording/transcript placeholder inside th
 - Property Twin home with version, last merged state, and Pull Twin action
 - Working Twin lifecycle path: Pull Twin, Twin Overview, AR Capture, Component Evidence, Review, Merge Twin
 - Immediate transition into the Property Twin lifecycle when a Property Twin is opened or created
-- Twin Overview with component markers, location labels, review state, merge state, and marker filters
+- Twin Overview as a spatial plan/model surface with component selection, location labels, review state, merge state, and marker filters
 - AR Capture and Capture Lite evidence capture paths
 - Component Evidence with evidence bundle editing and deletion before merge
 - Evidence Timeline per Property Twin and component
-- Review with evidence cards grouped by component
+- Review as a navigable spatial Twin with object-selected evidence
 - Merge Summary with current version to next version preview
 - Camera-first capture shell for object/area capture
 - Spatial fallback metadata on rooms/areas and components
@@ -227,12 +230,12 @@ Use this script on a physical iPhone after running `./bootstrap.sh` and launchin
 5. Open **AR Capture** and capture a scanned area from the Area target.
 6. Capture at least two spatial objects: boiler and one additional object kind.
 7. Open **Capture Lite** and add a component with a picture, Voice Note, component type, and area/location.
-8. Open **Twin Overview** and confirm component markers show type, area/location, review state, and merged/unmerged state. Test the marker filters.
+8. Open **Twin Overview** and confirm the spatial Twin shows component markers, area/location, review state, and merged/unmerged state. Test the marker filters.
 9. Tap a marker and confirm it opens the correct **Component Evidence** screen.
 10. Edit an evidence bundle field such as component type, area/location, geometry ID, approximate position, Voice Note transcript, or picture label. Confirm the edited evidence returns to needs review.
 11. Delete a captured evidence bundle and confirm it is removed from **Review**.
 12. Open **Evidence Timeline** and confirm captured date/time, evidence type, component, spatial context, and review state are visible.
-13. Open **Review**, confirm captured evidence, and verify the review state changes visibly.
+13. Open **Review**, confirm the top-down Twin remains visible, select captured objects on the plan, expand their evidence, correct the reconstructed Twin where needed, and verify the review state changes visibly.
 14. Open **Merge Twin** and confirm the Merge Summary shows added components, edited evidence, deleted evidence, confirmed evidence, evidence still needing review, and current version to next version.
 15. Merge the twin and confirm the version increments and last merged date is recorded.
 16. Export the twin package and verify the export completes.
