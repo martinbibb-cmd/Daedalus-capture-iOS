@@ -15,6 +15,22 @@ canonical authority lives in `Daedalus-contracts/DAEDALUS_BUILD_PLAN.md`.
 - AI may improve readability only; it is not source of truth.
 - Users, billing, permissions, sync, and revenue models are deliberately deferred.
 
+## Canon Projection
+
+This repo follows the current Daedalus Canon as a Capture projection:
+
+- Capture observes reality.
+- Capture is CSI: physical evidence plus witness statements.
+- Capture does not solve, analyse, recommend, rank, price, select, optimise, or decide.
+- Capture uses additive and deductive reasoning only to improve observation quality.
+- Capture maximises information gain, not evidence volume.
+- Capture may ask the next most valuable question when the current evidence shows a capture gap.
+- Capture preserves unknown, approximate, unresolved, contradicted, and fallback states.
+- LLM extraction from transcripts is statement parsing only, not truth creation.
+- Statement-derived data remains marked as statement-derived until reviewed or confirmed.
+
+The canonical Manifesto, Laws, Constitution, and Philosophy Maintenance process remain upstream of this repo. This file is a local projection and must be refreshed when the canonical projection changes.
+
 ## Current Stage
 
 Stage P0: Property-root Platform Foundation
@@ -60,12 +76,16 @@ Owns:
 - evidence capture
 - review workflow
 - v4 export package
+- statement capture and statement-derived candidate fields when explicitly marked
+- uncertainty, confidence, fallback, unresolved, and review state preservation
 
 Must not own:
 
 - cloud sync yet
 - AI recognition
+- AI truth creation
 - recommendations
+- ranking, scoring, optimisation, product selection, or pricing
 - billing or users
 - Main reasoning
 
@@ -80,9 +100,11 @@ Do not implement yet:
 - subscriptions
 - enterprise hierarchy
 - sync engine
-- AI extraction
+- AI extraction beyond statement parsing
 - recommendations
 - compliance or legal judgement
+- solution analysis
+- pricing, ranking, scoring, optimisation, product selection, or quote selection
 
 ## Anti-Drift Rules
 
@@ -92,6 +114,9 @@ Do not implement yet:
 - Platform must validate API inputs against shared contracts.
 - No repo may invent its own property-root semantics silently.
 - Any cross-repo change must update this build-plan file.
+- Capture docs and implementation must keep statement-derived data distinct from confirmed fact.
+- Capture must prefer the next most valuable question over collecting repetitive low-value evidence.
+- Capture must preserve uncertainty rather than hiding it behind defaults.
 
 ## Verification
 

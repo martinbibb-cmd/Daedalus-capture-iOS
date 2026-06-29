@@ -1,6 +1,6 @@
 # Daedalus Capture
 
-Canonical iOS Digital Twin editor for the Daedalus platform.
+Canonical iOS Capture app for the Daedalus platform.
 
 ## Constitutional Boundary
 
@@ -16,6 +16,9 @@ This repo must obey:
 - No automated recommendation logic
 - No hidden quoting or sales logic
 - Module boundary rules defined in the constitution
+- Capture observes reality; it does not solve reality
+- Capture is CSI: physical evidence plus witness statements
+- Capture maximises information gain, not evidence volume
 
 ## Purpose
 
@@ -25,7 +28,22 @@ The product is the Property Twin. Capture is the editor. Main is the separate ap
 
 Capture records reality. Main explains reality.
 
-The app is capture-only. It records what is physically present, where it was observed, why it matters, and what evidence supports it. It does not generate recommendations, quotations, pricing, heat-loss outputs, simulations, scenarios, shading analysis, EPC interpretation, smart-meter interpretation, or customer advice.
+The app is capture-only. It records what is physically present, where it was observed, what was said by witnesses or occupants, and what evidence supports it. It does not solve, analyse, recommend, rank, price, select, optimise, simulate, generate heat-loss outputs, interpret EPC or smart-meter data, choose products, or provide customer advice.
+
+## Capture canon
+
+Capture behaves like a CSI field notebook for a property:
+
+- Physical evidence is recorded as observed: geometry, photos, measurements, documents, labels, spatial anchors, and fallback states.
+- Witness statements are recorded as statements, not facts. A transcript may say "the boiler is noisy"; Capture stores that statement and its source rather than deciding that the boiler is faulty.
+- Statement-derived fields remain marked as statement-derived until reviewed and confirmed by a human.
+- Unknown, approximate, unresolved, contradicted, and fallback states are preserved. Capture must not invent a clean answer to make later analysis easier.
+- Capture may use additive reasoning to accumulate evidence and deductive reasoning to ask the next most valuable capture question.
+- Capture maximises information gain. More evidence is not automatically better evidence.
+- Capture may ask the next most valuable question where the current evidence clearly shows a gap.
+- LLM extraction, if enabled in Capture, is statement parsing only. It may structure transcript text into candidate statements; it must not create truth, infer hidden facts, diagnose, score, rank, recommend, or decide.
+
+The repo-local canon projection is intentionally narrow. The canonical Manifesto, Laws, Constitution, and Philosophy Maintenance process live outside this app repo; this repo keeps only the Capture-facing projection needed to prevent product and architectural drift.
 
 ## Product direction
 
@@ -134,7 +152,7 @@ The live capture path is a one-pass spatial evidence loop:
 8. **Twin Overview** shows the scanned/placed evidence as map-style component markers. Tapping a marker opens the underlying evidence bundle.
 9. Export packages preserve Property Twin metadata, partial scanned areas, spatial markers/components, photos, voice note placeholders, transcript placeholders, review decisions, anchor metadata, fallback metadata, confidence, and provenance.
 
-Voice capture in this slice creates a recording/transcript placeholder inside the spatial session. Production audio recording and transcription can replace the placeholder without changing the package shape. Partial twins are valid: a boiler cupboard capture with spatial evidence is a usable Property Twin fragment and can grow into a full Property Twin later.
+Voice capture in this slice creates a recording/transcript placeholder inside the spatial session. Production audio recording and transcription can replace the placeholder without changing the package shape. Transcript extraction is statement parsing only: statement-derived data must remain marked as statement-derived until reviewed or confirmed. Partial twins are valid: a boiler cupboard capture with spatial evidence is a usable Property Twin fragment and can grow into a full Property Twin later.
 
 ## Features in this scaffold
 

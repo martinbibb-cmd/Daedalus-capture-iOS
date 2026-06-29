@@ -6,6 +6,14 @@ Classification: Constitutional Engineering & Platform Foundation
 
 Any architectural change that alters Reality → Analysis → Explanation, the Three Twin Model, the Digital Twin lifecycle, or the Capture / Contracts / Main boundaries requires an explicit constitutional amendment.
 
+## Projection Rule
+
+This file is the Daedalus-capture-iOS local projection of the Daedalus constitutional canon. It is not the canonical source of the Manifesto, Laws, Constitution, or Philosophy Maintenance process.
+
+When the canonical Daedalus projection changes, this repo may update this file only to project the Capture-facing boundary. Local projection updates must not expand Capture's product scope, change shared contract semantics, or rewrite the canon to fit implementation convenience.
+
+If a local implementation conflicts with the canonical Manifesto, Laws, Constitution, Philosophy Maintenance process, or build-plan projection, the local implementation is behind the canon and must be corrected.
+
 ## Core Thesis
 
 The Digital Twin is the product.
@@ -79,6 +87,8 @@ Captured evidence is source material. Derived outputs must be stored separately 
 
 Capture observes reality.
 
+Capture is CSI: physical evidence plus witness statements.
+
 Capture may:
 
 - Record field evidence
@@ -87,6 +97,10 @@ Capture may:
 - Record spatial context
 - Record confidence and uncertainty
 - Package observed reality for Contracts and Main
+- Preserve unknown, approximate, unresolved, contradicted, and fallback states
+- Use additive reasoning to accumulate evidence
+- Use deductive reasoning to identify the next most valuable question
+- Parse transcript text into statement-derived candidate fields when explicitly marked as statement-derived
 
 Capture must not:
 
@@ -100,6 +114,14 @@ Capture must not:
 - Select manufacturers
 - Judge suitability
 - Produce sales logic
+- Optimise
+- Decide
+- Convert statements into facts without review
+- Use LLM extraction as truth creation
+
+Capture maximises information gain, not evidence volume. It should ask the next most valuable question where possible and avoid collecting repetitive evidence that does not reduce uncertainty.
+
+Witness statements, occupant comments, and transcript-derived fields are source material. They remain statement-derived until reviewed or confirmed by a human.
 
 ### Contracts
 
@@ -166,6 +188,9 @@ The following concepts are constitutionally sensitive and must not cross module 
 - Manufacturer selection
 - Quote selection
 - Sales conversion
+- Optimisation as prescription
+- Automated diagnosis
+- Truth creation from statements or transcripts
 
 Neutral language is preferred:
 
@@ -178,6 +203,8 @@ Neutral language is preferred:
 - Behaviour
 - Evidence strength
 - Confidence
+- Statement-derived
+- Unresolved
 
 ## Constitutional Change Control
 
