@@ -7,7 +7,8 @@ struct LiveCaptureView: View {
     let visitID: UUID
 
     @StateObject private var recordingService: ContinuousVisitRecordingService
-    @State private var isPresentingReview = false
+    @State private var isShowingSurveyPullOver = false
+    @State private var selectedPullOverTab: LiveSurveyPullOverTab = .twin
 
     @State private var capturedEvidenceComponentID: UUID?
     @State private var spatialSession = SpatialCaptureSession()
@@ -18,7 +19,6 @@ struct LiveCaptureView: View {
     @State private var snapshotRequestID: UUID?
     @State private var didRequestSpatialStart = false
     @State private var activeCaptureSheet: LiveCaptureSheet?
-    @State private var isPresentingFocusWarning = false
     @State private var rulerStartPosition: SpatialPosition?
     @State private var isRulerModeActive = false
     @State private var liveActionMessage: String?
@@ -44,18 +44,6 @@ struct LiveCaptureView: View {
                     .navigationTitle("")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar(.hidden, for: .navigationBar)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button {
-                                pauseForReview()
-                            } label: {
-                                Label("Pause & Review", systemImage: "list.bullet.rectangle")
-                            }
-                        }
-                    }
-                    .navigationDestination(isPresented: $isPresentingReview) {
-                        CaptureReviewWorkspaceView(viewModel: viewModel, visitID: visitID, onResumeSurvey: resumeSurvey)
-                    }
                     .sheet(item: $activeCaptureSheet) { sheet in
                         switch sheet {
                         case .waterPressureTest:
@@ -65,14 +53,6 @@ struct LiveCaptureView: View {
                                 saveSocketTesterResult(result)
                             }
                         }
-                    }
-                    .alert("Focused scan will end the room scan", isPresented: $isPresentingFocusWarning) {
-                        Button("Cancel", role: .cancel) {}
-                        Button("Start Focused Scan", role: .destructive) {
-                            startFocusMode()
-                        }
-                    } message: {
-                        Text("Focused scan switches from whole-room capture to local detail capture. Use it when you are ready to stop extending the current room scan.")
                     }
             } else {
                 ContentUnavailableView("Property not found", systemImage: "exclamationmark.triangle")
@@ -145,6 +125,25 @@ struct LiveCaptureView: View {
                 }
                 .padding(.horizontal, 16)
             }
+
+            if isShowingSurveyPullOver {
+                VStack {
+                    Spacer()
+                    LiveSurveyPullOverView(
+                        visit: visit,
+                        selectedTab: $selectedPullOverTab,
+                        evidenceFileURL: viewModel.evidenceFileURL(localFileName:),
+                        onClose: {
+                            withAnimation(.snappy) {
+                                isShowingSurveyPullOver = false
+                            }
+                        }
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 112)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             HStack {
@@ -167,12 +166,17 @@ struct LiveCaptureView: View {
                     isRulerModeActive: isRulerModeActive,
                     onCapture: capAction,
                     onNextRoom: requestFinishRoom,
-                onFocus: requestFocusMode,
+                onVoice: { createLiveEvidence(.voice) },
+                onMarker: { createLiveEvidence(.mark) },
                 onWater: { activeCaptureSheet = .waterPressureTest },
                 onElectrical: { activeCaptureSheet = .socketTester },
                 onMeasurement: beginRulerMeasurement,
                 onSafety: { createLiveEvidence(.safety) },
-                onReview: pauseForReview
+                onPullOver: {
+                    withAnimation(.snappy) {
+                        isShowingSurveyPullOver.toggle()
+                    }
+                }
             )
             .padding(.horizontal, 16)
             .padding(.top, 8)
@@ -194,14 +198,14 @@ struct LiveCaptureView: View {
 
     private var surveyStatusTitle: String {
         if captureState.isFocusActive {
-            return "Focus Mode"
+            return "Detail Capture"
         }
         return spatialSession.status == .scanning ? "Survey" : spatialSession.status.title
     }
 
     private var surveyConfidenceLabel: String {
         if captureState.isFocusActive {
-            return "Capturing local detail"
+            return "Capturing optional detail"
         }
         if scanProgress.captureLabel == "Room understood" {
             return "Room understood"
@@ -369,7 +373,7 @@ struct LiveCaptureView: View {
             endFocusMode()
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         } else {
-            isPresentingFocusWarning = true
+            startFocusMode()
         }
     }
 
@@ -419,7 +423,7 @@ struct LiveCaptureView: View {
         spatialAim = .empty
         livePlacementState = .unavailable
         captureState = .roomScanning
-        showLiveActionMessage("Room \(roomNumber) finished. New room scan started")
+        showLiveActionMessage("Room \(roomNumber) added to Twin. New room scan started")
     }
 
     private func beginRulerMeasurement() {
@@ -542,23 +546,10 @@ struct LiveCaptureView: View {
         }
     }
 
-    private func pauseForReview() {
-        completeSpatialSession()
-        viewModel.refreshCaptureReviewSuggestions(for: visitID)
-        isPresentingReview = true
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-    }
-
     private func leaveSurvey() {
         completeSpatialSession()
         teardownTransientCaptureUI()
         dismiss()
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-    }
-
-    private func resumeSurvey() {
-        isPresentingReview = false
-        requestSpatialSessionStart()
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 }
@@ -881,6 +872,270 @@ private struct SocketSeeTestSheet: View {
     }
 }
 
+private enum LiveSurveyPullOverTab: String, CaseIterable, Identifiable {
+    case twin
+    case notes
+    case photos
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .twin: return "Twin So Far"
+        case .notes: return "Notes"
+        case .photos: return "Photos"
+        }
+    }
+}
+
+private struct LiveSurveyPullOverView: View {
+    let visit: Visit
+    @Binding var selectedTab: LiveSurveyPullOverTab
+    let evidenceFileURL: (String) -> URL?
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Survey Record")
+                    .font(.headline.weight(.semibold))
+                Spacer()
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.bold))
+                        .frame(width: 30, height: 30)
+                        .background(Color(.tertiarySystemBackground), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close survey record")
+            }
+
+            Picker("Survey Record", selection: $selectedTab) {
+                ForEach(LiveSurveyPullOverTab.allCases) { tab in
+                    Text(tab.title).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            Group {
+                switch selectedTab {
+                case .twin:
+                    LiveTwinSoFarView(visit: visit)
+                case .notes:
+                    LiveNotesSoFarView(visit: visit)
+                case .photos:
+                    LivePhotoGalleryView(visit: visit, evidenceFileURL: evidenceFileURL)
+                }
+            }
+            .frame(maxHeight: 260, alignment: .top)
+        }
+        .padding(14)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(.white.opacity(0.18), lineWidth: 1))
+        .shadow(color: .black.opacity(0.28), radius: 16, y: 8)
+    }
+}
+
+private struct LiveTwinSoFarView: View {
+    let visit: Visit
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Dumb captured state only. No inference, suggestions, classification, or system analysis.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 10) {
+                    LiveSurveyMetric(title: "Rooms", value: "\(visit.rooms.count)")
+                    LiveSurveyMetric(title: "Objects", value: "\(visit.components.count)")
+                    LiveSurveyMetric(title: "Evidence", value: "\(evidenceCount)")
+                }
+
+                if visit.rooms.isEmpty && visit.components.isEmpty {
+                    Text("No rooms or markers captured yet.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(visit.rooms) { room in
+                        Label(room.name, systemImage: "square.split.bottomrightquarter")
+                            .font(.callout.weight(.medium))
+                    }
+                    ForEach(visit.components.prefix(8)) { component in
+                        Label(component.liveCaptureTitle, systemImage: "mappin.and.ellipse")
+                            .font(.callout)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var evidenceCount: Int {
+        visit.rooms.reduce(0) { $0 + $1.evidence.count } +
+            visit.components.reduce(0) { $0 + $1.evidence.count }
+    }
+}
+
+private struct LiveNotesSoFarView: View {
+    let visit: Visit
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Transcripts and surveyor notes are witness statements. They are raw evidence, not truth.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if !visit.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Label(visit.notes, systemImage: "note.text")
+                        .font(.callout)
+                }
+
+                ForEach(noteItems) { item in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Label(item.title, systemImage: item.systemImage)
+                            .font(.callout.weight(.medium))
+                        Text(item.detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                if visit.notes.isEmpty && noteItems.isEmpty {
+                    Text("No notes or transcripts captured yet.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var noteItems: [LiveSurveyNoteItem] {
+        let transcriptItems = visit.transcripts.map {
+            LiveSurveyNoteItem(
+                title: $0.status.title,
+                detail: $0.rawTranscript.isEmpty ? "Transcript pending" : $0.rawTranscript,
+                systemImage: "text.bubble"
+            )
+        }
+        let componentNotes = visit.components.flatMap { component in
+            component.evidence.compactMap { evidence -> LiveSurveyNoteItem? in
+                guard evidence.kind != .photo else { return nil }
+                let detail = evidence.reviewNotes ?? evidence.localFileName
+                return LiveSurveyNoteItem(title: component.liveCaptureTitle, detail: detail, systemImage: "paperclip")
+            }
+        }
+        return transcriptItems + componentNotes
+    }
+}
+
+private struct LivePhotoGalleryView: View {
+    let visit: Visit
+    let evidenceFileURL: (String) -> URL?
+
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 82), spacing: 10)], spacing: 10) {
+                ForEach(photoItems) { item in
+                    VStack(alignment: .leading, spacing: 5) {
+                        LiveSurveyPhotoThumbnail(url: evidenceFileURL(item.fileName))
+                            .frame(height: 70)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        Text(item.title)
+                            .font(.caption2.weight(.medium))
+                            .lineLimit(2)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if photoItems.isEmpty {
+                Text("No photos captured yet.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private var photoItems: [LiveSurveyPhotoItem] {
+        let roomPhotos = visit.rooms.flatMap { room in
+            room.evidence
+                .filter { $0.kind == .photo }
+                .map { LiveSurveyPhotoItem(title: room.name, fileName: $0.localFileName) }
+        }
+        let componentPhotos = visit.components.flatMap { component in
+            component.evidence
+                .filter { $0.kind == .photo }
+                .map { LiveSurveyPhotoItem(title: component.liveCaptureTitle, fileName: $0.localFileName) }
+        }
+        return roomPhotos + componentPhotos
+    }
+}
+
+private struct LiveSurveyMetric: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(.headline.weight(.semibold))
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private struct LiveSurveyPhotoThumbnail: View {
+    let url: URL?
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(Color(.tertiarySystemBackground))
+
+            if let uiImage {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Image(systemName: "photo")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .clipped()
+    }
+
+    private var uiImage: UIImage? {
+        guard let url,
+              let data = try? Data(contentsOf: url) else {
+            return nil
+        }
+        return UIImage(data: data)
+    }
+}
+
+private struct LiveSurveyNoteItem: Identifiable {
+    let id = UUID()
+    let title: String
+    let detail: String
+    let systemImage: String
+}
+
+private struct LiveSurveyPhotoItem: Identifiable {
+    let id = UUID()
+    let title: String
+    let fileName: String
+}
+
 private extension SpatialPosition {
     func distance(to other: SpatialPosition) -> Double {
         let dx = x - other.x
@@ -898,12 +1153,13 @@ private struct LiveCaptureControlBar: View {
     let isRulerModeActive: Bool
     let onCapture: () -> Void
     let onNextRoom: () -> Void
-    let onFocus: () -> Void
+    let onVoice: () -> Void
+    let onMarker: () -> Void
     let onWater: () -> Void
     let onElectrical: () -> Void
     let onMeasurement: () -> Void
     let onSafety: () -> Void
-    let onReview: () -> Void
+    let onPullOver: () -> Void
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 12) {
@@ -911,13 +1167,14 @@ private struct LiveCaptureControlBar: View {
 
             LiveCaptureActionTray(
                 actions: [
-                    LiveCaptureTrayAction(title: "Room", systemImage: "rectangle.stack.badge.plus", tint: .white, action: onNextRoom),
-                    LiveCaptureTrayAction(title: "Focus", systemImage: "scope", tint: .yellow, action: onFocus),
+                    LiveCaptureTrayAction(title: "Finish Room", systemImage: "rectangle.stack.badge.plus", tint: .white, action: onNextRoom),
+                    LiveCaptureTrayAction(title: "Voice", systemImage: "waveform", tint: .green, action: onVoice),
+                    LiveCaptureTrayAction(title: "Marker", systemImage: "mappin.and.ellipse", tint: .white, action: onMarker),
                     LiveCaptureTrayAction(title: "Water", systemImage: "drop.fill", tint: .cyan, action: onWater),
                     LiveCaptureTrayAction(title: "Socket", systemImage: "bolt.fill", tint: .yellow, action: onElectrical),
                     LiveCaptureTrayAction(title: "Ruler", systemImage: "ruler", tint: .white, action: onMeasurement),
                     LiveCaptureTrayAction(title: "Safety", systemImage: "exclamationmark.triangle.fill", tint: .red, action: onSafety),
-                    LiveCaptureTrayAction(title: "Review", systemImage: "list.bullet.rectangle", tint: .white, action: onReview)
+                    LiveCaptureTrayAction(title: "Record", systemImage: "rectangle.bottomthird.inset.filled", tint: .white, action: onPullOver)
                 ]
             )
 
@@ -964,7 +1221,7 @@ private struct LiveCaptureActionTray: View {
                 }
             }
         }
-        .frame(maxWidth: 250)
+        .frame(maxWidth: 270)
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(.black.opacity(0.42), in: Capsule())
@@ -984,7 +1241,7 @@ private struct LiveCaptureActionTray: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
-            .frame(width: 48, height: 48)
+            .frame(width: 58, height: 48)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(item.title)

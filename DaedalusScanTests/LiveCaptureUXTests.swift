@@ -18,7 +18,7 @@ final class LiveCaptureUXTests: XCTestCase {
 
         let component = try XCTUnwrap(harness.viewModel.component(visitID: harness.visitID, componentID: componentID))
         XCTAssertEqual(component.liveCaptureEvidenceKind, .mark)
-        XCTAssertEqual(component.liveCaptureTitle, "Focus")
+        XCTAssertEqual(component.liveCaptureTitle, "Marker")
         XCTAssertNil(component.componentAttributes["componentTypeEvidence"])
         XCTAssertNil(component.componentAttributes["areaEvidence"])
         XCTAssertEqual(component.componentAttributes["geometryAnchorID"], "anchor-1")
@@ -30,8 +30,8 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertEqual(component.evidence.first?.geometryMetadata?.source, .userMarked)
 
         let visit = try XCTUnwrap(harness.viewModel.visit(id: harness.visitID))
-        XCTAssertEqual(visit.evidenceTimelineEntries.first?.evidenceType, "Focus")
-        XCTAssertEqual(visit.captureReviewEvidenceGroups.first?.title, "Focus")
+        XCTAssertEqual(visit.evidenceTimelineEntries.first?.evidenceType, "Marker")
+        XCTAssertEqual(visit.captureReviewEvidenceGroups.first?.title, "Marker")
     }
 
     func testFocusModeCreatesHighDetailGeometryEvidence() throws {
@@ -254,7 +254,7 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertTrue(visit.rooms.isEmpty, "A cupboard-only partial twin is valid without a whole-property room pass.")
         XCTAssertEqual(visit.liveCaptureEvidenceComponents.count, 3)
         XCTAssertEqual(visit.reviewedCaptureEvidenceComponents.count, 2)
-        XCTAssertEqual(visit.componentMarkers.map(\.title).sorted(), ["Focus", "Photo", "Voice"])
+        XCTAssertEqual(visit.componentMarkers.map(\.title).sorted(), ["Marker", "Photo", "Voice"])
         XCTAssertTrue(visit.componentMarkers.contains { $0.componentID == photoID })
         XCTAssertEqual(try XCTUnwrap(visit.components.first { $0.id == photoID }).spatialPlacement.anchorID, "cupboard-mesh-1")
 
@@ -359,12 +359,14 @@ final class LiveCaptureUXTests: XCTestCase {
             XCTAssertFalse(source.localizedCaseInsensitiveContains(term), "Live capture source contains banned term: \(term)")
         }
 
-        for required in ["\"Safety\"", "\"Review\"", "\"Pause & Review\"", "\"Capture evidence\"", "\"End survey\""] {
+        for required in ["\"Safety\"", "\"Record\"", "\"Twin So Far\"", "\"Notes\"", "\"Photos\"", "\"Capture evidence\"", "\"End survey\""] {
             XCTAssertTrue(source.contains(required), "Live capture source should expose \(required)")
         }
+        XCTAssertFalse(source.contains("\"Pause & Review\""))
+        XCTAssertFalse(source.contains("\"Review\""), "Live capture should not expose review as a primary action")
         XCTAssertFalse(source.contains("\"CAP.\""), "Primary shutter should be a blank yellow dial")
         XCTAssertFalse(source.contains("LiveMiniTwinMapView"), "Live capture should not render a 2D mini-map panel")
-        XCTAssertTrue(source.contains("LiveCaptureActionTray"), "Hazard and review controls should live in one native tray separate from the shutter")
+        XCTAssertTrue(source.contains("LiveCaptureActionTray"), "Capture controls should live in one native tray separate from the shutter")
         XCTAssertFalse(source.contains("LiveCaptureSideMenus"), "Live capture should not restore the removed side drawer classes")
         XCTAssertFalse(source.contains("LiveCaptureRadialDial"), "Live capture should not expose a radial pop-up")
         XCTAssertFalse(source.contains("LiveCaptureUtilityRail"), "Live capture should not expose utilities as an always-visible rail")
@@ -382,7 +384,8 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertFalse(source.contains("Room understood\"), systemImage"), "Live survey should avoid duplicate Room understood status rows")
 
         let lifecycleSource = try sourceText(relativePath: "DaedalusScan/Features/Visits/TwinLifecycleViews.swift")
-        XCTAssertTrue(lifecycleSource.contains("\"Resume Survey\""), "Review should expose a Resume Survey action")
+        XCTAssertFalse(lifecycleSource.contains("\"Review Survey\""), "Review Survey should not be a main v1 stage")
+        XCTAssertTrue(lifecycleSource.contains("\"Complete Survey\""), "V1 should expose Complete Survey as the finish action")
     }
 
     func testLiveCaptureSourceDoesNotShowSuggestionConfirmationCardDuringSurvey() throws {
@@ -394,6 +397,9 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertFalse(source.contains("\"Daedalus thinks this is:\""))
         XCTAssertFalse(source.contains("\"Needs Confirmation\""))
         XCTAssertFalse(source.contains("\"Review Later\""))
+        XCTAssertFalse(source.contains("\"looks like\""))
+        XCTAssertFalse(source.contains("object recognition"))
+        XCTAssertFalse(source.contains("CoreML"))
         XCTAssertFalse(source.contains("reviewLiveCaptureLater"))
         XCTAssertFalse(source.contains("@State private var confirmationState"))
         XCTAssertFalse(source.contains("confirmationState.recentEvents"))
@@ -404,7 +410,7 @@ final class LiveCaptureUXTests: XCTestCase {
         let source = try sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureView.swift")
         let leaveSource = try sourceBlock(
             named: "private func leaveSurvey",
-            endingBefore: "private func resumeSurvey",
+            endingBefore: "private struct LiveCaptureStatusBar",
             in: source
         )
         let teardownSource = try sourceBlock(
@@ -441,7 +447,7 @@ final class LiveCaptureUXTests: XCTestCase {
 
         XCTAssertTrue(source.contains("\"Property not found\""))
         XCTAssertTrue(source.contains("\"Working Twin Context\""))
-        XCTAssertTrue(source.contains("\"Review Capture\""))
+        XCTAssertTrue(source.contains("\"Capture Record\""))
         XCTAssertFalse(source.contains("\"Property Twin"), "User-facing root labels should use Property or Working Twin, not Property Twin")
     }
 
@@ -554,8 +560,12 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertFalse(source.contains("LiveCaptureSideMenus"), "Live capture should not use side drawers for marker actions")
         XCTAssertFalse(source.contains("LiveCaptureRadialDial"), "Live capture should not use a radial pop-up")
         XCTAssertTrue(source.contains("private struct LiveCaptureActionTray"), "Live capture should render one native action tray")
-        XCTAssertTrue(source.contains("LiveCaptureTrayAction(title: \"Room\""))
-        XCTAssertTrue(source.contains("LiveCaptureTrayAction(title: \"Focus\""))
+        XCTAssertTrue(source.contains("LiveCaptureTrayAction(title: \"Finish Room\""))
+        XCTAssertTrue(source.contains("LiveCaptureTrayAction(title: \"Voice\""))
+        XCTAssertTrue(source.contains("LiveCaptureTrayAction(title: \"Marker\""))
+        XCTAssertTrue(source.contains("LiveCaptureTrayAction(title: \"Record\""))
+        XCTAssertFalse(source.contains("LiveCaptureTrayAction(title: \"Focus\""))
+        XCTAssertFalse(source.contains("LiveCaptureTrayAction(title: \"Review\""))
         XCTAssertTrue(source.contains("LiveCaptureTrayAction(title: \"Water\""))
         XCTAssertTrue(source.contains("LiveCaptureTrayAction(title: \"Socket\""))
         XCTAssertTrue(source.contains("LiveCaptureTrayAction(title: \"Ruler\""))
@@ -584,15 +594,15 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertFalse(captureSource.contains("LiveMiniTwinMapView"), "Live capture should not render a 2D Mini Twin Map overlay")
         XCTAssertFalse(captureSource.contains("EvidenceMapPin"), "Live capture should not maintain 2D map pins")
         XCTAssertFalse(controlBarSource.contains("\"Photo\""), "Bottom dock should not duplicate the shutter with a Photo mode")
-        XCTAssertFalse(controlBarSource.contains("\"Voice Note\""), "Bottom dock should not expose manual voice mode during continuous recording")
-        XCTAssertFalse(controlBarSource.contains("\"Mark Item\""), "Bottom dock should not expose manual pin mode")
+        XCTAssertTrue(controlBarSource.contains("\"Voice\""), "Bottom dock should expose voice-note evidence")
+        XCTAssertTrue(controlBarSource.contains("\"Marker\""), "Bottom dock should expose manual markers")
         XCTAssertTrue(controlBarSource.contains("LiveCaptureActionTray"), "Bottom dock should expose survey actions through one tray")
         XCTAssertFalse(controlBarSource.contains("LiveCaptureRadialDial"), "Bottom dock should not expose a radial pop-up")
         XCTAssertTrue(controlBarSource.contains("Button(action: onCapture)"), "Bottom dock should bind the primary shutter directly")
         XCTAssertFalse(controlBarSource.contains("liveButton("), "Bottom dock should only render the primary shutter")
         XCTAssertFalse(captureSource.contains("CaptureConfirmationEvent"), "Live capture should not render review suggestion events")
         XCTAssertFalse(captureSource.contains("areaSections"), "Live capture should not maintain a suggestion stack")
-        XCTAssertFalse(captureSource.contains("shortStatus(for:"), "Review statuses belong in the review workspace")
+        XCTAssertFalse(captureSource.contains("shortStatus(for:"), "Review statuses should not drive live capture")
         XCTAssertTrue(captureSource.contains("spatialAim.targetPosition"), "Evidence should use the current target position")
         XCTAssertTrue(captureSource.contains("spatialAim.devicePosition"), "Evidence should use the current device position")
         XCTAssertFalse(captureSource.contains("\"CAP.\""), "The primary shutter control should not contain text")
@@ -732,7 +742,7 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertEqual(summary.confidence, "High")
 
         let source = try sourceText(relativePath: "DaedalusScan/Features/Visits/CaptureReviewWorkspace.swift")
-        XCTAssertTrue(source.contains("Section(\"Geometry Review\")"))
+        XCTAssertTrue(source.contains("Section(\"Geometry\")"))
         XCTAssertTrue(source.contains("GeometryReviewSummaryView"))
     }
 
@@ -780,7 +790,10 @@ final class LiveCaptureUXTests: XCTestCase {
 
         let source = try sourceText(relativePath: "DaedalusScan/Features/Visits/LiveCaptureView.swift")
         XCTAssertTrue(source.contains("onNextRoom"))
-        XCTAssertTrue(source.contains("onFocus"))
+        XCTAssertTrue(source.contains("onVoice"))
+        XCTAssertTrue(source.contains("onMarker"))
+        XCTAssertTrue(source.contains("onPullOver"))
+        XCTAssertFalse(source.contains("onFocus"))
         XCTAssertFalse(source.contains("onGas"))
         XCTAssertTrue(source.contains("onWater"))
         XCTAssertTrue(source.contains("onElectrical"))
@@ -804,7 +817,7 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertTrue(source.contains(".id(spatialSession.id)"), "Starting the next room should rebuild the spatial capture session")
         XCTAssertTrue(source.contains("finishRoomAndStartNextRoom"))
         XCTAssertTrue(source.contains("spatialSession.id = UUID()"))
-        XCTAssertTrue(source.contains("Focused scan will end the room scan"), "Focused scan should warn before switching away from room scan")
+        XCTAssertFalse(source.contains("Focused scan will end the room scan"), "V1 should not warn that local detail replaces room scan")
         XCTAssertTrue(source.contains("Room scan incomplete. Keep scanning until the room is understood."), "Next room should block when room coverage is still incomplete")
         XCTAssertTrue(source.contains("requestFinishRoom"), "Room progression should route through a coverage check")
         XCTAssertFalse(source.contains("isPresentingRoomCoverageWarning"), "Room progression should use the scan confidence gate instead of asking the operator")
@@ -818,18 +831,18 @@ final class LiveCaptureUXTests: XCTestCase {
         XCTAssertFalse(source.contains("Merge With..."))
     }
 
-    func testReviewStartsWithSpatialMapPhotoNodesAndMassVerification() throws {
+    func testCaptureRecordKeepsSpatialMapWithoutMassVerificationGate() throws {
         let source = try sourceText(relativePath: "DaedalusScan/Features/Visits/CaptureReviewWorkspace.swift")
         XCTAssertTrue(source.contains("SpatialReviewMapView"))
         XCTAssertTrue(source.contains("PhotoMapPin"))
         XCTAssertTrue(source.contains("case photoNode"))
         XCTAssertTrue(source.contains("Photo in space"))
-        XCTAssertTrue(source.contains("Photo In Space Review"))
+        XCTAssertTrue(source.contains("Twin So Far"))
         XCTAssertTrue(source.contains("Photo pinned in space"))
         XCTAssertTrue(source.contains("meterScale(in:"))
         XCTAssertTrue(source.contains("nodeLinks(in:"))
-        XCTAssertTrue(source.contains("Confirm All Clear Assets"))
-        XCTAssertTrue(source.contains("confirmAllClearAssets"))
+        XCTAssertFalse(source.contains("Confirm All Clear Assets"))
+        XCTAssertFalse(source.contains("confirmAllClearAssets"))
         XCTAssertTrue(source.contains("mapPoint: component.captureReviewMapPoint"))
         XCTAssertTrue(source.contains("MagnificationGesture"))
         XCTAssertTrue(source.contains("DragGesture"))

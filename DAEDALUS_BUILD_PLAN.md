@@ -74,7 +74,7 @@ Owns:
 - WorkingTwin creation
 - SurveyCaptureSession
 - evidence capture
-- spatial Twin review workflow
+- room-first spatial capture workflow
 - v4 export package
 - statement capture and statement-derived candidate fields when explicitly marked
 - uncertainty, confidence, fallback, unresolved, and review state preservation
@@ -89,21 +89,30 @@ Must not own:
 - billing or users
 - Main reasoning
 
-## Capture Review Direction
+## Capture v1 Direction
 
-Capture review is based on reconstructed reality, not metadata review. The
-surveyor asks "Have I got the property right?" rather than "Is this marker
-metadata correct?"
+Capture v1 is simple, stable, dumb, and surveyor-led. Capture records reality.
+Main understands it later.
 
-- Default review view is a top-down floor plan of the Working Twin.
-- Future advanced review may use a raised, rotatable 3D model.
-- Do not use a fixed cutaway house, side elevation primary view, or card/list-first review.
-- The Twin remains visible while evidence is inspected.
-- Captured objects are selected directly on the plan or model.
-- Evidence expands from the selected object.
-- Photos, voice notes, transcripts, confidence, and review status attach to the object.
-- Unknown, unresolved, approximate, and fallback states are visible on the Twin.
-- Review actions correct the reconstructed Twin.
+- Start survey.
+- New room.
+- RoomPlan captures the room skeleton.
+- Photos, voice, notes, measurements, manual markers, safety notes, and existing test sheets attach to the current room, object, or session.
+- Finish room only when geometry is complete enough to represent.
+- If geometry is incomplete, keep scanning and show a factual completeness message.
+- Add the room to the Twin and retain location for stitching.
+- Move to the next room.
+- Complete survey.
+- Merge/export.
+
+There is no separate metadata review stage as the v1 quality gate. Confidence
+is built continuously by showing the surveyor Twin So Far, Notes, and Photos in
+an in-capture pull-over.
+
+RoomPlan is for the House skeleton. It must not classify boilers, pumps,
+pipework, controls, or systems. Systems evidence comes from photos, voice,
+manual markers, measurements, and tests. ARKit detail capture is optional and
+later, only when extra fidelity is needed against existing geometry.
 
 Capture is CSI: it records physical evidence and witness statements, uses
 additive and deductive reasoning, maximises information gain, and asks the next

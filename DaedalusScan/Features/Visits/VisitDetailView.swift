@@ -22,7 +22,7 @@ struct VisitDetailView: View {
                     NavigationLink {
                         CaptureReviewWorkspaceView(viewModel: viewModel, visitID: visitID)
                     } label: {
-                        Label("Capture Review", systemImage: "tray.full")
+                        Label("Reviewed Package Tools", systemImage: "tray.full")
                     }
 
                     Button {
@@ -37,11 +37,11 @@ struct VisitDetailView: View {
                             isPresentingShareSheet = true
                         }
                     } label: {
-                        Label("Create Reviewed Capture Package", systemImage: "shippingbox")
+                        Label("Create Capture Package", systemImage: "shippingbox")
                     }
                     .disabled(visit.hasBlockingCaptureReviewItems)
                 } header: {
-                    Text("Review")
+                    Text("Export")
                 }
 
                 Section {
@@ -92,7 +92,7 @@ struct VisitDetailView: View {
                     Text("Captured Objects")
                 }
             }
-            .navigationTitle("Review Capture")
+            .navigationTitle("Capture Record")
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $isPresentingShareSheet) {
                 if let url = shareURL {

@@ -51,16 +51,16 @@ Daedalus Capture v1 is Property Twin-first, spatial-first, and evidence-first:
 
 - open a Property Twin and land in the lifecycle workflow
 - pull the authoritative twin into a Working Twin
-- walk the property
-- scan geometry, boundaries, openings, and labelled areas for the House Twin
-- identify system components in position for the System Twin
+- start the survey and create one room at a time
+- use RoomPlan for a clean House Twin room skeleton: outline, openings, boundaries, and labelled areas
+- attach photos, voice notes, text notes, manual markers, measurements, safety notes, and existing water/electrical test sheets to the current room
 - use Capture Lite on devices or visits where AR capture is unavailable
-- capture occupancy, behaviour, constraints, and human observations for the Home Twin
-- attach photos, voice notes, documents, labels, and text evidence to captured reality
-- correct the reconstructed Twin before merge when reality is clarified
+- capture occupancy, behaviour, constraints, and witness statements for the Home Twin
 - preserve spatial placement or explicit fallback state when anchoring is unavailable
-- review the navigable Twin before updating the authoritative twin
-- review, clarify, confirm, and merge local changes into the authoritative twin
+- keep a live Twin-so-far, notes, and photos pull-over available during capture
+- finish a room only when the room geometry is complete enough to represent
+- add the room to the Twin and retain location for later stitching
+- complete the survey, then merge/export
 
 Property Twin list, summaries, and detail forms remain available as secondary fallback/admin surfaces. They are not the main capture journey.
 
@@ -75,12 +75,12 @@ Property Twin list, summaries, and detail forms remain available as secondary fa
 Properties are managed internally as repositories. Users see and work with Property Twins.
 
 - Pull Twin: download the authoritative twin and create a Working Twin.
-- Capture: observe reality and add photos, voice notes, geometry, components, and context.
+- Capture: scan room geometry and attach photos, voice notes, markers, measurements, tests, and context to location.
 - Commit: create a local change set.
-- Review: inspect the reconstructed Twin and correct what is missing, wrong, unknown, unresolved, approximate, or fallback.
+- Survey Record: inspect Twin so far, notes, and photos without leaving capture.
 - Clarify: resolve uncertainty.
 - Recapture: capture additional evidence.
-- Confirm Captured Evidence: confirm evidence review state without generating conclusions.
+- Complete Survey: final trust action that the captured Twin represents what the surveyor saw.
 - Merge Twin: update the authoritative twin and generate history automatically.
 
 Working Twin state is visible throughout the app:
@@ -91,14 +91,14 @@ Working Twin state is visible throughout the app:
 - Ready to merge
 - Merged
 
-Capture warns before leaving unmerged work, pulling over local changes, or merging while evidence still needs review.
+Capture warns before leaving unmerged work or pulling over local changes. V1 does not use a separate metadata review stage as the main quality gate.
 
 ## Trust model
 
 Trust comes from evidence. The app records evidence and review state, but humans remain authoritative. Automation may assist, but nothing may create facts without human confirmation.
 
-The review question is "Have I got the property right?" It is not "Is this
-marker metadata correct?"
+The completion question is "Does this captured Twin represent what I saw?" It
+is not "Have I confirmed all the fields?"
 
 Evidence trust order:
 
@@ -140,20 +140,30 @@ Export/import packages are expected to represent:
 - evidence timeline entries derived from captured evidence
 - merge summary counts for added components, edited evidence, deleted evidence, confirmed evidence, and evidence still needing review
 
-## Spatial evidence loop
+## Room-first capture loop
 
-The live capture path is a one-pass spatial evidence loop:
+The live capture path is a room-first spatial evidence loop:
 
 1. Open or create a Property Twin.
-2. Start **AR Capture** from the lifecycle flow.
-3. The live surface runs native ARKit world tracking with plane detection and LiDAR mesh reconstruction when the device supports it. The scan overlay shows whether geometry is still pending or how many surfaces have been captured.
-4. While the spatial session remains active, capture **Photo**, **Voice**, **Mark**, or **Safety** evidence without leaving the survey flow.
-5. Each evidence item is stored as an unclassified spatial marker with the current scan session ID, anchor ID when available, approximate position when available, confidence, and an explicit fallback state when anchoring is unavailable.
-6. **Review** opens on a top-down floor plan of the reconstructed Twin. The Twin remains visible throughout review. Future advanced review may add a raised, rotatable 3D model, but the default is the plan.
-7. Captured objects are selected directly on the plan or model. Evidence expands from the selected object instead of from a list, card stack, metadata form, side view, or fixed cutaway house visual.
-8. Photos, voice notes, transcripts, confidence, and review state attach to the selected object. Unknown, unresolved, approximate, and fallback states are visible on the Twin.
-9. Review actions correct the reconstructed Twin: object identity, location, boundaries, relationships, missing evidence, and unresolved uncertainty.
-10. Export packages preserve Property Twin metadata, partial scanned areas, spatial markers/components, photos, voice note placeholders, transcript placeholders, review decisions, anchor metadata, fallback metadata, confidence, and provenance.
+2. Start **Survey**.
+3. Start a new room.
+4. RoomPlan captures the room skeleton: outline, openings, boundaries, and labelled geometry.
+5. Photos, voice notes, notes, manual markers, measurements, safety notes, and available water/electrical test sheets attach to the current room, object, or session.
+6. The iPhone keeps camera/capture primary. A pull-over view shows **Twin So Far**, **Notes**, and **Photos** without leaving capture.
+7. **Twin So Far** is dumb display only: no inference, no suggestions, no "looks like", no system analysis.
+8. **Notes** shows transcripts and surveyor notes as witness statements. They are raw evidence, not truth.
+9. **Photos** shows captured photos grouped by current room, object, or session where possible.
+10. Finish room only when geometry is complete enough. If the user taps Finish Room while geometry is incomplete, keep scanning and show: "Room scan incomplete. Keep scanning until the room is understood."
+11. Add the room to the Twin and retain location for stitching.
+12. Move to the next room.
+13. Complete survey.
+14. Merge/export.
+
+RoomPlan is for the House skeleton only. It must not be treated as a classifier
+for boilers, pumps, pipework, controls, or other system objects. Systems
+evidence comes from photos, voice, manual markers, measurements, and test
+sheets. ARKit detail capture is optional and later, only when extra fidelity is
+needed against existing room or object geometry.
 
 Voice capture in this slice creates a recording/transcript placeholder inside the spatial session. Production audio recording and transcription can replace the placeholder without changing the package shape. Transcript extraction is statement parsing only: statement-derived data must remain marked as statement-derived until reviewed or confirmed. Partial twins are valid: a boiler cupboard capture with spatial evidence is a usable Property Twin fragment and can grow into a full Property Twin later.
 
@@ -161,13 +171,13 @@ Voice capture in this slice creates a recording/transcript placeholder inside th
 
 - Property Twin list and create Property Twin entry point
 - Property Twin home with version, last merged state, and Pull Twin action
-- Working Twin lifecycle path: Pull Twin, Twin Overview, AR Capture, Component Evidence, Review, Merge Twin
+- Working Twin lifecycle path: Pull Twin, Survey, Survey Record, Complete Survey, Merge Twin
 - Immediate transition into the Property Twin lifecycle when a Property Twin is opened or created
 - Twin Overview as a spatial plan/model surface with component selection, location labels, review state, merge state, and marker filters
 - AR Capture and Capture Lite evidence capture paths
 - Component Evidence with evidence bundle editing and deletion before merge
 - Evidence Timeline per Property Twin and component
-- Review as a navigable spatial Twin with object-selected evidence
+- Survey pull-over with Twin So Far, Notes, and Photos
 - Merge Summary with current version to next version preview
 - Camera-first capture shell for object/area capture
 - Spatial fallback metadata on rooms/areas and components

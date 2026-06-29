@@ -40,23 +40,19 @@ struct PropertyTwinHomeView: View {
                 } header: {
                     Text("Survey")
                 } footer: {
-                    Text("Walk, talk, capture, then review before merge.")
+                    Text("Room-first capture. Build the Twin as you walk; Main understands it later.")
                 }
 
                 Section {
                     NavigationLink {
-                        StageModeView(viewModel: viewModel, visitID: visitID, showsResumeSurveyLink: true)
-                    } label: {
-                        Label("Review Survey", systemImage: "list.bullet.rectangle")
-                    }
-
-                    NavigationLink {
                         MergeModeView(viewModel: viewModel, visitID: visitID)
                     } label: {
-                            Label("Merge Working Twin", systemImage: "arrow.triangle.merge")
+                        Label("Complete Survey", systemImage: "checkmark.seal")
                     }
                 } header: {
                     Text("Finish")
+                } footer: {
+                    Text("Complete survey is the final trust action: this captured Twin represents what was seen.")
                 }
 
                 Section {
@@ -71,6 +67,12 @@ struct PropertyTwinHomeView: View {
                             EvidenceTimelineView(viewModel: viewModel, visitID: visitID)
                         } label: {
                             Label("Evidence Log", systemImage: "clock")
+                        }
+
+                        NavigationLink {
+                            StageModeView(viewModel: viewModel, visitID: visitID, showsResumeSurveyLink: true)
+                        } label: {
+                            Label("Survey Record", systemImage: "list.bullet.rectangle")
                         }
 
                         NavigationLink {
@@ -181,14 +183,14 @@ private struct SurveyPrimaryActionRow: View {
         case .readyToMerge, .merged:
             return "Open Survey"
         default:
-            return "Start Property Capture"
+            return "Start Survey"
         }
     }
 
     private var warnings: [String] {
         var output: [String] = []
         if visit.hasUnreviewedEvidence {
-            output.append("review pending")
+            output.append("evidence captured")
         }
         if visit.hasUnmergedLocalWork {
             output.append("merge pending")
@@ -431,7 +433,7 @@ struct StageModeView: View {
                             }
                         }
 
-                        Text("Review is a checkpoint. Resume keeps the survey open so you can collect more evidence before merge.")
+                        Text("The record is a live pull-over, not a separate review stage. Resume keeps room capture open.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } header: {
@@ -445,7 +447,7 @@ struct StageModeView: View {
                     TwinCountRow(title: "Evidence items", count: evidenceCount(for: visit), systemImage: "paperclip")
                     TwinCountRow(title: "Relationships", count: visit.relationships.count, systemImage: "point.3.connected.trianglepath.dotted")
                 } header: {
-                    Text("Proposed Changes")
+                    Text("Twin So Far")
                 }
 
                 evidenceByComponentSections(for: visit)
@@ -458,14 +460,14 @@ struct StageModeView: View {
                         Label("No clarification items", systemImage: "checkmark.circle")
                     }
                 } header: {
-                    Text("Clarify")
+                    Text("Unresolved")
                 }
 
                 Section {
                     Button {
                         viewModel.confirmCapturedEvidence(for: visitID)
                     } label: {
-                        Label("Confirm Captured Evidence", systemImage: "checkmark.seal")
+                        Label("Complete Survey Evidence", systemImage: "checkmark.seal")
                     }
                     .disabled(evidenceItems(for: visit).isEmpty && reviewItems(for: visit).isEmpty)
 
@@ -487,10 +489,10 @@ struct StageModeView: View {
                         Label("Confirm", systemImage: "checkmark.seal")
                     }
                 } header: {
-                    Text("Review")
+                    Text("Secondary Actions")
                 }
             }
-            .navigationTitle("Review Survey")
+            .navigationTitle("Survey Record")
             .navigationBarTitleDisplayMode(.inline)
         } else {
             ContentUnavailableView("Property not found", systemImage: "exclamationmark.triangle")

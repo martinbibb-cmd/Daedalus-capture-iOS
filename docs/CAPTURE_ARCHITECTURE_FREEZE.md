@@ -41,6 +41,9 @@ Capture must not:
 - generate customer outputs
 - convert passive observations into conclusions
 - treat LLM transcript extraction as truth creation
+- classify boilers, pumps, pipework, controls, or systems from RoomPlan
+- infer system type
+- suggest what an object is
 
 Those responsibilities belong to Main.
 
@@ -50,36 +53,41 @@ Capture can record reality before it understands reality.
 
 The capture loop is:
 
-1. Notice.
-2. Snap.
-3. Say it.
-4. Continue.
-5. Review later.
-6. Map later when useful.
+1. Start survey.
+2. New room.
+3. Capture the RoomPlan skeleton.
+4. Snap, say it, mark it, measure it, or test it in place.
+5. Keep scanning until the room can be represented.
+6. Finish room.
+7. Add the room to the Twin and retain location for stitching.
+8. Move to the next room.
+9. Complete survey.
+10. Merge/export.
 
 Incomplete, unmapped, uncertain, or passive observations are valid Capture data. They should be preserved rather than forced into a conclusion.
 
 LLM transcript extraction is statement parsing only. A parsed transcript can
 identify that someone said something; it cannot make the statement true.
 
-## Spatial Review Principle
+## Capture v1 Survey Principle
 
-The surveyor is not reviewing metadata. The surveyor is reviewing
-reconstructed reality.
+Capture v1 is room-first. It is simple, stable, dumb, and surveyor-led.
 
-The review question is "Have I got the property right?" It is not "Is this
-marker metadata correct?"
+RoomPlan is for a clean House skeleton: room outline, openings, boundaries, and
+labelled geometry. It is not a systems classifier.
 
-Capture review must keep the Twin visible. The default review view is a
-top-down floor plan. Future advanced review may use a raised, rotatable 3D
-model. Review must not be led by fixed cutaway house visuals, side elevation,
-cards, lists, or metadata forms.
+Photos, voice notes, transcripts, notes, measurements, manual markers, safety
+notes, and test sheets attach to the current room, object, or session. Systems
+evidence comes from that captured evidence. Main analyses it later.
 
-Captured objects are selected directly on the plan or model. Evidence expands
-from the selected object, and photos, voice notes, transcripts, confidence, and
-review state attach to that object. Unknown, unresolved, approximate, and
-fallback states must be visible on the Twin. Review actions correct the
-reconstructed Twin.
+V1 has no separate metadata review stage as its main quality gate. The surveyor
+gets continuous confidence from a pull-over view of Twin So Far, Notes, and
+Photos. Complete Survey is the final trust action: "Yes, this captured Twin
+represents what I saw."
+
+If room geometry is incomplete, Capture keeps scanning and shows a factual
+completion message. It must not ask the surveyor to finish an unrepresentable
+room.
 
 ## Handoff To Main
 

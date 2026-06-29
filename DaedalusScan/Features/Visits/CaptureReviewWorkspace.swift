@@ -369,7 +369,6 @@ struct CaptureReviewWorkspaceView: View {
         if let visit = viewModel.visit(id: visitID) {
             let cards = visit.captureReviewCards
             let areaObjectGroups = reviewedAreaObjectGroups(from: visit.areaObjectGroups)
-            let clearCards = cards.filter { !$0.requiresAttention && !$0.isLowConfidence && $0.status != .confirmed }
             List {
                 Section {
                     SpatialReviewMapView(
@@ -384,9 +383,9 @@ struct CaptureReviewWorkspaceView: View {
                     .frame(height: 280)
                     .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                 } header: {
-                    Text("Photo In Space Review")
+                    Text("Twin So Far")
                 } footer: {
-                    Text("Photos and spatial placement are reviewed as one item. Low-confidence or unplaced photos stay visible for individual review.")
+                    Text("Dumb display only. Capture does not infer, classify, suggest, or analyse system type.")
                 }
 
                 Section {
@@ -399,14 +398,8 @@ struct CaptureReviewWorkspaceView: View {
                                 .foregroundStyle(.red)
                         }
                     }
-                    Button {
-                        confirmAllClearAssets(clearCards)
-                    } label: {
-                        Label("Confirm All Clear Assets", systemImage: "checkmark.seal")
-                    }
-                    .disabled(clearCards.isEmpty)
                 } footer: {
-                    Text("Use mass verification for clear, spatially placed photos. Low-confidence and safety items still need individual review.")
+                    Text("Quality confidence is built continuously from the Twin, notes, and photos captured so far.")
                 }
 
                 Section("Property") {
@@ -428,9 +421,9 @@ struct CaptureReviewWorkspaceView: View {
 
                 Section("Areas") {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("This is what Daedalus thinks you captured.")
+                        Text("This is what has been captured so far.")
                             .font(.subheadline.weight(.semibold))
-                        Text("Review areas and objects first. Photos remain supporting evidence pinned in space.")
+                        Text("Areas and objects are captured evidence pinned in space. They are not system analysis.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -459,12 +452,12 @@ struct CaptureReviewWorkspaceView: View {
 
                 Section("Objects") {
                     LabeledContent("Spatial objects", value: "\(visit.components.count)")
-                    LabeledContent("Review objects", value: "\(areaObjectGroups.reduce(0) { $0 + $1.objects.count + $1.specialObjects.count })")
+                    LabeledContent("Captured objects", value: "\(areaObjectGroups.reduce(0) { $0 + $1.objects.count + $1.specialObjects.count })")
                 }
 
                 let geometrySummary = visit.captureGeometryReviewSummary
                 if geometrySummary.hasGeometry {
-                    Section("Geometry Review") {
+                    Section("Geometry") {
                         GeometryReviewSummaryView(summary: geometrySummary)
                     }
                 }
@@ -472,7 +465,7 @@ struct CaptureReviewWorkspaceView: View {
                 if cards.isEmpty {
                     ContentUnavailableView("No capture evidence", systemImage: "tray")
                 } else {
-                    Section("Evidence") {
+                    Section("Photos, Notes, Markers") {
                         ForEach(cards) { card in
                             CaptureReviewCardView(
                                 card: card,
@@ -512,14 +505,14 @@ struct CaptureReviewWorkspaceView: View {
                             activeSheet = .share(url)
                         }
                     } label: {
-                        Label("Create Reviewed Capture Package", systemImage: "shippingbox")
+                        Label("Create Capture Package", systemImage: "shippingbox")
                     }
                     .disabled(cards.isEmpty || visit.hasBlockingCaptureReviewItems)
                 } footer: {
-                    Text("The package keeps raw evidence and review decisions. Confirmed or changed evidence is marked for reviewed handoff.")
+                    Text("The package keeps raw evidence, location, confidence, and preservation state.")
                 }
             }
-            .navigationTitle("Review Capture")
+            .navigationTitle("Capture Record")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if let onResumeSurvey {
@@ -589,17 +582,6 @@ struct CaptureReviewWorkspaceView: View {
             }
         } else {
             ContentUnavailableView("Property not found", systemImage: "exclamationmark.triangle")
-        }
-    }
-
-    private func confirmAllClearAssets(_ cards: [CaptureReviewCard]) {
-        for card in cards {
-            viewModel.setCaptureReviewDecision(
-                .confirmed,
-                componentID: card.componentID,
-                visitID: visitID,
-                reviewedLabel: card.suggestedLabel
-            )
         }
     }
 

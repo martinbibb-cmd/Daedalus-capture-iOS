@@ -14,7 +14,7 @@ enum LiveCaptureEvidenceKind: String, CaseIterable {
         switch self {
         case .photo: return "Photo"
         case .voice: return "Voice"
-        case .mark: return "Focus"
+        case .mark: return "Marker"
         case .safety: return "Safety"
         case .measurement: return "Measurement"
         case .gas: return "Gas"
@@ -27,7 +27,7 @@ enum LiveCaptureEvidenceKind: String, CaseIterable {
         switch self {
         case .photo: return "Photo captured during live visit."
         case .voice: return "Voice note placeholder captured during live visit. Transcript pending."
-        case .mark: return "Focus area captured during live visit."
+        case .mark: return "Manual marker captured during live visit."
         case .safety: return "Potential safety concern marked during live visit."
         case .measurement: return "Measurement captured during live visit."
         case .gas: return "Gas service marker captured during live visit."
@@ -121,7 +121,7 @@ extension LiveCaptureEvidenceKind {
         switch self {
         case .photo: return "Photo in space"
         case .voice: return "Voice note"
-        case .mark: return "Focus area"
+        case .mark: return "Manual marker"
         case .safety: return "Safety concern"
         case .measurement: return "Measurement"
         case .gas: return "Gas entry"
